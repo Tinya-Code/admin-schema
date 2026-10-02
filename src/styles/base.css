@@ -1,0 +1,59 @@
+/*
+ * Estilos base de la app (reset fino + controles de formulario).
+ * En @layer base para que las utilidades de Tailwind (utilities layer)
+ * siempre puedan sobreescribir estas reglas.
+ */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Controles de formulario heredan tipografía y tamaño */
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+  }
+
+  /* Foco visible (WCAG 2.4.7) en todos los elementos interactivos */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+}
+
+/*
+ * Controles del formulario dinámico (fields/). En @layer components para que
+ * las utilidades de Tailwind puedan sobreescribirlas desde cada plantilla.
+ */
+@layer components {
+  .field-input {
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-neutral) 30%, transparent);
+    background-color: #fff;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .field-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .field-input[readonly]:not(:disabled) {
+    background-color: color-mix(in srgb, var(--color-neutral) 6%, transparent);
+  }
+
+  .field-input[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+}
