@@ -92,7 +92,7 @@ el motor está mal diseñado.
 | `views` | Vistas públicas declaradas (§7) |
 | `audit` | Si registra en `_audit_log` |
 | `cache` | TTL e invalidación |
-| `exposeToFront` | Qué parte del schema se publica en `/admin/schema` |
+| `exposeToFront` | Qué parte del schema se publica en `/admin/schema` (contrato legible, D1 — el admin no lo consume) |
 
 ---
 
@@ -312,10 +312,22 @@ Pasa de obligatoria a **opcional**: con subida directa, el backend no se entera 
 
 ---
 
-## 12. Compartir el schema con el front
+## 12. El schema del backend y el del front
 
-1. **Mismo vocabulario, dos archivos:** tipos idénticos; el front añade lo visual. Riesgo: derivar.
-2. **`/admin/schema`:** el backend publica la proyección (campos, tipos, `required`, enums, patrones, rangos, relaciones, orden, `listProjection`); el front hace *merge* por `key` con su capa de presentación.
+1. **Mismo vocabulario, dos instancias separadas:** tipos idénticos; el
+   front añade lo visual (etiquetas, columnas, layout, endpoints) y el back
+   declara rutas, validaciones y políticas. **No se piden definiciones en
+   runtime** — el front consume datos, no metadata.
+2. **Sincronización:** un **contract check estático**
+   (`scripts/contract-check.mjs`, en `npm run api:check`) compara ambos
+   lados: existencia de recursos en las dos direcciones, `kind`, ruta del
+   endpoint contra la ruta efectiva del back, y `required` + validators por
+   campo. Divergencia ⇒ rojo. Es higiene del monorepo: ninguno de los dos
+   lados lo ejecuta en runtime.
+3. **`/admin/schema` (D1):** sigue publicando la proyección (campos, tipos,
+   `required`, enums, patrones, rangos, relaciones, orden, `listProjection`)
+   como **contrato legible** — inspección, debug y clientes futuros. El
+   admin **no** lo consume.
 
 Nunca se publica: nombres de hojas, columnas internas, token, propiedades ni
 reglas internas. Para imágenes, el schema solo indica el tipo `image`; la
@@ -450,7 +462,7 @@ Si una regla se repite en 2–3 recursos, entonces se promueve a propiedad decla
 7. `rules/` conectadas por nombre.
 8. Probar con `categories` y `site`, luego `products`.
 9. `routes/40-upload-signature` y `41-schema`; `50-audit`.
-10. Ajustar el front (envelope `text/plain`, componente `image` en dos pasos, intención de reorder, `/admin/schema`).
+10. Del lado del front: crear `src/app/schemas/<id>.schema.ts` y registrarlo en `schemas/registry.ts` (envelope `text/plain`, componente `image` en dos pasos, intención de reorder). `api:check` valida que coincida con el back.
 11. Publicar y probar **desde el navegador** (CORS real, subida directa a Cloudinary incluida).
 
 ### Criterios de aceptación

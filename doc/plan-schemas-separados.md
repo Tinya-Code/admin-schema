@@ -224,24 +224,33 @@ entero (repo verde antes de decidir).
 **Objetivo:** la documentación describe el modelo de dos instancias, sin
 mención al merge.
 
-- [ ] `doc/guia.md`:
-  - [ ] §0 «La idea en una frase» y el diagrama: quitar la flecha de
+- [x] `doc/guia.md`:
+  - [x] §0 «La idea en una frase» y el diagrama: sin flecha de
         `/admin/schema` al front; el front consume **datos**, no definiciones.
-  - [ ] Tablas de endpoints: `/admin/schema` pasa a «contrato legible (el
-        admin no lo consume)» según D1.
-  - [ ] §4 «Esquemas: local, remoto y merge» → «Esquemas: dos instancias
-        separadas» (front declara UI/paths/UX; back declara rutas/reglas).
-  - [ ] Arranque (§4 y §5): quitar `appInitializer` → `GET /admin/schema` →
-        `setRemoteSchema` → merge; ahora el catálogo estático alimenta menú
-        y rutas directo.
-  - [ ] Mencionar el contract check y la pérdida de F7-4.
-- [ ] `doc/baseapi.md`: ~líneas 95 (`exposeToFront`), 318 (proyección +
-      merge), 372 (diagrama), 453 («ajustar el front») — actualizar al modelo
-      nuevo.
-- [ ] `doc/structure.md`: descripción de `schemas/` (auto-registro según D3).
-- [ ] Grep final en `doc/`: `merge`, `setRemoteSchema`, `appInitializer`,
-      `F7-4` → sin referencias obsoletas al intercambio.
-- [ ] Commit: `docs: modelo de dos schemas separados`.
+        Bonus: `RemoteResource` ya no existe → `ResourcePage` (bug preexistente
+        del doc) y deploy v17 → v20 (también desactualizado).
+  - [x] Tablas de endpoints: `/admin/schema` → «contrato legible (el admin
+        **no** lo consume)». Quitado de la tabla de `ApiService.request`.
+  - [x] §4 «Esquemas: local, remoto y merge» → «Esquemas: dos instancias
+        separadas» (front declara UI/paths/UX; back declara rutas/reglas;
+        contract check como sincronización; F7-4 retirado).
+  - [x] Arranque (§4 y §5): fuera `appInitializer`/`setRemoteSchema`/merge —
+        catálogo estático alimenta menú y rutas directo. §2 («recurso nuevo»)
+        ahora dice que del lado del front hace falta el `*.schema.ts` +
+        registro.
+  - [x] Contract check y pérdida de F7-4 mencionados (§0, §4 y nota).
+- [x] `doc/baseapi.md`: §12 reescrito («El schema del backend y el del
+      front»: dos instancias + contract check + D1), `exposeToFront` con D1,
+      paso 10 «Ajustar el front» → crear `*.schema.ts` y registrarlo.
+      La línea 372 del plan (diagrama `41-schema`) **no necesita cambio**: el
+      endpoint sigue existiendo.
+- [x] `doc/structure.md`: hecho en la Fase 4 («1 archivo + 1 línea», D3 = no).
+- [x] Grep final en `doc/`: `setRemoteSchema`, `appInitializer`, `merge`,
+      `F7-4`, `fusiona`, `presentación local`, `RemoteResource`, `schema-merge`
+      → única coincidencia: «**no hay merge**» en guia.md (negación, correcta)
+      y 2 menciones de F7-4 que explican que **ya no existe**. El propio plan
+      obviamente menciona lo que había que quitar.
+- [x] Commit: `docs: modelo de dos schemas separados`.
 
 **Criterio de salida:** grep de docs limpio; ningún texto describe el
 intercambio runtime como vigente.

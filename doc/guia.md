@@ -4,8 +4,9 @@
 > backend:** [`api/MAPA.md`](../api/MAPA.md) · **Mejoras ejecutadas:**
 > [`api/PLAN-MEJORAS.md`](../api/PLAN-MEJORAS.md) (F0–F7 + P, cerradas).
 >
-> **Estado actual:** deploy **v17** · 4 recursos (`categories`, `products`,
-> `site`, `legal`) · regresión 11/11 · `npm run api:check` en verde.
+> **Estado actual:** deploy **v20** · 4 recursos (`categories`, `products`,
+> `site`, `legal`) · regresión 11/11 · `npm run api:check` en verde (incluye
+> el contract check back ↔ front).
 
 ---
 
@@ -17,27 +18,35 @@ la respuesta) vive en **un solo archivo** declarativo
 (`api/schema/resources/<id>.js`). El motor (`core/` + `engine/`) es
 genérico: **agregar un recurso o un campo no requiere tocar código**.
 
-El frontend (Angular 22) **no conoce recursos hardcoded**: al arrancar lee
-`/admin/schema` (proyección pública del esquema) y arma menú, tabla y
-formularios a partir de esa metadata, fusionándola con los esquemas locales
-cuando existen.
+El frontend (Angular 22) declara **su propia copia** de cada recurso en
+`src/app/schemas/<id>.schema.ts` — el lado de UI (etiquetas, columnas,
+layout, endpoints). **No pide definiciones al backend en runtime**: consume
+**datos**, no metadata. Las dos copias se mantienen sincronizadas por un
+**contract check estático** (`scripts/contract-check.mjs`) que corre en
+`npm run api:check` y falla ante cualquier divergencia.
 
 ```
 ┌────────────────── Angular — src/app ──────────────────┐   ┌──────────── GAS — api/ ────────────┐
 │                                                       │   │                                    │
-│ sidebar ← allSchemas() ← registry (merge local+remoto)│   │ 12-http (auth/parse)               │
+│ sidebar ← allSchemas() ← registry (catálogo estático) │   │ 12-http (auth/parse)               │
 │                                                       │   │   ↓                                │
-│ RemoteResource ── api.service ── POST envelope ───────┼──▶│ 10-router ← REGISTRY (auto-registro)│
+│ ResourcePage ── api.service ── POST envelope ─────────┼──▶│ 10-router ← REGISTRY (auto-registro)│
 │   ├─ ListView  ← {items,total} (unwrapList)           │   │   ↓                                │
 │   ├─ FormView  ← 422 con errors[].path               │   │ engine: 24-crud · 23-validate       │
 │   └─ FieldHost ← campos/tipos del schema             │   │       22-assemble · 26-lock-cache  │
 │                                                       │   │       27-views · 50-audit         │
 │ app.config: API_URL + ADMIN_TOKEN                     │   │   ↓                                │
-│ appInitializer → GET /admin/schema (timeout → local)  │◀──│ /admin/schema ← handlers/schema.js  │
-└───────────────────────────────────────────────────────┘   │   ↓                                │
-                                                            │ Google Sheets (libro + _audit_log) │
+│                                                       │   │ /admin/schema (contrato legible)   │
+│ ▲ solo DATOS por envelope, nunca definiciones         │   │   ↓                                │
+└───────────────────────────────────────────────────────┘   │ Google Sheets (libro + _audit_log) │
                                                             └────────────────────────────────────┘
+      contract check estático (npm run api:check) verifica que ambos lados declaren lo mismo
 ```
+
+> **`/admin/schema` no flecha hacia Angular.** El endpoint existe como
+> contrato legible (inspección, debug, clientes futuros) — el admin no lo
+> consume. Un recurso **sólo-backend** (F7-4) ya no aparece en el menú: hay
+> que crear su `*.schema.ts`.
 
 ---
 
@@ -67,12 +76,12 @@ curl -sS -L -H 'Content-Type: text/plain' \
 
 ### Rutas
 
-| Ruta                      | Lectura                                      | Escritura                                           |
-| ------------------------- | -------------------------------------------- | --------------------------------------------------- |
-| `/admin/<recurso>`        | `GET` → listado                              | `POST` alta · `PUT` edición/reorder · `DELETE` baja |
-| `/admin/<recurso>/{key}`  | `GET` → detalle (la clave va **en el path**) | —                                                   |
-| `/admin/schema`           | proyección pública para el front             | —                                                   |
-| `/admin/upload-signature` | firma de subida (Cloudinary)                 | —                                                   |
+| Ruta                      | Lectura                                       | Escritura                                           |
+| ------------------------- | --------------------------------------------- | --------------------------------------------------- |
+| `/admin/<recurso>`        | `GET` → listado                               | `POST` alta · `PUT` edición/reorder · `DELETE` baja |
+| `/admin/<recurso>/{key}`  | `GET` → detalle (la clave va **en el path**)  | —                                                   |
+| `/admin/schema`           | contrato legible (el admin **no** lo consume) | —                                                   |
+| `/admin/upload-signature` | firma de subida (Cloudinary)                  | —                                                   |
 
 Singletons (`site`, `legal`) no llevan clave: el `GET` de `/admin/<recurso>`
 devuelve el registro único.
@@ -163,7 +172,10 @@ Luego:
    (la URL sirve una **versión fija**: push solo actualiza el HEAD).
 
 **No hace falta** tocar `core/`, `engine/`, `primitives/` ni `setup/` —
-el router arma las rutas del recurso solo y `/admin/schema` lo publica.
+el router arma las rutas del recurso solo y `/admin/schema` lo publica como
+contrato legible. **Del lado del frontend** sí hay una línea: crear
+`src/app/schemas/<id>.schema.ts` y registrarla en `schemas/registry.ts`
+(si te olvidás el registro, `api:check` sale rojo).
 
 ### Cambios comunes
 
@@ -239,10 +251,9 @@ valores vacíos. Secretos: `baseapi` §2.3 — **jamás** en el repo.
 
 ### Arranque
 
-1. `provideAppInitializer` ⇒ `SchemaService.load()` corre **antes** del
-   primer render: `GET /admin/schema` con **timeout**; cualquier fallo
-   (red, timeout, shape raro) ⇒ `remote = null` y **manda el esquema
-   local** (el bootstrap jamás se bloquea).
+1. El catálogo es **estático**: `schemas/registry.ts` importa los
+   `*.schema.ts` directamente. No hay initializer, no hay fetch de
+   definiciones — el menú y las rutas están listos en el primer render.
 2. Router: `''` → redirect al primer recurso del registry; el resto vive
    en el shell (`Layout`):
 
@@ -259,18 +270,25 @@ Sin interceptor de auth: `ApiService.send()` arma
 `Content-Type: text/plain` (sin cabeceras custom — criterio 11). Sólo hay
 un interceptor de errores de API (`api-error.interceptor`).
 
-### Esquemas: local, remoto y merge
+### Esquemas: dos instancias separadas
 
-- **Locales:** `src/app/schemas/<id>.schema.ts` (`categories`, `products`,
-  `site`, `legal`) — declaran el lado de UI: etiquetas, columnas de tabla,
-  filtros client-side, tipos de campo.
-- **Remoto:** `/admin/schema` → `setRemoteSchema(…)`.
-- **Merge** (`schemas/registry.ts`): por cada id, el remoto **pisa** la
-  presentación local (`mergeResourceSchema`); un recurso que existe **sólo
-  en remoto** se **sintetiza** completo (etiquetas derivadas del id, columnas
-  desde `shape`/`listProjection`). `allSchemas()` = catálogo efectivo (es lo
-  que consume el menú lateral, reactivo).
-- `schemas[]` (array local) **nunca cambia**; sólo cambia el efectivo.
+- **Front** (`src/app/schemas/<id>.schema.ts`): declara el lado de UI —
+  etiquetas, columnas de tabla, filtros client-side, layout, tipos de campo
+  y los **endpoints** que consume. Es la única fuente que lee el admin en
+  runtime.
+- **Back** (`api/schema/resources/<id>.js`): declara rutas efectivas,
+  validaciones (`required`, `unique`, `pattern`, rangos), políticas y la
+  forma de la respuesta. Alimenta el motor y publica `/admin/schema`.
+- **Sincronización:** no hay merge — hay un **contract check estático**
+  (`scripts/contract-check.mjs`, en `npm run api:check`) que compara
+  existencia, `kind`, rutas, `required` y validators en ambas direcciones.
+  Cualquier divergencia = rojo.
+- **Alta de módulo:** 1 archivo por lado + 1 línea en `registry.ts` (el
+  check te grita si te olvidás la línea). Un recurso **sólo-backend** ya
+  no se sintetiza (F7-4 retirado): sin su `*.schema.ts` no existe en el
+  admin.
+- `allSchemas()` = catálogo en orden de `menuOrder`/array (es lo que
+  consume el menú lateral).
 
 ### CRUD
 
@@ -283,7 +301,7 @@ un interceptor de errores de API (`api-error.interceptor`).
 | `create`  | `POST`                       | devuelve el registro                                                                    |
 | `update`  | `PUT`                        | devuelve el registro                                                                    |
 | `remove`  | `DELETE`                     |                                                                                         |
-| `request` | ruta libre                   | reorder (`{reorder:…}`), `/admin/schema`, upload-signature                              |
+| `request` | ruta libre                   | reorder (`{reorder:…}`), upload-signature                                               |
 
 Si la operación no existe para el recurso, `list`/`get` fallan con
 «Operación no disponible para este recurso» (los endpoints vienen del
@@ -291,20 +309,21 @@ schema).
 
 ### Vistas y filtros
 
-- Las `views` del backend viajan en el schema como **metadato público**
-  (`schema.views`), pero **el admin no las usa todavía**: los filtros del
-  listado son **client-side** sobre `schema.filters` local (decisión F7-5).
+- Las `views` del backend se publican como metadato en `/admin/schema`
+  (contrato legible), pero **el admin no las consume**: los filtros del
+  listado son **client-side** sobre `schema.filters` del schema local
+  (decisión F7-5).
 - El consumo de `?view=` queda para el front público.
 
 ---
 
 ## 5. Flujo end-to-end (cómo se conectan, paso a paso)
 
-**Arranque:** boot de Angular → `appInitializer` → `GET /admin/schema` →
-`setRemoteSchema` → merge en `registry` → `allSchemas()` arma el menú →
-redirect al primer recurso.
+**Arranque:** boot de Angular → `registry.ts` (catálogo estático de
+`*.schema.ts`) → `allSchemas()` arma el menú → redirect al primer recurso.
+Cero llamadas por definiciones.
 
-**Listado:** ruta `/admin/products` → `RemoteResource` → `ApiService.list`
+**Listado:** ruta `/products` → `ResourcePage` → `ApiService.list`
 → envelope `GET /admin/products` → router resuelve contra `REGISTRY` →
 pipeline (`27-views` aplica vista → `24-crud` lee hoja → `22-assemble`
 proyecta `shape` → `26-lock-cache` cachea) → `{items,total}` →
