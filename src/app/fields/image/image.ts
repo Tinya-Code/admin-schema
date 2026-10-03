@@ -3,11 +3,13 @@ import {
   Component,
   computed,
   DestroyRef,
+  ElementRef,
   inject,
   input,
   model,
   output,
   signal,
+  viewChild,
 } from '@angular/core';
 import type { FormValueControl } from '@angular/forms/signals';
 
@@ -28,7 +30,8 @@ const BASE =
  *
  * Estados: vacío (zona punteada + arrastrar-soltar), subiendo (progreso; el
  * valor no cambia hasta la respuesta), con imagen (preview + Reemplazar /
- * Quitar / Ver en grande) y error (conserva la imagen anterior).
+ * Quitar / Ver en grande, y drop sobre el preview para reemplazar) y error
+ * (conserva la imagen anterior).
  */
 @Component({
   selector: 'app-field-image',
@@ -51,7 +54,12 @@ const BASE =
         <p class="mt-1 text-xs text-neutral">Subiendo… {{ progress() }}%</p>
       </div>
     } @else if (value()) {
-      <div class="rounded-xl border border-neutral/20 bg-white p-3">
+      <div
+        class="rounded-xl border border-neutral/20 bg-white p-3"
+        data-testid="image-preview"
+        (dragover)="$event.preventDefault()"
+        (drop)="onDrop($event)"
+      >
         <img
           [src]="value()"
           [alt]="''"
@@ -80,6 +88,7 @@ const BASE =
     } @else {
       <div
         class="rounded-xl border-2 border-dashed border-neutral/30 p-6 text-center"
+        data-testid="image-dropzone"
         (dragover)="$event.preventDefault()"
         (drop)="onDrop($event)"
       >
@@ -131,11 +140,17 @@ export class FieldImage implements FormValueControl<string> {
   protected readonly aspectRatio = computed(() => this.field().aspectRatio ?? null);
   protected readonly acceptAttr = computed(() => this.field().accept ?? 'image/*');
 
-  private fileInput?: HTMLInputElement;
+  /**
+   * Template ref `#fileInput`: Angular NO auto-asigna las template refs a
+   * propiedades de clase (el campo `fileInput` quedaba `undefined` y
+   * `pickFile()` no hacía nada — el selector no se abría). Igual que en
+   * `modal.ts`: el tipo se expresa como genérico (`ElementRef<T>`).
+   */
+  private readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
   private uploadSub?: { unsubscribe(): void };
 
   protected pickFile(): void {
-    this.fileInput?.click();
+    this.fileInput().nativeElement.click();
   }
 
   protected clear(): void {
