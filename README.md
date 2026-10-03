@@ -1,5 +1,8 @@
 # AdminSchema
 
+> 📖 **Guía de uso (backend ↔ frontend):** [`doc/guia.md`](doc/guia.md) ·
+> Contrato API: [`doc/baseapi.md`](doc/baseapi.md)
+
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.4.
 
 ## Development server
