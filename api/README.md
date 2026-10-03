@@ -155,14 +155,15 @@ F7-3 en `PLAN-MEJORAS.md`; se retira en F7/P cuando todos declaren su
 `shape`). Hoy sólo `products` la declara: su listado responde
 `{ items, total }` con pick de 10 campos.
 
-**Front sin conocimiento de recursos (F7):** desde F7 el admin no necesita
-schemas locales para recursos nuevos — `/admin/schema` expone por recurso
-`operations` (métodos, rutas y forma pública de la respuesta), `views`
-(metadatos declarativos; vistas con `handler` ⇒ `{custom:true}`) y
-`policies.access`; el front los fusiona por `key` sobre la presentación
-local y sintetiza menú/listado/formulario de los ids que sólo existen en el
-backend (evidencia F7-4: recurso `_prueba` con 0 cambios en `src/`). Sin
-fugas: caché/audit/lock/rate-limit y internals jamás viajan (§12).
+**Contrato legible (D1):** `/admin/schema` expone por recurso `operations`
+(métodos, rutas y forma pública de la respuesta), `views` (metadatos
+declarativos; vistas con `handler` ⇒ `{custom:true}`) y `policies.access`.
+El admin NO lo consume en runtime — declara sus propios schemas en
+`src/app/schemas/*.schema.ts` y la sincronización back ↔ front la verifica
+el contract check estático (`scripts/contract-check.mjs`, en
+`npm run api:check`). El endpoint queda para inspección, debug y clientes
+futuros. Sin fugas: caché/audit/lock/rate-limit y internals jamás viajan
+(§12).
 
 **Políticas (§8):** `access`/`limits`/`cache`/`audit`/`lock` viven en el
 schema — `resource.policies.*` (los 4 recursos) y `access`/`limits` de

@@ -1,15 +1,19 @@
-// primitives/handlers/schema — Proyección pública del schema para el
-// front (baseapi §12). Resuelto desde `REGISTRY.endpoints.schema`
-// (schema/endpoints/schema), no por código en el router.
+// primitives/handlers/schema — Proyección pública del schema (baseapi §12).
+// Resuelto desde `REGISTRY.endpoints.schema` (schema/endpoints/schema), no
+// por código en el router.
 //
-// El front hace merge POR `key` con su capa de presentación local: acá sólo
-// viaja lo estructural — campos, tipos, required, enums, patrones, rangos,
-// relaciones, orden y listProjection (§12). JAMÁS hojas, columnas internas,
-// reglas, propiedades ni token (§12 «Nunca se publica»): para imágenes el
-// schema sólo indica el tipo `image` y la firma se pide aparte (§11.3).
+// Rol del endpoint (D1): CONTRATO LEGIBLE — inspección, debug y clientes
+// futuros. El admin NO lo consume en runtime: declara sus propios schemas en
+// `src/app/schemas/*.schema.ts` y la sincronización back ↔ front la verifica
+// el check estático `scripts/contract-check.mjs` (npm run api:check), no un
+// merge en memoria. Acá sólo viaja lo estructural — campos, tipos, required,
+// enums, patrones, rangos, relaciones, orden y listProjection (§12). JAMÁS
+// hojas, columnas internas, reglas, propiedades ni token (§12 «Nunca se
+// publica»): para imágenes el schema sólo indica el tipo `image` y la firma
+// se pide aparte (§11.3).
 //
-// F7-1: además del modelo se publican metadatos públicos para que el front
-// funcione sin conocer recursos nuevos:
+// Además del modelo se publican metadatos públicos (F7-1), parte del
+// contrato legible:
 //   - operations: método + ruta efectiva por operación (derivados con
 //     core/10-router `resourceRoute_`, la misma fuente que despacha) y la
 //     forma pública declarada (shape: pick/include/rename/nest/envelope).
@@ -168,7 +172,7 @@ function normalizeAccessValue_(value) {
 
 // Claves escalares opcionales: se copian sólo si existen en el schema.
 // `from` (campo de origen de un slug) viaja porque el widget del front lo
-// necesita para autogenerar (F7-4: formulario desde el schema remoto).
+// necesita para autogenerar en el formulario.
 var PROJECTED_SCALAR_KEYS = [
   'default',
   'pattern',
