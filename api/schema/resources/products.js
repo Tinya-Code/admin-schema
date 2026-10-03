@@ -122,7 +122,7 @@ REGISTRY.resources.products = {
     { key: 'availability', type: 'select', required: true, enum: 'availability' },
     { key: 'featured', type: 'boolean', required: true, default: false },
     { key: 'active', type: 'boolean', required: true, default: true },
-    { key: 'description', type: 'textarea', required: true, minWords: 150, maxWords: 300 },
+    { key: 'description', type: 'textarea', required: true, minLength: 100, maxLength: 2000 },
     { key: 'seo_title', type: 'text', required: false },
     { key: 'seo_description', type: 'textarea', required: true },
     // vacío ⇒ R2 (publishable) lo oculta; NO bloquea el guardado

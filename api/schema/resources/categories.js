@@ -35,7 +35,7 @@ REGISTRY.resources.categories = {
     { key: 'name', type: 'text', required: true },
     { key: 'seo_title', type: 'text', required: true },
     { key: 'seo_description', type: 'textarea', required: true },
-    { key: 'intro', type: 'textarea', required: true, minWords: 100, maxWords: 200 },
+    { key: 'intro', type: 'textarea', required: true, minLength: 100, maxLength: 1000 },
     { key: 'image_url', type: 'image', required: true },
     { key: 'image_alt', type: 'text', required: false },
     { key: 'active', type: 'boolean', required: true, default: true },

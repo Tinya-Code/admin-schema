@@ -230,10 +230,26 @@ function validateScalar_(ss, field, value, path, errors) {
       return;
   }
 
-  // Comunes a todo texto: patrón y conteo de palabras.
+  // Comunes a todo texto: patrón, longitud y conteo de palabras.
   var text = String(value);
   if (field.pattern && !new RegExp(field.pattern).test(text)) {
     errors.push(validationIssue_(path, 'Formato inválido'));
+  }
+  if (field.minLength !== undefined && text.length < field.minLength) {
+    errors.push(
+      validationIssue_(
+        path,
+        'Debe tener al menos ' + field.minLength + ' caracteres (' + text.length + ')',
+      ),
+    );
+  }
+  if (field.maxLength !== undefined && text.length > field.maxLength) {
+    errors.push(
+      validationIssue_(
+        path,
+        'Debe tener como máximo ' + field.maxLength + ' caracteres (' + text.length + ')',
+      ),
+    );
   }
   var words = wordCount_(text);
   if (field.minWords !== undefined && words < field.minWords) {

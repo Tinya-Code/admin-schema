@@ -174,6 +174,8 @@ var PROJECTED_SCALAR_KEYS = [
   'pattern',
   'min',
   'max',
+  'minLength',
+  'maxLength',
   'minWords',
   'maxWords',
   'unique',
