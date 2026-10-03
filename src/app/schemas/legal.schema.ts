@@ -65,6 +65,7 @@ export const legalSchema: ResourceSchema = {
       type: 'readonly-text',
       key: 'last_updated',
       label: 'Última actualización',
+      required: true,
       readonly: true,
       format: 'date',
       help: 'Lo actualiza el servidor al guardar.',
