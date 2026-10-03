@@ -95,7 +95,7 @@ endpoints: {} }` (vía `new Function('REGISTRY', código)` o `node:vm`).
       `required: true` de `name` en `categories.schema.ts`) → check rojo con
       mensaje claro → revertir → verde.
 - [x] `npm test` completo en verde (22/22).
-- [ ] Commit: `test(api): contract check que compara schemas back<->front`.
+- [x] Commit: `fix(front): alinear required y unique...` + `test(api): contract check que compara schemas back<->front` (2 unidades de trabajo).
 
 **Criterio de salida:** `api:check` verde con el check activo y prueba
 negativa demostrada.
