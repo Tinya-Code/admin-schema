@@ -107,39 +107,39 @@ negativa demostrada.
 **Objetivo:** el front jamás pide definiciones al backend; solo quedan sus
 schemas locales.
 
-- [ ] `src/app/app.config.ts`: quitar
+- [x] `src/app/app.config.ts`: quitar
       `provideAppInitializer(() => inject(SchemaService).load())` y los
       imports de `SchemaService` / `inject` si quedan sin uso.
-- [ ] Eliminar `src/app/core/services/schema.service.ts` (39 líneas).
-- [ ] Reescribir `src/app/schemas/registry.ts` (81 líneas):
-  - [ ] Quitar `remoteSchemas` (signal), `mergedSchemas` (computed),
+- [x] Eliminar `src/app/core/services/schema.service.ts` (39 líneas).
+- [x] Reescribir `src/app/schemas/registry.ts` (81 líneas):
+  - [x] Quitar `remoteSchemas` (signal), `mergedSchemas` (computed),
         `setRemoteSchema` y los imports de `schema-merge`.
-  - [ ] Conservar la API pública **sin cambios de firma**: `schemas`,
+  - [x] Conservar la API pública **sin cambios de firma**: `schemas`,
         `getSchema()`, `allSchemas()` — sidebar, relation, resource-page,
         list-view y form-view no se tocan.
-  - [ ] `getSchema`/`allSchemas` leen directo del array de catálogo.
-  - [ ] Actualizar el JSDoc: catálogo estático, sin capa remota ni F7-4.
-- [ ] Eliminar:
-  - [ ] `src/app/schemas/schema-merge.ts` (537 líneas).
-  - [ ] `src/app/schemas/schema-merge.spec.ts` (137 líneas).
-  - [ ] `src/app/schemas/__fixtures__/remote-schema.ts` (672 líneas).
-- [ ] Reparar los specs que importan lo eliminado:
-  - [ ] `src/app/shell/sidebar/sidebar.spec.ts`: el primer test usa
+  - [x] `getSchema`/`allSchemas` leen directo del array de catálogo.
+  - [x] Actualizar el JSDoc: catálogo estático, sin capa remota ni F7-4.
+- [x] Eliminar:
+  - [x] `src/app/schemas/schema-merge.ts` (537 líneas).
+  - [x] `src/app/schemas/schema-merge.spec.ts` (137 líneas).
+  - [x] `src/app/schemas/__fixtures__/remote-schema.ts` (672 líneas).
+- [x] Reparar los specs que importan lo eliminado:
+  - [x] `src/app/shell/sidebar/sidebar.spec.ts`: el primer test usa
         `setRemoteSchema` — reescribirlo para el catálogo estático (menú con
         los 4 recursos en orden y sus `href`s). El segundo test («sin schema
         remoto») pasa a describir el único camino: fusionarlo si aporta
         ruido.
-  - [ ] `src/app/pages/remote-resource.spec.ts` (86 líneas): **eliminar** —
+  - [x] `src/app/pages/remote-resource.spec.ts` (86 líneas): **eliminar** —
         su premisa (recurso solo-remoto, F7-4) ya no existe. Anotar la
         pérdida de cobertura en el mensaje del commit.
-- [ ] Grep de limpieza: cero coincidencias en `src/` de
+- [x] Grep de limpieza: cero coincidencias en `src/` de
       `SchemaService|parseSchemaResponse|setRemoteSchema|mergeResourceSchema|remoteToSchema|RemoteResource|schema-merge|remote-schema`
       (el histórico en `doc/` se resuelve en la Fase 5).
-- [ ] `npm test` en verde (recontar tests: 22 actuales − 5 merge − 2
-      remote-resource − 1 sidebar = ~14; anotar el total real en el commit).
-- [ ] `npm run build` en verde.
-- [ ] Prettier sobre los archivos tocados.
-- [ ] Commit: `refactor(front): quitar el intercambio runtime de schema`.
+- [x] `npm test` en verde → **14 tests reales** (22 − 5 merge − 2
+      remote-resource − 1 sidebar = 14, como predijo el plan).
+- [x] `npm run build` en verde.
+- [x] Prettier sobre los archivos tocados.
+- [x] Commit: `refactor(front): quitar el intercambio runtime de schema`.
 
 **Criterio de salida:** grep limpio, tests y build verdes; el menú, las rutas
 y los formularios funcionan igual que antes usando solo `*.schema.ts`.
