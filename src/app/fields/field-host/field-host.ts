@@ -123,7 +123,7 @@ export function isSupportedFieldType(type: string): boolean {
   ],
   template: `
     @if (supported()) {
-      <div class="mb-4">
+      <div class="mb-4" [attr.data-field]="state().name()">
         @if (field().type !== 'group') {
           <label [for]="state().name()" class="mb-1 block text-sm font-medium">
             {{ field().label }}

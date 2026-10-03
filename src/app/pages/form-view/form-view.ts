@@ -440,18 +440,13 @@ export class FormView {
 
     try {
       if (this.mode() === 'create') {
-        const created = await firstValueFrom(
-          this.api.create<Record<string, unknown>>(schema.endpoint, payload),
-        );
+        await firstValueFrom(this.api.create<Record<string, unknown>>(schema.endpoint, payload));
         this.notifications.success('Registro creado.');
         // Limpia `dirty` antes de navegar: si no, el guard pediría confirmar.
         tree().reset();
-        const createdKey = created?.[schema.keyField];
-        if (typeof createdKey === 'string' && createdKey !== '') {
-          void this.router.navigate(['/', schema.id, createdKey, 'edit']);
-        } else {
-          this.back();
-        }
+        // Vuelve al listado del recurso (el «inicio» de la colección); al
+        // reentrar en `:id/new` el form se reconstruye limpio.
+        void this.router.navigate(['/', schema.id]);
         return;
       }
 
@@ -526,6 +521,26 @@ export class FormView {
     const withProblem = sections.find((section) => this.sectionHasProblem(section));
     if (withProblem && this.layoutMode() === 'tabs') {
       this.activeSection.set(withProblem.id);
+    }
+    // Una vez abiertas/activadas las secciones con errores, el navegador
+    // debe IR al primer campo con problema (no quedarse arriba del form).
+    // `setTimeout`: los mensajes se pintan en la pasada de change detection
+    // posterior al submit.
+    setTimeout(() => this.scrollToFirstError());
+  }
+
+  /** Scroll + focus al primer campo visible con mensaje de error. */
+  private scrollToFirstError(): void {
+    for (const wrap of document.querySelectorAll<HTMLElement>('[data-field]')) {
+      if (!wrap.querySelector('p[role="alert"]')) {
+        continue;
+      }
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const focusable = wrap.querySelector<HTMLElement>(
+        'input:not([type="hidden"]), textarea, select, [contenteditable="true"]',
+      );
+      focusable?.focus({ preventScroll: true });
+      return;
     }
   }
 
