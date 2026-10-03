@@ -6,6 +6,9 @@
 #                    core/, engine/ ni primitives/.
 #   Regla 5 (§11.5): schema como fuente única — el registry y los archivos
 #                    de recurso declaran exactamente los mismos ids.
+#   Contract check:  schemas back ↔ front (doc/plan-schemas-separados.md
+#                    Fase 1) — paths + required + validators; divergencia =
+#                    rojo.
 #
 # Sale con código 1 si hay hallazgos (modos pre-F1 y F1+ según exista
 # api/schema/resources/).
@@ -48,6 +51,16 @@ else
   echo "✗ ROJO: el registry y los archivos de recurso no coinciden"
   echo "--- sólo en el registry:"; comm -23 <(echo "$reg_ids") <(echo "$file_ids") | sed 's/^/    /'
   echo "--- sólo en archivos:"; comm -13 <(echo "$reg_ids") <(echo "$file_ids") | sed 's/^/    /'
+  ROJO=1
+fi
+
+echo "── Contract check: schemas back ↔ front"
+if command -v node >/dev/null 2>&1; then
+  if ! node scripts/contract-check.mjs; then
+    ROJO=1
+  fi
+else
+  echo "✗ ROJO: node no disponible — contract check no corrió"
   ROJO=1
 fi
 
