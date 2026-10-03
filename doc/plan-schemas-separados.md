@@ -38,9 +38,9 @@ Dos instancias separadas que hablan **solo por HTTP de datos**:
 
 ### Decisiones abiertas (confirmar antes de empezar)
 
-- [ ] **D1 — Destino de `/admin/schema`.** Recomendación: **conservarlo** como
+- [x] **D1 — Destino de `/admin/schema`.** Decidido: **conservarlo** como
       contrato legible (inspección, debug, clientes futuros). El admin ya no
-      lo consume; no cambia la arquitectura. Afecta a la Fase 3.
+      lo consume; no cambia la arquitectura. → Ejecutado en la Fase 3.
 - [x] **D2 — Alcance del contract check.** Recomendación:
       (a) ruta base del recurso, (b) `required` por campo, (c) validators
       declarados en ambos lados (`minLength`, `maxLength`, `pattern`, `min`,
@@ -49,10 +49,14 @@ Dos instancias separadas que hablan **solo por HTTP de datos**:
       ausentes en el front (p. ej. `position`) **no** son divergencia.
       → Ejecutado en la Fase 1, ampliado: campo `required` del back ausente
       en el front = rojo; opcional ausente = aviso.
-- [ ] **D3 — Auto-registro del front.** Recomendación: **sí**, con
-      `import.meta.glob` + campo `menuOrder`, para cumplir «alta de módulo =
-      1 archivo por lado». Si se prefiere no, la alta de módulo suma 1 línea
-      en `registry.ts`. Afecta a la Fase 4.
+- [x] **D3 — Auto-registro del front.** Decidido: **NO** — catálogo explícito
+      en `registry.ts`, sin `import.meta.glob` ni `menuOrder` (el orden del
+      array es el orden del menú). Motivo: `import.meta.glob` es transform de
+      Vite, `@angular/build` no lo incluye → `ng build` lo deja crudo, el
+      dev server lo transforma vacío y `ng test` (vitest) sí funciona: tests
+      verdes con la app rota. La alta de módulo suma **1 línea** en
+      `registry.ts` y `checkRegistry()` la exige en `api:check`. → Ejecutado
+      en la Fase 4.
 
 ---
 
@@ -164,7 +168,8 @@ y los formularios funcionan igual que antes usando solo `*.schema.ts`.
   - [x] Verificar `npm run api:check` (verde) y `./scripts/api-regression.sh`
         → **11/11 idénticos**. `node --check` OK.
   - [x] Commit: `docs(api): /admin/schema como contrato legible`.
-- [ ] **Si D1 = retirar** (NO ejecutada — D1 = conservar): eliminar
+- [ ] ~~**Si D1 = retirar**~~ (N/A — D1 = conservar; se deja por si se
+      revierte): eliminar
       `api/primitives/handlers/schema.js`, la entrada de endpoint en
       `api/schema/endpoints/schema.js`, los flags `exposeToFront` de los 4
       resources, `api/fixtures/schema-get.json`, el `call schema-get` de
@@ -262,22 +267,25 @@ intercambio runtime como vigente.
 **Objetivo:** evidencia completa de que el modelo nuevo funciona de punta a
 punta.
 
-- [ ] `npm run api:check` (reglas + contract check) en verde.
-- [ ] `npm test` en verde (total anotado).
-- [ ] `npm run build` en verde.
-- [ ] Prettier en verde (`npx prettier --check` sobre archivos modificados).
-- [ ] `./scripts/api-regression.sh` 11/11 (requiere `api/.gas-smoke.env`).
-- [ ] Smoke manual con backend real (`npm start`): menú con los 4 recursos,
-      abrir cada formulario, validaciones de caracteres (intro ≥ 100,
-      description ≥ 100), CRUD completo con toast, responsive (offcanvas).
-- [ ] Smoke de puertoabilidad: cambiar `environment.apiUrl` a un backend
-      inválido → la app arranca y renderiza desde los schemas locales (los
-      datos fallan, la UI no).
-- [ ] Deploy solo si las fases 3/4 tocaron código backend con efecto
-      funcional: `npx clasp version "v21 - …"` +
-      `npx clasp deploy -V 21` (si fueron solo comentarios/docs, el deploy
-      queda a discreción).
-- [ ] `mem_save` con la decisión final (modelo de dos schemas) +
+- [x] `npm run api:check` (reglas + contract check) en verde.
+- [x] `npm test` en verde (**14/14** — 5 archivos).
+- [x] `npm run build` en verde (bundle 2,04 s).
+- [x] Prettier en verde sobre los archivos modificados.
+- [x] `./scripts/api-regression.sh` **11/11** idénticos, 0 con diferencia.
+- [x] Smoke manual con backend real (`npm start`, :4200): menú con los 4
+      recursos, cada formulario, validaciones ≥ 100 (intro/description), CRUD
+      completo con toast y responsive/offcanvas — **aprobado por el usuario**.
+      De paso: los 4 recursos responden 200 por envelope y `/admin/schema`
+      sigue sirviendo su contrato legible (6,4 KB).
+- [x] Smoke de puertoabilidad: con `apiUrl = backend.invalido.example` el
+      build queda verde, `index.html` responde 200 y el chunk contiene
+      **4/4 schemas** con `import.meta.glob = 0` → la UI se arma desde los
+      schemas locales y solo fallan los datos. `environment.local.ts`
+      restaurado con hash idéntico (`db7d6403…`), sigue gitignored.
+- [x] Deploy: **no aplica** — las fases 3/4 tocaron `api/` solo en
+      comentarios y docs (`git diff` sin líneas de código ≠ comentario).
+      Publicar v21 queda a discreción.
+- [x] `mem_save` con la decisión final (modelo de dos schemas) +
       `mem_session_summary`.
 
 **Criterio de salida:** todos los checks verdes, smoke aprobado, estado
