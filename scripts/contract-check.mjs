@@ -7,6 +7,11 @@
 //   1. Existencia: cada recurso del front existe en el back, y cada recurso
 //      del back tiene su *.schema.ts (la F7-4 ya no existe: alta de módulo =
 //      1 archivo por lado).
+//   1b. Registro: cada *.schema.ts del disco está importado en
+//      src/app/schemas/registry.ts y viceversa. El catálogo NO es automático
+//      (import.meta.glob no transforma en esbuild: ver plan, Fase 4 / D3), así
+//      que una alta olvidada en registry.ts = recurso invisible en el menú.
+//      Este check la convierte en rojo.
 //   2. Ruta: los endpoints del front son la ruta efectiva del back
 //      (route || /<scope>/<id>), con {key} en las operaciones con clave.
 //   3. kind idéntico (collection/singleton).
@@ -169,6 +174,42 @@ function compareResource(front, back) {
   }
 }
 
+/**
+ * Disco ↔ registry: el catálogo es explícito (imports en registry.ts), así
+ * que un *.schema.ts sin importar = recurso que no aparece en el menú ni en
+ * las rutas. Se lee como texto: registry.ts no es importable en Node (sus
+ * imports van sin extensión, `./categories.schema`).
+ */
+function checkRegistry() {
+  const dir = path.join(ROOT, 'src', 'app', 'schemas');
+  const registryFile = path.join(dir, 'registry.ts');
+  const code = readFileSync(registryFile, 'utf8');
+
+  const importados = new Set();
+  for (const m of code.matchAll(/from\s+'\.\/([a-z0-9-]+)\.schema'/g)) {
+    importados.add(m[1]);
+  }
+
+  const enDisco = readdirSync(dir)
+    .filter((f) => f.endsWith('.schema.ts'))
+    .map((f) => f.slice(0, -'.schema.ts'.length));
+
+  for (const id of enDisco) {
+    if (!importados.has(id)) {
+      rojo(
+        `registry.ts: falta importar './${id}.schema' — el archivo existe pero ` +
+          'el recurso no entra al catálogo (invisible en menú y rutas)',
+      );
+    }
+  }
+  for (const id of importados) {
+    if (!enDisco.includes(id)) {
+      rojo(`registry.ts: importa './${id}.schema' pero src/app/schemas/${id}.schema.ts no existe`);
+    }
+  }
+}
+
+checkRegistry();
 const backend = loadBackend();
 const fronts = await loadFrontend();
 const frontIds = new Set(fronts.map((f) => f.id));
