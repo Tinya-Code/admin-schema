@@ -171,6 +171,7 @@ const TAB_INACTIVE =
                             [tree]="tree"
                             [exists]="exists()"
                             [serverErrors]="serverErrors().fields"
+                            [resource]="resourceId()"
                           />
                         </div>
                       }
