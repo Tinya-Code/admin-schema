@@ -150,22 +150,27 @@ y los formularios funcionan igual que antes usando solo `*.schema.ts`.
 
 **Objetivo:** dejar documentado el rol del endpoint según la decisión D1.
 
-- [ ] **Si D1 = conservar (recomendado):**
-  - [ ] Actualizar el JSDoc de `api/primitives/handlers/schema.js`: el front
+- [x] **Si D1 = conservar (recomendado):** rama ejecutada.
+  - [x] Actualizar el JSDoc de `api/primitives/handlers/schema.js`: el front
         ya **no** hace merge — el endpoint queda como contrato legible
         (inspección, debug, clientes futuros). Quitar toda mención a
-        «fusionada por key» / «capa de presentación».
-  - [ ] Sin cambio funcional → `api/fixtures/schema-get.json` **sin tocar**.
-  - [ ] Verificar `npm run api:check` y `./scripts/api-regression.sh`
-        (11/11, requiere `api/.gas-smoke.env`).
-  - [ ] Commit: `docs(api): /admin/schema como contrato legible`.
-- [ ] **Si D1 = retirar** (sólo si se decidió así): eliminar
+        «fusionada por key» / «capa de presentación». → Hecho (header del
+        archivo + comentario de `from`). Extra fuera de la lista original:
+        `api/README.md` describe el mismo merge como vigente (párrafo
+        «Front sin conocimiento de recursos») → renombrado a «Contrato
+        legible (D1)». Los `PLAN*.md` son histórico: sin tocar.
+  - [x] Sin cambio funcional → `api/fixtures/schema-get.json` **sin tocar**
+        (lo confirma la regresión: 11/11 idénticos).
+  - [x] Verificar `npm run api:check` (verde) y `./scripts/api-regression.sh`
+        → **11/11 idénticos**. `node --check` OK.
+  - [x] Commit: `docs(api): /admin/schema como contrato legible`.
+- [ ] **Si D1 = retirar** (NO ejecutada — D1 = conservar): eliminar
       `api/primitives/handlers/schema.js`, la entrada de endpoint en
       `api/schema/endpoints/schema.js`, los flags `exposeToFront` de los 4
       resources, `api/fixtures/schema-get.json`, el `call schema-get` de
       `scripts/api-regression.sh` y las referencias en `doc/baseapi.md`.
       Re-ejecutar `api:check` + regresión (queda 10 llamadas).
-- [ ] **Ejecutar solo la rama elegida en D1, nunca ambas.**
+- [x] **Ejecutar solo la rama elegida en D1, nunca ambas.** → sólo la rama conservar.
 
 **Criterio de salida:** `api:check` + regresión verdes bajo la rama elegida.
 
