@@ -148,8 +148,8 @@ export const REMOTE_SCHEMA_RESPONSE: unknown = {
           key: 'intro',
           type: 'textarea',
           required: true,
-          minWords: 100,
-          maxWords: 200,
+          minLength: 100,
+          maxLength: 1000,
         },
         {
           key: 'image_url',
@@ -437,8 +437,8 @@ export const REMOTE_SCHEMA_RESPONSE: unknown = {
           key: 'description',
           type: 'textarea',
           required: true,
-          minWords: 150,
-          maxWords: 300,
+          minLength: 100,
+          maxLength: 2000,
         },
         {
           key: 'seo_title',

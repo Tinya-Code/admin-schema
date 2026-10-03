@@ -51,6 +51,8 @@ export interface RemoteField {
   pattern?: unknown;
   min?: unknown;
   max?: unknown;
+  minLength?: unknown;
+  maxLength?: unknown;
   minWords?: unknown;
   maxWords?: unknown;
   unique?: unknown;
@@ -253,6 +255,14 @@ function mergeValidators(
 
   if (typeof remote.pattern === 'string' && remote.pattern !== local?.pattern) {
     merged.pattern = remote.pattern;
+    changed = true;
+  }
+  if (typeof remote.minLength === 'number' && remote.minLength !== local?.minLength) {
+    merged.minLength = remote.minLength;
+    changed = true;
+  }
+  if (typeof remote.maxLength === 'number' && remote.maxLength !== local?.maxLength) {
+    merged.maxLength = remote.maxLength;
     changed = true;
   }
   if (typeof remote.minWords === 'number' && remote.minWords !== local?.minWords) {
