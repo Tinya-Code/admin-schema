@@ -190,6 +190,7 @@ export function isSupportedFieldType(type: string): boolean {
                     [exists]="exists()"
                     [serverErrors]="serverErrors()"
                     [pathPrefix]="groupPrefix()"
+                    [resource]="resource()"
                   />
                 </div>
               }
@@ -212,6 +213,7 @@ export function isSupportedFieldType(type: string): boolean {
                     [exists]="child.exists"
                     [serverErrors]="child.errors"
                     [pathPrefix]="child.prefix"
+                    [resource]="resource()"
                   />
                 </div>
               }
@@ -235,7 +237,12 @@ export function isSupportedFieldType(type: string): boolean {
             <app-field-relation [field]="relation()" [tree]="tree()" />
           }
           @case ('image') {
-            <app-field-image [id]="state().name()" [field]="image()" [formField]="imageNode()" />
+            <app-field-image
+              [id]="state().name()"
+              [field]="image()"
+              [formField]="imageNode()"
+              [resource]="resource()"
+            />
           }
         }
 
@@ -260,6 +267,8 @@ export class FieldHost {
   readonly serverErrors = input<Record<string, string>>({});
   /** Prefijo de ruta de este campo en el registro raíz (`address.`). */
   readonly pathPrefix = input('');
+  /** Recurso dueño del formulario (lo consume `image` para la firma, §11.2). */
+  readonly resource = input('');
 
   /** Fuera del catálogo o oculto por `visibleWhen`: no se dibuja. */
   protected readonly supported = computed(

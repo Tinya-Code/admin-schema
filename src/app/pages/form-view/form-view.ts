@@ -108,6 +108,7 @@ const TAB_INACTIVE =
                         [tree]="tree"
                         [exists]="exists()"
                         [serverErrors]="serverErrors().fields"
+                        [resource]="resourceId()"
                       />
                     </div>
                   }
@@ -143,6 +144,7 @@ const TAB_INACTIVE =
                           [tree]="tree"
                           [exists]="exists()"
                           [serverErrors]="serverErrors().fields"
+                          [resource]="resourceId()"
                         />
                       </div>
                     }
@@ -217,6 +219,8 @@ export class FormView {
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
 
   readonly schema = computed(() => getSchema(this.params().get('id') ?? ''));
+  /** Recurso actual (lo consumen `image` para pedir la firma, §11.2). */
+  readonly resourceId = computed(() => this.schema()?.id ?? '');
 
   readonly mode = computed<FormMode>(() => {
     const schema = this.schema();

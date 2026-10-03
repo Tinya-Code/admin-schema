@@ -227,7 +227,7 @@ export interface KeyValueField extends FieldBase<KeyValueItem[]>, ListOptions {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Unión discriminada por `type` (21 tipos, base.md §5)
+// Unión discriminada por `type` (20 tipos, base.md §5)
 // ─────────────────────────────────────────────────────────────
 
 export type FieldSchema =
@@ -341,4 +341,69 @@ export interface ResourceSchema {
   layout?: ResourceLayout;
   actions?: ResourceAction[];
   permissions?: ResourcePermissions;
+
+  // ── Metadatos públicos de `/admin/schema` (F7-1, PLAN-MEJORAS) ──
+  // Ausentes ⇒ sólo manda el schema local (merge local-driven preservado).
+  /** Rutas efectivas por operación, con la forma pública si la declara. */
+  operations?: ResourceOperations;
+  /** Vistas declaradas como metadatos (sin operandos internos). */
+  views?: Record<string, ViewDescriptor>;
+  /** Lo mínimo del backend para menú/acciones: `access` normalizado. */
+  policies?: ResourcePolicies;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Metadatos públicos de `/admin/schema` (F7-1)
+// ─────────────────────────────────────────────────────────────
+
+/** Forma pública de la respuesta de una operación (declaración `shape`). */
+export interface OperationShape {
+  pick?: 'full' | 'list' | string[];
+  include?: string[];
+  rename?: Record<string, string>;
+  nest?: Record<string, string[]>;
+  envelope?: 'plain' | 'list';
+}
+
+/** Ruta efectiva de una operación: método + path (con `{key}` si aplica). */
+export interface OperationDescriptor {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  path: string;
+  shape?: OperationShape;
+}
+
+/** Operaciones CRUD efectivas (derivadas de la misma ruta que el router). */
+export interface ResourceOperations {
+  list?: OperationDescriptor;
+  get?: OperationDescriptor;
+  create?: OperationDescriptor;
+  update?: OperationDescriptor;
+  remove?: OperationDescriptor;
+}
+
+/**
+ * Condición de vista como metadato público: el literal `value` y el `ref`
+ * (metadato de relación) viajan; el operando interno `from: '$item.x'` no.
+ */
+export interface ViewCondition {
+  field: string;
+  op: string;
+  not?: boolean;
+  value?: unknown;
+  ref?: string;
+}
+
+/** Vista declarada publicada como metadato (F7-1). */
+export interface ViewDescriptor {
+  where?: ViewCondition[];
+  sort?: { field: string; dir?: 'asc' | 'desc' }[];
+  limit?: number;
+  extends?: string;
+  /** Vista con handler propio (escape hatch): su existencia, nada más. */
+  custom?: boolean;
+}
+
+/** Políticas públicas: sólo `access`, lo mínimo para menú/acciones. */
+export interface ResourcePolicies {
+  access: { read: string; write: string };
 }

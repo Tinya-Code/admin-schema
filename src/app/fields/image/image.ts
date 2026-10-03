@@ -12,6 +12,7 @@ import {
 import type { FormValueControl } from '@angular/forms/signals';
 
 import type { ImageField } from '../../core/models/schema.model';
+import { ApiError } from '../../core/models/api.model';
 import { NotificationService } from '../../core/services/notification.service';
 import { UploadService } from '../../core/services/upload.service';
 
@@ -105,6 +106,8 @@ const BASE =
 })
 export class FieldImage implements FormValueControl<string> {
   readonly field = input.required<ImageField>();
+  /** Recurso dueño de la imagen (firma de subida: carpeta de Cloudinary, §11.2). */
+  readonly resource = input('');
 
   /** Sincronizado por el directive `FormField` del host. */
   readonly value = model.required<string>();
@@ -176,7 +179,7 @@ export class FieldImage implements FormValueControl<string> {
     this.touch.emit();
 
     this.uploadSub?.unsubscribe();
-    this.uploadSub = this.upload.uploadWithProgress(file).subscribe({
+    this.uploadSub = this.upload.uploadWithProgress(file, this.resource()).subscribe({
       next: (event) => {
         if (event.type === HttpEventType.UploadProgress) {
           if (event.total) {
@@ -195,9 +198,14 @@ export class FieldImage implements FormValueControl<string> {
           this.notifications.success('Imagen subida.');
         }
       },
-      error: () => {
+      error: (err: unknown) => {
         this.uploading.set(false);
-        this.error.set('No se pudo subir la imagen. Verificá la conexión e intentá de nuevo.');
+        // El backend explica el motivo (firma inválida, 429 rate-limit…).
+        this.error.set(
+          err instanceof ApiError
+            ? err.message
+            : 'No se pudo subir la imagen. Verificá la conexión e intentá de nuevo.',
+        );
       },
     });
     this.destroyRef.onDestroy(() => this.uploadSub?.unsubscribe());

@@ -19,7 +19,6 @@ import { Button } from '../../shared/components/button/button';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import { getValue } from '../../shared/utils/field-path';
-import { computeMove, GAP, type PositionedItem } from '../../shared/utils/gap-sorting';
 
 type Row = Record<string, unknown>;
 type Status = 'loading' | 'ready' | 'error';
@@ -490,59 +489,53 @@ export class ListView {
   }
 
   /**
-   * Cálculo con huecos + optimista + reversión (base.md §8): se envía un único
-   * cambio (clave + nueva posición) por el PUT documentado de cada registro
-   * (api.md §6); si hubo rebalanceo, va el lote completo. Cualquier fallo
-   * restaura el snapshot y avisa.
+   * Un movimiento → UNA intención al backend (baseapi §2.3 y §9):
+   * `{ reorder: { key, after | toStart | toEnd } }`, nunca posiciones
+   * calculadas. El índice objetivo es la posición FINAL del registro (el
+   * `currentIndex` del CDK ya es el índice de inserción en la lista sin el
+   * elemento, idéntico al índice final; subir/bajar suma/resta 1). El
+   * backend re-balancea, recalcula `position` y devuelve el listado fresco:
+   * sin escrituras optimistas — si falla, no cambió nada. `gap-sorting`
+   * quedó sólo para los campos con listas locales.
    */
   private async moveRow(key: string, targetIndex: number): Promise<void> {
     const schema = this.schema();
-    const positionField = schema.positionField;
-    if (!positionField || this.reordering()) {
+    const path = schema.endpoint.list;
+    if (!path || !schema.positionField || this.reordering()) {
       return;
     }
-    const positioned = this.positionedRows();
-    if (!positioned.some((item) => item.key === key)) {
+    const rows = this.visibleRows();
+    const from = rows.findIndex((row) => this.keyOf(row) === key);
+    if (from < 0) {
       return;
     }
-    const result = computeMove(positioned, key, targetIndex);
-    const snapshot = this.rows();
-    const changes = new Map(result.changes.map((change) => [change.key, change.position]));
+
+    // Índice final deseado, acotado a la lista SIN el elemento movido.
+    const without = rows.filter((row) => this.keyOf(row) !== key);
+    const target = Math.min(Math.max(targetIndex, 0), without.length);
+    if (target === from) {
+      return;
+    }
+
+    const reorder: Record<string, unknown> =
+      target === 0
+        ? { key, toStart: true }
+        : target >= without.length
+          ? { key, toEnd: true }
+          : { key, after: this.keyOf(without[target - 1]) };
 
     this.reordering.set(true);
-    this.rows.update((rows) =>
-      rows.map((row) => {
-        const position = changes.get(this.keyOf(row));
-        return position !== undefined ? { ...row, [positionField]: position } : row;
-      }),
-    );
     try {
-      await Promise.all(
-        result.changes.map((change) =>
-          firstValueFrom(
-            this.api.update(schema.endpoint, change.key, { [positionField]: change.position }),
-          ),
-        ),
-      );
+      const fresh = await firstValueFrom(this.api.request<Row[]>('PUT', path, { reorder }));
+      if (Array.isArray(fresh)) {
+        this.rows.set(fresh);
+      }
       this.notifications.success('Orden actualizado.');
-    } catch {
-      this.rows.set(snapshot);
-      this.notifications.error('No se pudo guardar el orden; el cambio se revirtió.');
+    } catch (err) {
+      this.notifications.error(errorMessage(err, 'No se pudo guardar el orden.'));
     } finally {
       this.reordering.set(false);
     }
-  }
-
-  /** Posiciones para `computeMove`; registro viejo sin `position` → rebalanceo. */
-  private positionedRows(): PositionedItem[] {
-    const positionField = this.schema().positionField;
-    return this.visibleRows().map((row, index) => {
-      const raw = positionField !== undefined ? getValue(row, positionField) : undefined;
-      return {
-        key: this.keyOf(row),
-        position: typeof raw === 'number' ? raw : (index + 1) * GAP,
-      };
-    });
   }
 
   async removeRow(row: Row): Promise<void> {
