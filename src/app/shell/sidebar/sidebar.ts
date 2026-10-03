@@ -1,4 +1,4 @@
-import { Component, computed } from '@angular/core';
+import { Component, computed, input, output } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import { allSchemas } from '../../schemas/registry';
@@ -23,7 +23,12 @@ interface MenuEntry {
   selector: 'app-sidebar',
   imports: [RouterLink, RouterLinkActive],
   template: `
-    <aside class="w-60 shrink-0 border-r border-neutral/20 bg-white">
+    <!-- Offcanvas en mobile (transform); las clases lg: la dejan estática
+         y siempre visible en pantallas grandes. -->
+    <aside
+      class="fixed inset-y-0 left-0 z-40 w-60 shrink-0 overflow-y-auto border-r border-neutral/20 bg-white transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
+      [class.-translate-x-full]="!open()"
+    >
       <div class="border-b border-neutral/20 px-5 py-4">
         <span class="font-display text-base font-semibold">Admin</span>
       </div>
@@ -35,6 +40,7 @@ interface MenuEntry {
                 [routerLink]="['/', item.id]"
                 routerLinkActive="bg-primary/10 text-primary"
                 class="block rounded-lg px-3 py-2 text-sm font-medium text-neutral hover:bg-neutral/10"
+                (click)="close.emit()"
               >
                 {{ item.label }}
               </a>
@@ -46,6 +52,11 @@ interface MenuEntry {
   `,
 })
 export class Sidebar {
+  /** Estado del offcanvas (sólo relevante en mobile; ver `layout.ts`). */
+  readonly open = input(false);
+  /** Navegación hecha: el layout cierra el offcanvas. */
+  readonly close = output<void>();
+
   readonly menuItems = computed<MenuEntry[]>(() =>
     allSchemas()
       .filter(isVisible)
