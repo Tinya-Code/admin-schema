@@ -1,0 +1,22 @@
+{
+  "address": {
+    "city": "",
+    "country": "",
+    "postal_code": "",
+    "region": "",
+    "street": ""
+  },
+  "currency": "PEN",
+  "description": "",
+  "email": "",
+  "geo": {
+    "lat": null,
+    "lng": null
+  },
+  "hours": [],
+  "name": "",
+  "phone": "",
+  "social": [],
+  "url": "",
+  "whatsapp": ""
+}

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "message": "El cuerpo no es JSON válido",
+    "status": 400
+  }
+}

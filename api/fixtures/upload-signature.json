@@ -1,0 +1,9 @@
+{
+  "allowed_formats": "jpg,jpeg,png,webp",
+  "api_key": "345982764438596",
+  "cloud_name": "dlxh4jrix",
+  "folder": "images/products",
+  "signature": "<NORMALIZED>",
+  "timestamp": "<NORMALIZED>",
+  "upload_url": "https://api.cloudinary.com/v1_1/dlxh4jrix/image/upload"
+}

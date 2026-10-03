@@ -1,0 +1,611 @@
+{
+  "resources": {
+    "categories": {
+      "id": "categories",
+      "kind": "collection",
+      "keyField": "slug",
+      "titleField": "name",
+      "ordering": "positioned",
+      "listProjection": [
+        "slug",
+        "image_url",
+        "name",
+        "active",
+        "position"
+      ],
+      "operations": {
+        "list": {
+          "method": "GET",
+          "path": "/admin/categories"
+        },
+        "get": {
+          "method": "GET",
+          "path": "/admin/categories/{key}"
+        },
+        "create": {
+          "method": "POST",
+          "path": "/admin/categories"
+        },
+        "update": {
+          "method": "PUT",
+          "path": "/admin/categories/{key}"
+        },
+        "remove": {
+          "method": "DELETE",
+          "path": "/admin/categories/{key}"
+        }
+      },
+      "views": {},
+      "policies": {
+        "access": {
+          "read": "admin",
+          "write": "admin"
+        }
+      },
+      "fields": [
+        {
+          "key": "slug",
+          "type": "slug",
+          "required": true,
+          "unique": true,
+          "immutable": true,
+          "from": "name"
+        },
+        {
+          "key": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "seo_title",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "seo_description",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "key": "intro",
+          "type": "textarea",
+          "required": true,
+          "minWords": 100,
+          "maxWords": 200
+        },
+        {
+          "key": "image_url",
+          "type": "image",
+          "required": true
+        },
+        {
+          "key": "image_alt",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        },
+        {
+          "key": "position",
+          "type": "number",
+          "required": true
+        }
+      ]
+    },
+    "legal": {
+      "id": "legal",
+      "kind": "singleton",
+      "keyField": "key",
+      "titleField": "legal_name",
+      "ordering": "none",
+      "listProjection": null,
+      "operations": {
+        "get": {
+          "method": "GET",
+          "path": "/admin/legal"
+        },
+        "update": {
+          "method": "PUT",
+          "path": "/admin/legal"
+        }
+      },
+      "views": {},
+      "policies": {
+        "access": {
+          "read": "admin",
+          "write": "admin"
+        }
+      },
+      "fields": [
+        {
+          "key": "legal_name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "trade_name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "ruc",
+          "type": "text",
+          "required": true,
+          "pattern": "^\\d{11}$"
+        },
+        {
+          "key": "fiscal_address",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "last_updated",
+          "type": "readonly-text",
+          "required": true
+        },
+        {
+          "key": "email",
+          "type": "email",
+          "required": true
+        },
+        {
+          "key": "phone",
+          "type": "phone",
+          "required": true
+        },
+        {
+          "key": "reclamos_email",
+          "type": "email",
+          "required": true
+        },
+        {
+          "key": "reclamos_response_days",
+          "type": "number",
+          "required": true,
+          "min": 0
+        },
+        {
+          "key": "prices_include_igv",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        },
+        {
+          "key": "currency",
+          "type": "text",
+          "required": true,
+          "pattern": "^[A-Z]{3}$"
+        }
+      ]
+    },
+    "products": {
+      "id": "products",
+      "kind": "collection",
+      "keyField": "slug",
+      "titleField": "name",
+      "ordering": "none",
+      "listProjection": [
+        "slug",
+        "name",
+        "category_slug",
+        "price",
+        "availability",
+        "registro_sanitario",
+        "featured",
+        "active",
+        "images"
+      ],
+      "operations": {
+        "list": {
+          "method": "GET",
+          "path": "/admin/products",
+          "shape": {
+            "pick": [
+              "slug",
+              "name",
+              "brand",
+              "category_slug",
+              "price",
+              "availability",
+              "registro_sanitario",
+              "featured",
+              "active",
+              "images"
+            ],
+            "envelope": "list"
+          }
+        },
+        "get": {
+          "method": "GET",
+          "path": "/admin/products/{key}"
+        },
+        "create": {
+          "method": "POST",
+          "path": "/admin/products"
+        },
+        "update": {
+          "method": "PUT",
+          "path": "/admin/products/{key}"
+        },
+        "remove": {
+          "method": "DELETE",
+          "path": "/admin/products/{key}"
+        }
+      },
+      "views": {
+        "publishable": {
+          "where": [
+            {
+              "field": "active",
+              "op": "eq",
+              "value": true
+            },
+            {
+              "field": "registro_sanitario",
+              "op": "empty",
+              "not": true
+            },
+            {
+              "field": "category_slug",
+              "op": "in-active",
+              "ref": "categories"
+            },
+            {
+              "field": "images",
+              "op": "empty",
+              "not": true
+            }
+          ]
+        },
+        "featured": {
+          "where": [
+            {
+              "field": "featured",
+              "op": "eq",
+              "value": true
+            }
+          ],
+          "limit": 6,
+          "extends": "publishable"
+        },
+        "related": {
+          "where": [
+            {
+              "field": "category_slug",
+              "op": "eq"
+            },
+            {
+              "field": "slug",
+              "op": "neq"
+            }
+          ],
+          "limit": 4,
+          "extends": "publishable"
+        },
+        "hidden-with-reason": {
+          "custom": true
+        }
+      },
+      "policies": {
+        "access": {
+          "read": "admin",
+          "write": "admin"
+        }
+      },
+      "fields": [
+        {
+          "key": "slug",
+          "type": "slug",
+          "required": true,
+          "unique": true,
+          "immutable": true,
+          "from": "name"
+        },
+        {
+          "key": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "category_slug",
+          "type": "relation",
+          "required": true,
+          "relation": {
+            "resource": "categories",
+            "valueField": "slug",
+            "labelField": "name",
+            "onlyActive": true
+          }
+        },
+        {
+          "key": "sku",
+          "type": "text",
+          "required": true,
+          "unique": true
+        },
+        {
+          "key": "brand",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "price",
+          "type": "currency",
+          "required": true
+        },
+        {
+          "key": "availability",
+          "type": "select",
+          "required": true,
+          "enum": [
+            "InStock",
+            "PreOrder",
+            "OutOfStock"
+          ]
+        },
+        {
+          "key": "featured",
+          "type": "boolean",
+          "required": true,
+          "default": false
+        },
+        {
+          "key": "active",
+          "type": "boolean",
+          "required": true,
+          "default": true
+        },
+        {
+          "key": "description",
+          "type": "textarea",
+          "required": true,
+          "minWords": 150,
+          "maxWords": 300
+        },
+        {
+          "key": "seo_title",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "seo_description",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "key": "registro_sanitario",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "clase_riesgo",
+          "type": "select",
+          "required": false,
+          "enum": [
+            "I",
+            "IIa",
+            "IIb",
+            "III"
+          ]
+        },
+        {
+          "key": "titular_registro",
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "updated_at",
+          "type": "readonly-text",
+          "required": false
+        },
+        {
+          "key": "images",
+          "type": "list",
+          "required": true,
+          "min": 1,
+          "itemFields": [
+            {
+              "key": "image_url",
+              "type": "image",
+              "required": true
+            },
+            {
+              "key": "image_alt",
+              "type": "text",
+              "required": true
+            }
+          ],
+          "primaryFirst": true
+        },
+        {
+          "key": "specs",
+          "type": "key-value",
+          "required": false
+        },
+        {
+          "key": "faq",
+          "type": "list",
+          "required": false,
+          "itemFields": [
+            {
+              "key": "question",
+              "type": "text",
+              "required": true
+            },
+            {
+              "key": "answer",
+              "type": "textarea",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    "site": {
+      "id": "site",
+      "kind": "singleton",
+      "keyField": "key",
+      "titleField": "name",
+      "ordering": "none",
+      "listProjection": null,
+      "operations": {
+        "get": {
+          "method": "GET",
+          "path": "/admin/site"
+        },
+        "update": {
+          "method": "PUT",
+          "path": "/admin/site"
+        }
+      },
+      "views": {},
+      "policies": {
+        "access": {
+          "read": "admin",
+          "write": "admin"
+        }
+      },
+      "fields": [
+        {
+          "key": "name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "key": "url",
+          "type": "url",
+          "required": true
+        },
+        {
+          "key": "description",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "key": "currency",
+          "type": "text",
+          "required": true,
+          "default": "PEN",
+          "pattern": "^[A-Z]{3}$"
+        },
+        {
+          "key": "phone",
+          "type": "phone",
+          "required": true
+        },
+        {
+          "key": "whatsapp",
+          "type": "phone",
+          "required": true
+        },
+        {
+          "key": "email",
+          "type": "email",
+          "required": true
+        },
+        {
+          "key": "address",
+          "type": "group",
+          "required": true,
+          "fields": [
+            {
+              "key": "street",
+              "type": "text",
+              "required": true
+            },
+            {
+              "key": "city",
+              "type": "text",
+              "required": true
+            },
+            {
+              "key": "region",
+              "type": "text",
+              "required": true
+            },
+            {
+              "key": "postal_code",
+              "type": "text",
+              "required": true
+            },
+            {
+              "key": "country",
+              "type": "text",
+              "required": true,
+              "pattern": "^[A-Z]{2}$"
+            }
+          ]
+        },
+        {
+          "key": "geo",
+          "type": "group",
+          "required": true,
+          "fields": [
+            {
+              "key": "lat",
+              "type": "number",
+              "required": true,
+              "min": -90,
+              "max": 90
+            },
+            {
+              "key": "lng",
+              "type": "number",
+              "required": true,
+              "min": -180,
+              "max": 180
+            }
+          ]
+        },
+        {
+          "key": "hours",
+          "type": "list",
+          "required": false,
+          "itemFields": [
+            {
+              "key": "days",
+              "type": "multiselect",
+              "required": true,
+              "enum": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ]
+            },
+            {
+              "key": "opens",
+              "type": "time",
+              "required": true
+            },
+            {
+              "key": "closes",
+              "type": "time",
+              "required": true
+            }
+          ]
+        },
+        {
+          "key": "social",
+          "type": "string-list",
+          "required": false,
+          "itemType": "url",
+          "extraColumns": [
+            {
+              "key": "network",
+              "type": "text",
+              "required": false
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

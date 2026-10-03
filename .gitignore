@@ -42,3 +42,15 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Apps Script (clasp) — IDs de script por entorno, nunca se commitean
+.clasp*.json
+
+# Props de Apps Script — sólo copia local para pegar en el editor, jamás commit
+.env
+
+# Credenciales de smokes contra el webapp desplegado (scripts/api-regression.sh)
+api/.gas-smoke.env
+
+# Credenciales del front (API_URL + ADMIN_TOKEN) — baseapi §2.3, jamás commit
+src/environments/environment.local.ts

@@ -1,0 +1,5 @@
+# Sólo se empuja el manifiesto y el código GAS (README/PLAN/.git quedan fuera)
+**/**
+!appsscript.json
+!**/*.js
+!**/*.html

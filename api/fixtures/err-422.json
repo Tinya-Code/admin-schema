@@ -1,0 +1,44 @@
+{
+  "error": {
+    "errors": [
+      {
+        "message": "Este campo es obligatorio",
+        "path": "slug"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "name"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "category_slug"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "sku"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "price"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "availability"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "description"
+      },
+      {
+        "message": "Este campo es obligatorio",
+        "path": "seo_description"
+      },
+      {
+        "message": "Agrega al menos 1 elemento",
+        "path": "images"
+      }
+    ],
+    "message": "Errores de validación",
+    "status": 422
+  }
+}
