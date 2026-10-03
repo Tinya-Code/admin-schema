@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "slug": "bebida",
+    "image_url": "https://res.cloudinary.com/dlxh4jrix/image/upload/v1790996819/images/categories/dal4yjwhhhmerhgrwkic.jpg",
+    "name": "bebida",
+    "active": true,
+    "position": 1000
+  }
+]
