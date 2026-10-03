@@ -1,4 +1,4 @@
-import { Component, computed, input, output } from '@angular/core';
+import { Component, computed, model } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import { allSchemas } from '../../schemas/registry';
@@ -40,7 +40,7 @@ interface MenuEntry {
                 [routerLink]="['/', item.id]"
                 routerLinkActive="bg-primary/10 text-primary"
                 class="block rounded-lg px-3 py-2 text-sm font-medium text-neutral hover:bg-neutral/10"
-                (click)="close.emit()"
+                (click)="open.set(false)"
               >
                 {{ item.label }}
               </a>
@@ -52,10 +52,10 @@ interface MenuEntry {
   `,
 })
 export class Sidebar {
-  /** Estado del offcanvas (sólo relevante en mobile; ver `layout.ts`). */
-  readonly open = input(false);
-  /** Navegación hecha: el layout cierra el offcanvas. */
-  readonly close = output<void>();
+  /** Estado del offcanvas (sólo relevante en mobile; ver `layout.ts`).
+   *  `model()`: el padre lo setea (abrir) y el hijo también (cerrar al
+   *  navegar) — binding de dos vías `[(open)]`. */
+  readonly open = model(false);
 
   readonly menuItems = computed<MenuEntry[]>(() =>
     allSchemas()

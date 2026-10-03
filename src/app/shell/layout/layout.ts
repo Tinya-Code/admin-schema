@@ -41,7 +41,7 @@ import { Sidebar } from '../sidebar/sidebar';
           (click)="sidebarOpen.set(false)"
         ></div>
       }
-      <app-sidebar id="main-sidebar" [open]="sidebarOpen()" (close)="sidebarOpen.set(false)" />
+      <app-sidebar id="main-sidebar" [(open)]="sidebarOpen" />
       <main class="min-w-0 flex-1 p-4 pt-16 sm:p-6 lg:p-8">
         <router-outlet />
       </main>
