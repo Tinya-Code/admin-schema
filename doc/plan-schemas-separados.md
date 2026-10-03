@@ -180,23 +180,42 @@ y los formularios funcionan igual que antes usando solo `*.schema.ts`.
 
 **Objetivo:** alta de módulo = 1 archivo por lado (solo si D3 = sí).
 
-- [ ] Añadir `menuOrder?: number` a `ResourceSchema`
-      (`src/app/core/models/schema.model.ts`) y declararlo en los 4
-      schemas actuales (categories 10, products 20, site 30, legal 40).
-- [ ] Cambiar `registry.ts` a auto-registro:
-      `import.meta.glob('./**/*.schema.ts', { eager: true })` y
-      `allSchemas()` ordenado por `menuOrder` asc.
-- [ ] Verificar que `import.meta.glob` compila en `ng build` (esbuild) y en
-      `ng test` (vitest).
-- [ ] Test: el menú respeta el orden de `menuOrder`.
-- [ ] Test de alta simulada: crear `tmp.schema.ts` → aparece en
-      `allSchemas()` → eliminar el archivo → desaparece.
-- [ ] `npm test` + `npm run build` verdes.
-- [ ] Commit: `feat(front): auto-registro de schemas con import.meta.glob`.
-- [ ] **Si D3 = no:** documentar en `doc/structure.md` que la alta de módulo
-      suma 1 línea en `registry.ts` y cerrar la fase sin cambios de código.
+**Resultado del probe (plan: «verificar que import.meta.glob compila en
+ng build y en ng test»): NEGATIVO.** Compila sí, pero no transforma:
 
-**Criterio de salida:** alta de módulo verificada (o decisión documentada).
+| Pipeline                   | Qué hace con el glob                                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `ng build` (esbuild, prod) | Lo deja crudo → `TypeError` en el navegador; los `*.schema.ts` NO entran al bundle (`seo_title`: 0 en todos los chunks) |
+| Dev server (`npm start`)   | Transforma a `Object.assign({})` **vacío** → catálogo sin schemas                                                       |
+| `ng test` (vitest)         | Funciona → tests en verde                                                                                               |
+
+Peor combinación posible: tests verdes y app rota (`app.routes.ts` hace
+`schemas[0].id` con el catálogo vacío). Causa: `import.meta.glob` es un
+transform de **Vite** (`importGlobPlugin`) y `@angular/build` no lo incluye —
+no es config, es una feature que este bundler no tiene. El probe se revirtió
+entero (repo verde antes de decidir).
+
+- [x] **Decisión: D3 = no** (rama que el plan ya tenía escrita). El
+      auto-registro se descarta; se gana la _intención_ de D3 con el check.
+- [x] `registry.ts` explícito: imports estáticos de los 4 `*.schema.ts`,
+      orden del array = orden del menú. **No se tocaron** `ResourceSchema`
+      ni los 4 schemas (`menuOrder` queda innecesario).
+- [x] Contract check ampliado: nuevo `checkRegistry()` — lee `registry.ts`
+      como texto (no es importable en Node: sus imports van sin extensión),
+      extrae los `./x.schema` y los compara con el disco **en ambas
+      direcciones**. Archivo sin registrar ⇒ rojo; import huérfano ⇒ rojo.
+- [x] Verificación positiva: `npm run api:check` verde (4 recursos,
+      62 campos).
+- [x] Verificación negativa (2 direcciones): creado `tmp.schema.ts` sin
+      registrar ⇒ rojo «falta importar './tmp.schema'»; borrado ⇒ verde.
+      Y un import a `ghost.schema` inexistente ⇒ rojo «no existe».
+- [x] `npm test` en verde (14/14).
+- [x] `doc/structure.md`: alta de módulo = 1 archivo + 1 línea, con el
+      contract check como red.
+- [x] Commit: `test(api): contract check exige registrar cada schema en registry`.
+
+**Criterio de salida:** una alta olvidada en `registry.ts` sale rojo en
+`api:check` en vez de perderse en silencio.
 
 ---
 

@@ -93,6 +93,13 @@ src/
     │
     ├── schemas/                      # un schema por recurso + registro central
     │   ├── registry.ts               # catálogo: alimenta menú y rutas (base.md §2)
+    │   │                             # ALTA DE MÓDULO = 1 archivo por lado + 1
+    │   │                             # línea acá. No hay auto-registro:
+    │   │                             # import.meta.glob no transforma en el
+    │   │                             # bundler de Angular (esbuild) — ver
+    │   │                             # doc/plan-schemas-separados.md, Fase 4.
+    │   │                             # Si te olvidás la línea, api:check sale
+    │   │                             # rojo (contract check disco ↔ registry).
     │   ├── categories.schema.ts
     │   ├── products.schema.ts
     │   ├── site.schema.ts
