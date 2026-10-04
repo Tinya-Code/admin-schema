@@ -44,7 +44,7 @@ const BASE =
       </p>
     }
     @if (uploading()) {
-      <div class="rounded-xl border border-neutral/20 bg-white p-3" data-testid="image-uploading">
+      <div class="rounded-xl border border-neutral/20 bg-surface p-3" data-testid="image-uploading">
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral/20">
           <div
             class="h-full rounded-full bg-primary transition-all"
@@ -55,7 +55,7 @@ const BASE =
       </div>
     } @else if (value()) {
       <div
-        class="rounded-xl border border-neutral/20 bg-white p-3"
+        class="rounded-xl border border-neutral/20 bg-surface p-3"
         data-testid="image-preview"
         (dragover)="$event.preventDefault()"
         (drop)="onDrop($event)"
@@ -219,7 +219,7 @@ export class FieldImage implements FormValueControl<string> {
         this.error.set(
           err instanceof ApiError
             ? err.message
-            : 'No se pudo subir la imagen. Verificá la conexión e intentá de nuevo.',
+            : 'No se pudo subir la imagen. Revisa la conexión e inténtalo de nuevo.',
         );
       },
     });

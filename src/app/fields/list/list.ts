@@ -8,6 +8,7 @@ import {
   moveItemInArray,
 } from '@angular/cdk/drag-drop';
 
+import { LucideArrowDown, LucideArrowUp, LucideGripVertical, LucideTrash2 } from '@lucide/angular';
 import type { ListField } from '../../core/models/schema.model';
 import { NotificationService } from '../../core/services/notification.service';
 import { Button } from '../../shared/components/button/button';
@@ -22,7 +23,7 @@ import { seedFields } from '../../shared/utils/seed';
 import { itemTree, listTree, type ListChildContext, type RootTree } from '../field-node';
 
 const TOOLBAR_BTN =
-  'rounded p-1 text-neutral/70 hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
+  'rounded p-1 text-neutral hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
 
 /**
  * Lista de ítems (base.md §6): asa de arrastre, subir/bajar, eliminar con
@@ -40,7 +41,17 @@ const TOOLBAR_BTN =
  */
 @Component({
   selector: 'app-field-list',
-  imports: [Button, CdkDrag, CdkDragHandle, CdkDropList, NgTemplateOutlet],
+  imports: [
+    Button,
+    CdkDrag,
+    CdkDragHandle,
+    CdkDropList,
+    LucideArrowDown,
+    LucideArrowUp,
+    LucideGripVertical,
+    LucideTrash2,
+    NgTemplateOutlet,
+  ],
   template: `
     @if (items().length === 0) {
       <p
@@ -58,7 +69,7 @@ const TOOLBAR_BTN =
       >
         @for (item of items(); track $index; let i = $index) {
           <div
-            class="rounded-xl border border-neutral/20 bg-white p-3"
+            class="rounded-xl border border-neutral/20 bg-surface p-3"
             cdkDrag
             [cdkDragDisabled]="!sortable()"
           >
@@ -66,12 +77,12 @@ const TOOLBAR_BTN =
               @if (sortable()) {
                 <button
                   type="button"
-                  class="cursor-grab text-neutral/70 hover:text-primary"
+                  class="cursor-grab text-neutral hover:text-primary"
                   cdkDragHandle
                   [attr.aria-label]="'Reordenar elemento ' + (i + 1)"
                   title="Arrastrar para reordenar"
                 >
-                  ⠿
+                  <svg lucideGripVertical size="16" />
                 </button>
               }
               @if (isAccordion()) {
@@ -103,7 +114,7 @@ const TOOLBAR_BTN =
                   [attr.aria-label]="'Subir elemento ' + (i + 1)"
                   (click)="move(i, -1)"
                 >
-                  ↑
+                  <svg lucideArrowUp size="16" />
                 </button>
                 <button
                   type="button"
@@ -112,7 +123,7 @@ const TOOLBAR_BTN =
                   [attr.aria-label]="'Bajar elemento ' + (i + 1)"
                   (click)="move(i, 1)"
                 >
-                  ↓
+                  <svg lucideArrowDown size="16" />
                 </button>
                 <button
                   type="button"
@@ -121,7 +132,7 @@ const TOOLBAR_BTN =
                   [attr.aria-label]="'Eliminar elemento ' + (i + 1)"
                   (click)="remove(i)"
                 >
-                  ✕
+                  <svg lucideTrash2 size="16" />
                 </button>
               </span>
             </div>

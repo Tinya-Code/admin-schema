@@ -3,8 +3,18 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
+import {
+  LucideChevronDown,
+  LucideChevronUp,
+  LucideGripVertical,
+  LucidePencil,
+  LucidePlus,
+  LucideRotateCw,
+  LucideTrash2,
+} from '@lucide/angular';
 import { ApiError } from '../../core/models/api.model';
 import type {
+  FieldSchema,
   ListColumn,
   ListFilter,
   ResourceAction,
@@ -13,6 +23,7 @@ import type {
 } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { DrawerForm } from '../drawer-form/drawer-form';
 import { getSchema } from '../../schemas/registry';
 import { Badge, type BadgeKind } from '../../shared/components/badge/badge';
 import { Button } from '../../shared/components/button/button';
@@ -64,7 +75,23 @@ function formatNumber(value: unknown): string {
  */
 @Component({
   selector: 'app-list-view',
-  imports: [Badge, Button, CdkDrag, CdkDragHandle, CdkDropList, EmptyState, Skeleton],
+  imports: [
+    Badge,
+    Button,
+    CdkDrag,
+    CdkDragHandle,
+    CdkDropList,
+    DrawerForm,
+    EmptyState,
+    LucideChevronDown,
+    LucideChevronUp,
+    LucideGripVertical,
+    LucidePencil,
+    LucidePlus,
+    LucideRotateCw,
+    LucideTrash2,
+    Skeleton,
+  ],
   template: `
     <section class="space-y-4" aria-label="Listado" [attr.aria-busy]="status() === 'loading'">
       <div class="flex flex-wrap items-end justify-between gap-3">
@@ -74,7 +101,7 @@ function formatNumber(value: unknown): string {
               Buscar
               <input
                 type="search"
-                class="w-56 rounded-lg border border-neutral/30 bg-white px-3 py-2 text-sm"
+                class="w-56 rounded-lg border border-neutral/30 bg-surface px-3 py-2 text-sm"
                 placeholder="Buscar…"
                 [value]="query()"
                 (input)="setQuery(inputValue($event))"
@@ -87,13 +114,13 @@ function formatNumber(value: unknown): string {
               @if (filter.type === 'text') {
                 <input
                   type="search"
-                  class="w-44 rounded-lg border border-neutral/30 bg-white px-3 py-2 text-sm"
+                  class="w-44 rounded-lg border border-neutral/30 bg-surface px-3 py-2 text-sm"
                   [value]="filterValues()[filter.key] ?? ''"
                   (input)="setFilter(filter.key, inputValue($event))"
                 />
               } @else {
                 <select
-                  class="w-44 rounded-lg border border-neutral/30 bg-white px-3 py-2 text-sm"
+                  class="w-44 rounded-lg border border-neutral/30 bg-surface px-3 py-2 text-sm"
                   [value]="filterValues()[filter.key] ?? ''"
                   (change)="setFilter(filter.key, selectValue($event))"
                 >
@@ -106,7 +133,10 @@ function formatNumber(value: unknown): string {
           }
         </div>
         @if (canCreate()) {
-          <button app-button type="button" (click)="goCreate()">Crear {{ schema().label }}</button>
+          <button app-button type="button" (click)="goCreate()">
+            <svg lucidePlus size="16" />
+            Crear {{ schema().label }}
+          </button>
         }
       </div>
 
@@ -119,7 +149,10 @@ function formatNumber(value: unknown): string {
             title="No se pudo cargar el listado"
             message="Revisa tu conexión e intenta de nuevo."
           >
-            <button app-button variant="outline" type="button" (click)="retry()">Reintentar</button>
+            <button app-button variant="outline" type="button" (click)="retry()">
+              <svg lucideRotateCw size="16" />
+              Reintentar
+            </button>
           </app-empty-state>
         }
         @case ('ready') {
@@ -137,11 +170,14 @@ function formatNumber(value: unknown): string {
                   Limpiar filtros
                 </button>
               } @else if (canCreate()) {
-                <button app-button type="button" (click)="goCreate()">Crear el primero</button>
+                <button app-button type="button" (click)="goCreate()">
+                  <svg lucidePlus size="16" />
+                  Crear el primero
+                </button>
               }
             </app-empty-state>
           } @else {
-            <div class="overflow-x-auto rounded-xl border border-neutral/20 bg-white">
+            <div class="overflow-x-auto rounded-xl border border-neutral/20 bg-surface">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-neutral/20 text-left text-xs uppercase text-neutral">
@@ -177,31 +213,31 @@ function formatNumber(value: unknown): string {
                           <div class="flex items-center gap-1">
                             <button
                               type="button"
-                              class="cursor-grab text-neutral/70 hover:text-primary"
+                              class="cursor-grab text-neutral hover:text-primary"
                               cdkDragHandle
                               [attr.aria-label]="'Reordenar ' + titleOf(row)"
                               title="Arrastrar para reordenar"
                             >
-                              ⠿
+                              <svg lucideGripVertical size="16" />
                             </button>
                             <span class="flex flex-col leading-none">
                               <button
                                 type="button"
-                                class="px-1 text-xs text-neutral/70 hover:text-primary disabled:opacity-30"
+                                class="px-1 text-xs text-neutral hover:text-primary disabled:opacity-30"
                                 [disabled]="i === 0 || reordering()"
                                 [attr.aria-label]="'Subir ' + titleOf(row)"
                                 (click)="moveBy(keyOf(row), -1)"
                               >
-                                ▲
+                                <svg lucideChevronUp size="16" />
                               </button>
                               <button
                                 type="button"
-                                class="px-1 text-xs text-neutral/70 hover:text-primary disabled:opacity-30"
+                                class="px-1 text-xs text-neutral hover:text-primary disabled:opacity-30"
                                 [disabled]="i === visibleRows().length - 1 || reordering()"
                                 [attr.aria-label]="'Bajar ' + titleOf(row)"
                                 (click)="moveBy(keyOf(row), 1)"
                               >
-                                ▼
+                                <svg lucideChevronDown size="16" />
                               </button>
                             </span>
                           </div>
@@ -219,7 +255,7 @@ function formatNumber(value: unknown): string {
                                   loading="lazy"
                                 />
                               } @else {
-                                <span class="text-neutral/50" aria-hidden="true">—</span>
+                                <span class="text-neutral" aria-hidden="true">—</span>
                               }
                             }
                             @case ('boolean') {
@@ -269,6 +305,16 @@ function formatNumber(value: unknown): string {
                                 {{ action.label }}
                               </button>
                             }
+                            @if (canQuickEdit()) {
+                              <button
+                                app-button
+                                variant="ghost"
+                                type="button"
+                                (click)="quickEditRow.set(row)"
+                              >
+                                Edición rápida
+                              </button>
+                            }
                             @if (canUpdate()) {
                               <button
                                 app-button
@@ -276,6 +322,7 @@ function formatNumber(value: unknown): string {
                                 type="button"
                                 (click)="goEdit(row)"
                               >
+                                <svg lucidePencil size="16" />
                                 Editar
                               </button>
                             }
@@ -286,6 +333,7 @@ function formatNumber(value: unknown): string {
                                 type="button"
                                 (click)="removeRow(row)"
                               >
+                                <svg lucideTrash2 size="16" />
                                 Eliminar
                               </button>
                             }
@@ -299,6 +347,20 @@ function formatNumber(value: unknown): string {
             </div>
           }
         }
+      }
+
+      @if (quickEditRow(); as row) {
+        <app-drawer-form
+          [open]="true"
+          [schema]="schema()"
+          mode="edit"
+          [recordKey]="keyOf(row)"
+          [fields]="quickEditFields()"
+          title="Edición rápida"
+          size="sm"
+          (close)="quickEditRow.set(null)"
+          (saved)="quickEditSaved()"
+        />
       }
     </section>
   `,
@@ -316,6 +378,8 @@ export class ListView {
   readonly filterValues = signal<Record<string, string>>({});
   /** Clave del registro cuyo interruptor `active` está guardando. */
   readonly savingKey = signal<string | null>(null);
+  /** Fila que se está editando en el drawer (plan 6.5); `null` = cerrado. */
+  readonly quickEditRow = signal<Row | null>(null);
 
   /** Evita que una respuesta lenta pise el recurso ya cambiado. */
   private loadEpoch = 0;
@@ -388,6 +452,20 @@ export class ListView {
   readonly canUpdate = computed(() => this.permissions()?.update !== false);
   readonly canRemove = computed(() => this.permissions()?.remove !== false);
 
+  /** El atajo existe sólo si el schema lo declara y hay permiso de editar. */
+  readonly canQuickEdit = computed(
+    () => this.canUpdate() && (this.schema().quickEdit?.length ?? 0) > 0,
+  );
+
+  /** Subconjunto de campos del drawer, en el orden declarado en el schema. */
+  readonly quickEditFields = computed<readonly FieldSchema[]>(() => {
+    const keys = this.schema().quickEdit ?? [];
+    const byKey = new Map(this.schema().fields.map((field) => [field.key, field]));
+    return keys
+      .map((key) => byKey.get(key))
+      .filter((field): field is FieldSchema => field !== undefined);
+  });
+
   readonly hasRowActions = computed(
     () => this.canUpdate() || this.canRemove() || (this.schema().actions?.length ?? 0) > 0,
   );
@@ -447,6 +525,12 @@ export class ListView {
 
   goEdit(row: Row): void {
     void this.router.navigate(['/', this.schema().id, this.keyOf(row), 'edit']);
+  }
+
+  /** Cerró con guardado: se recarga la fila (la respuesta puede venir achatada). */
+  quickEditSaved(): void {
+    this.quickEditRow.set(null);
+    void this.load(this.schema());
   }
 
   async toggleActive(row: Row, checked: boolean): Promise<void> {

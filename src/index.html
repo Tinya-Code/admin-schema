@@ -2,6 +2,30 @@
 <html lang="es">
   <head>
     <meta charset="utf-8" />
+    <!-- Tema antes del primer pintado: si no, al arrancar en oscuro se ve
+         un destello blanco. Corre síncrono en el <head>, antes del <body>,
+         y es el estado inicial que después retoma ThemeService. -->
+    <script>
+      (function () {
+        var mode;
+        try {
+          mode = localStorage.getItem('admin-theme');
+        } catch (e) {
+          mode = null;
+        }
+        if (mode !== 'light' && mode !== 'dark') {
+          mode = 'system';
+        }
+        var dark =
+          mode === 'dark' ||
+          (mode === 'system' &&
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var root = document.documentElement;
+        root.setAttribute('data-theme', dark ? 'dark' : 'light');
+        root.setAttribute('data-theme-mode', mode);
+      })();
+    </script>
     <title>AdminSchema</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

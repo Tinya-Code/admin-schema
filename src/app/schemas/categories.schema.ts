@@ -20,6 +20,8 @@ export const categoriesSchema: ResourceSchema = {
   titleField: 'name',
   sortable: true,
   positionField: 'position',
+  // Edición rápida del listado (plan 6.5): los dos campos que se repiten.
+  quickEdit: ['name', 'active'],
   search: ['name'],
   filters: [{ key: 'active', label: 'Activo', type: 'boolean' }],
   listColumns: [

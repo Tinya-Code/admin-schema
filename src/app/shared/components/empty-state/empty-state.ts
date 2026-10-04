@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { LucideInbox } from '@lucide/angular';
 
 /**
  * Estado vacío universal (structure.md §6). El contenido proyectado es la
@@ -6,11 +7,13 @@ import { Component, input } from '@angular/core';
  */
 @Component({
   selector: 'app-empty-state',
+  imports: [LucideInbox],
   host: { role: 'status' },
   template: `
     <div
       class="flex flex-col items-center gap-2 rounded-xl border border-dashed border-neutral/30 px-6 py-12 text-center"
     >
+      <svg lucideInbox size="32" class="text-neutral" />
       <h2 class="font-display text-base font-semibold">{{ title() }}</h2>
       @if (message()) {
         <p class="text-sm text-neutral">{{ message() }}</p>

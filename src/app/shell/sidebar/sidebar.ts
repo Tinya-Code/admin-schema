@@ -2,6 +2,7 @@ import { Component, computed, model } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import { allSchemas } from '../../schemas/registry';
+import { ThemeToggle } from '../theme-toggle/theme-toggle';
 import type { ResourceSchema } from '../../core/models/schema.model';
 
 interface MenuEntry {
@@ -21,16 +22,17 @@ interface MenuEntry {
  */
 @Component({
   selector: 'app-sidebar',
-  imports: [RouterLink, RouterLinkActive],
+  imports: [RouterLink, RouterLinkActive, ThemeToggle],
   template: `
     <!-- Offcanvas en mobile (transform); las clases lg: la dejan estática
          y siempre visible en pantallas grandes. -->
     <aside
-      class="fixed inset-y-0 left-0 z-40 w-60 shrink-0 overflow-y-auto border-r border-neutral/20 bg-white transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
+      class="fixed inset-y-0 left-0 z-40 w-60 shrink-0 h-[100svh] min-h-[80svh] lg:sticky  border-r border-neutral/20 bg-surface-raised transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
       [class.-translate-x-full]="!open()"
     >
-      <div class="border-b border-neutral/20 px-5 py-4">
+      <div class="flex items-center justify-between gap-2 border-b border-neutral/20 px-5 py-4">
         <span class="font-display text-base font-semibold">Admin</span>
+        <app-theme-toggle />
       </div>
       <nav aria-label="Principal" class="p-3">
         <ul class="space-y-1">

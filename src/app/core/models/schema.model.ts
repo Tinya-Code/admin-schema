@@ -51,6 +51,13 @@ export interface FieldBase<T> {
   readonly?: boolean;
   readonlyWhen?: FieldCondition;
   visibleWhen?: FieldCondition;
+  /**
+   * Selección dependiente (guía §1: país → ciudad). Clave del campo padre
+   * del MISMO nivel: mientras el padre esté vacío este campo queda
+   * `disabled`, y si el padre cambia el hijo se reinicia a su valor por
+   * defecto (plan 6.6).
+   */
+  dependsOn?: string;
   validators?: FieldValidators;
   width?: GridWidth;
   /** Id de la sección/pestaña del layout a la que pertenece (base.md §4). */
@@ -159,6 +166,12 @@ export interface RelationField extends FieldBase<string> {
   resource: string;
   valueField?: string;
   labelField?: string;
+  /**
+   * Segundo dato a mostrar junto a la etiqueta (guía §1: «Juan Pérez ·
+   * DNI 123»). Se concatena con « · » y forma parte de la opción, así que
+   * también se busca sobre él.
+   */
+  secondaryField?: string;
   /** Cargar solo registros activos. */
   onlyActive?: boolean;
 }
@@ -341,6 +354,12 @@ export interface ResourceSchema {
   layout?: ResourceLayout;
   actions?: ResourceAction[];
   permissions?: ResourcePermissions;
+  /**
+   * Claves de `fields` que el listado edita en un drawer sin navegar
+   * (plan 6.5, guía §5: «edición rápida de pocos campos, panel lateral en
+   * lugar de pantalla nueva»). 1–3 campos; si no se declara, no hay atajo.
+   */
+  quickEdit?: string[];
 
   // ── Metadatos públicos de `/admin/schema` (F7-1, PLAN-MEJORAS) ──
   // Ausentes ⇒ sólo manda el schema local (merge local-driven preservado).

@@ -25,6 +25,19 @@ describe('App', () => {
     expect(compiled.querySelector('app-toast')).toBeTruthy();
   });
 
+  it('el contenedor de toasts es una región viva permanente (plan 7.5)', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+
+    // El contenedor tiene que estar ANTES del primer mensaje: si aparece
+    // junto con el toast, los lectores de pantalla no anuncian el cambio.
+    const toast = (fixture.nativeElement as HTMLElement).querySelector('app-toast');
+    expect(toast, 'sin contenedor de toasts').not.toBeNull();
+    expect(toast!.getAttribute('role')).toBe('status');
+    expect(toast!.getAttribute('aria-live')).toBe('polite');
+    expect(toast!.children.length, 'la región arranca vacía').toBe(0);
+  });
+
   it('muestra en pantalla el mensaje cuando el servicio notifica un éxito', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

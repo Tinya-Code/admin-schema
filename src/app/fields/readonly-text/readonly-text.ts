@@ -1,6 +1,7 @@
 import { Component, computed, input } from '@angular/core';
 
 import type { ReadonlyTextField } from '../../core/models/schema.model';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /**
@@ -11,6 +12,7 @@ import { childTree, type RootTree } from '../field-node';
  */
 @Component({
   selector: 'app-field-readonly-text',
+  imports: [FieldAria],
   template: `
     <output
       [id]="state().name()"

@@ -17,7 +17,7 @@ import { Sidebar } from '../sidebar/sidebar';
     <div class="flex min-h-screen bg-neutral/5">
       <button
         type="button"
-        class="fixed left-3 top-3 z-40 rounded-lg border border-neutral/20 bg-white p-2 shadow-md lg:hidden"
+        class="fixed left-3 top-3 z-40 rounded-lg border border-neutral/20 bg-surface p-2 shadow-md lg:hidden"
         [attr.aria-expanded]="sidebarOpen()"
         aria-controls="main-sidebar"
         aria-label="Abrir menú"

@@ -233,7 +233,7 @@ function validateScalar_(ss, field, value, path, errors) {
   // Comunes a todo texto: patrón, longitud y conteo de palabras.
   var text = String(value);
   if (field.pattern && !new RegExp(field.pattern).test(text)) {
-    errors.push(validationIssue_(path, 'Formato inválido'));
+    errors.push(validationIssue_(path, 'No coincide con el formato que pide este campo'));
   }
   if (field.minLength !== undefined && text.length < field.minLength) {
     errors.push(

@@ -3,6 +3,7 @@ import { FormField } from '@angular/forms/signals';
 
 import type { SlugField } from '../../core/models/schema.model';
 import { slugify } from '../../shared/utils/slugify';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /**
@@ -13,7 +14,7 @@ import { childTree, type RootTree } from '../field-node';
  */
 @Component({
   selector: 'app-field-slug',
-  imports: [FormField],
+  imports: [FieldAria, FormField],
   template: `
     @if (locked()) {
       <input

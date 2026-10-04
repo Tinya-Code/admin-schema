@@ -1,4 +1,5 @@
 import { Component, input, model } from '@angular/core';
+import { LucideX } from '@lucide/angular';
 import type { FormValueControl } from '@angular/forms/signals';
 
 import type { MultiselectField, SelectOption } from '../../core/models/schema.model';
@@ -11,6 +12,7 @@ import type { MultiselectField, SelectOption } from '../../core/models/schema.mo
  */
 @Component({
   selector: 'app-field-multiselect',
+  imports: [LucideX],
   template: `
     <div class="space-y-2">
       @if (value().length > 0) {
@@ -27,7 +29,7 @@ import type { MultiselectField, SelectOption } from '../../core/models/schema.mo
                 [disabled]="disabled()"
                 (click)="remove(item)"
               >
-                ✕
+                <svg lucideX size="14" />
               </button>
             </span>
           }

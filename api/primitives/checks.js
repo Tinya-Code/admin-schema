@@ -28,7 +28,12 @@ REGISTRY.checks = {
     var matched = new RegExp(params.pattern).test(String(value));
     if (params.negate === true) matched = !matched;
     if (matched) return [];
-    return [validationIssue_(params.field, params.message || 'Formato inválido')];
+    return [
+      validationIssue_(
+        params.field,
+        params.message || 'No coincide con el formato que pide este campo',
+      ),
+    ];
   },
 
   // mod11 — dígito verificador módulo 11 (fórmula de pesos).

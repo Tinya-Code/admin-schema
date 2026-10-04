@@ -1,4 +1,5 @@
 import { Component, input, output } from '@angular/core';
+import { LucideCircleCheck, LucideCircleX, LucideInfo, LucideX } from '@lucide/angular';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
@@ -16,6 +17,7 @@ export interface ToastItem {
  */
 @Component({
   selector: 'app-toast',
+  imports: [LucideCircleCheck, LucideCircleX, LucideInfo, LucideX],
   host: {
     class: 'pointer-events-none fixed right-4 top-4 z-50 flex w-full max-w-sm flex-col gap-2',
     role: 'status',
@@ -24,18 +26,18 @@ export interface ToastItem {
   template: `
     @for (toast of toasts(); track toast.id) {
       <div
-        class="pointer-events-auto flex items-start gap-3 border-l-4 bg-white p-4 shadow-lg"
+        class="pointer-events-auto flex items-start gap-3 border-l-4 bg-surface-raised p-4 shadow-lg"
         [class.border-l-success]="toast.kind === 'success'"
         [class.border-l-danger]="toast.kind === 'error'"
         [class.border-l-primary]="toast.kind === 'info'"
       >
-        <span
-          class="mt-1.5 size-2 shrink-0 rounded-full"
-          [class.bg-success]="toast.kind === 'success'"
-          [class.bg-danger]="toast.kind === 'error'"
-          [class.bg-primary]="toast.kind === 'info'"
-          aria-hidden="true"
-        ></span>
+        @if (toast.kind === 'success') {
+          <svg lucideCircleCheck size="18" class="mt-0.5 shrink-0 text-success" />
+        } @else if (toast.kind === 'error') {
+          <svg lucideCircleX size="18" class="mt-0.5 shrink-0 text-danger" />
+        } @else {
+          <svg lucideInfo size="18" class="mt-0.5 shrink-0 text-primary" />
+        }
         <p class="flex-1 text-sm font-medium">{{ toast.message }}</p>
         <button
           type="button"
@@ -43,7 +45,7 @@ export interface ToastItem {
           [attr.aria-label]="closeLabel()"
           (click)="dismissed.emit(toast.id)"
         >
-          <span aria-hidden="true">×</span>
+          <svg lucideX size="18" />
         </button>
       </div>
     }
@@ -51,6 +53,6 @@ export interface ToastItem {
 })
 export class Toast {
   readonly toasts = input<ToastItem[]>([]);
-  readonly closeLabel = input('Close');
+  readonly closeLabel = input('Cerrar');
   readonly dismissed = output<number>();
 }

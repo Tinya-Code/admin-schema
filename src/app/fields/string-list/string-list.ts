@@ -8,13 +8,15 @@ import {
   moveItemInArray,
 } from '@angular/cdk/drag-drop';
 
+import { LucideArrowDown, LucideArrowUp, LucideGripVertical, LucideTrash2 } from '@lucide/angular';
 import type { StringListField } from '../../core/models/schema.model';
 import { NotificationService } from '../../core/services/notification.service';
 import { Button } from '../../shared/components/button/button';
+import { FieldAria } from '../field-aria';
 import { childTree, stringItemTree, type RootTree } from '../field-node';
 
 const TOOLBAR_BTN =
-  'rounded p-1 text-neutral/70 hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
+  'rounded p-1 text-neutral hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
 
 /**
  * Lista de cadenas (base.md §9: `text`, `url` o `email` por ítem).
@@ -26,7 +28,18 @@ const TOOLBAR_BTN =
  */
 @Component({
   selector: 'app-field-string-list',
-  imports: [Button, CdkDrag, CdkDragHandle, CdkDropList, FormField],
+  imports: [
+    FieldAria,
+    Button,
+    CdkDrag,
+    CdkDragHandle,
+    CdkDropList,
+    FormField,
+    LucideArrowDown,
+    LucideArrowUp,
+    LucideGripVertical,
+    LucideTrash2,
+  ],
   template: `
     @if (items().length === 0) {
       <p
@@ -47,12 +60,12 @@ const TOOLBAR_BTN =
             @if (sortable()) {
               <button
                 type="button"
-                class="cursor-grab text-neutral/70 hover:text-primary"
+                class="cursor-grab text-neutral hover:text-primary"
                 cdkDragHandle
                 [attr.aria-label]="'Reordenar elemento ' + (i + 1)"
                 title="Arrastrar para reordenar"
               >
-                ⠿
+                <svg lucideGripVertical size="16" />
               </button>
             }
             <input
@@ -60,6 +73,7 @@ const TOOLBAR_BTN =
               [type]="inputType()"
               [placeholder]="field().placeholder ?? placeholderFor()"
               [attr.aria-label]="field().label + ', elemento ' + (i + 1)"
+              [id]="idPrefix() + '-' + i"
               [formField]="itemNode(i)"
             />
             <span class="flex shrink-0 items-center gap-1">
@@ -70,7 +84,7 @@ const TOOLBAR_BTN =
                 [attr.aria-label]="'Subir elemento ' + (i + 1)"
                 (click)="move(i, -1)"
               >
-                ↑
+                <svg lucideArrowUp size="16" />
               </button>
               <button
                 type="button"
@@ -79,7 +93,7 @@ const TOOLBAR_BTN =
                 [attr.aria-label]="'Bajar elemento ' + (i + 1)"
                 (click)="move(i, 1)"
               >
-                ↓
+                <svg lucideArrowDown size="16" />
               </button>
               <button
                 type="button"
@@ -88,7 +102,7 @@ const TOOLBAR_BTN =
                 [attr.aria-label]="'Eliminar elemento ' + (i + 1)"
                 (click)="remove(i)"
               >
-                ✕
+                <svg lucideTrash2 size="16" />
               </button>
             </span>
           </div>
@@ -111,6 +125,8 @@ export class FieldStringList {
 
   private readonly itemsNode = computed(() => childTree<string[]>(this.tree(), this.field().key));
   private readonly state = computed(() => this.itemsNode()());
+  /** Prefijo estable del campo para los id de cada ítem (§8). */
+  protected readonly idPrefix = computed(() => this.state().name());
   protected readonly items = computed(() => this.state().value() ?? []);
 
   protected readonly sortable = computed(() => this.field().sortable ?? true);
@@ -194,7 +210,8 @@ export class FieldStringList {
       case 'email':
         return 'nombre@ejemplo.com';
       default:
-        return 'Agregar un valor';
+        // §2: placeholder siempre ejemplo, nunca instrucción.
+        return 'Ej. Opción 1';
     }
   }
 }

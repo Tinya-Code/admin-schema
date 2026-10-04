@@ -30,12 +30,12 @@ import { childTree, type RootTree } from '../field-node';
   template: `
     @if (display() === 'collapsible') {
       <details
-        class="rounded-xl border border-neutral/20 bg-white"
+        class="rounded-xl border border-neutral/20 bg-surface"
         [open]="open() || hasProblem()"
         (toggle)="onToggle($event)"
       >
         <summary
-          class="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-4 py-3 text-sm font-semibold hover:bg-neutral/5"
+          class="flex cursor-pointer items-center justify-between gap-2 rounded-xl px-4 py-3 text-section font-semibold hover:bg-neutral/5"
         >
           <span>
             {{ field().label }}
@@ -58,8 +58,8 @@ import { childTree, type RootTree } from '../field-node';
         <ng-container [ngTemplateOutlet]="content()" />
       </div>
     } @else {
-      <section class="rounded-xl border border-neutral/20 bg-white p-4">
-        <h2 class="mb-3 text-sm font-semibold">
+      <section class="rounded-xl border border-neutral/20 bg-surface p-4">
+        <h2 class="mb-3 text-section font-semibold">
           {{ field().label }}
           @if (field().required) {
             <span class="text-danger" aria-hidden="true">*</span>

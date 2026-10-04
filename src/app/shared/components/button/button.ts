@@ -6,9 +6,9 @@ const BASE =
   'inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50';
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary/90',
-  outline: 'border border-neutral/40 bg-white text-neutral hover:bg-neutral/10',
-  danger: 'bg-danger text-white hover:bg-danger/90',
+  primary: 'bg-primary text-surface hover:bg-primary/90',
+  outline: 'border border-neutral/40 bg-surface text-neutral hover:bg-neutral/10',
+  danger: 'bg-danger text-surface hover:bg-danger/90',
   ghost: 'text-neutral hover:bg-neutral/10',
 };
 

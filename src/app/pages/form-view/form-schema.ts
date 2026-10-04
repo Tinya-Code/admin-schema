@@ -1,6 +1,7 @@
 import { resource } from '@angular/core';
 import {
   applyEach,
+  disabled,
   email,
   hidden,
   max as maxRule,
@@ -20,12 +21,7 @@ import {
 } from '@angular/forms/signals';
 import { firstValueFrom } from 'rxjs';
 
-import type {
-  FieldCondition,
-  FieldSchema,
-  ListOptions,
-  ResourceSchema,
-} from '../../core/models/schema.model';
+import type { FieldSchema, ListOptions, ResourceSchema } from '../../core/models/schema.model';
 import type { ApiService } from '../../core/services/api.service';
 import { isSupportedFieldType } from '../../fields/field-host/field-host';
 import { evaluateCondition } from '../../shared/utils/condition-evaluator';
@@ -108,19 +104,27 @@ function applyRulesToField(scope: RuleScope, field: FieldSchema, path: ChildPath
       // `validators` tiene prioridad sobre las opciones propias del tipo
       // (`TextField` declara `maxLength`/`pattern`; el mínimo vive en
       // `validators.minLength`).
-      applyTextRules(text, {
-        minLength: validators?.minLength,
-        maxLength: validators?.maxLength ?? field.maxLength,
-        pattern: validators?.pattern ?? field.pattern,
-      });
+      applyTextRules(
+        text,
+        {
+          minLength: validators?.minLength,
+          maxLength: validators?.maxLength ?? field.maxLength,
+          pattern: validators?.pattern ?? field.pattern,
+        },
+        patternMessageFor(field),
+      );
       break;
     }
     case 'textarea': {
-      applyTextRules(text, {
-        minLength: validators?.minLength,
-        maxLength: validators?.maxLength,
-        pattern: validators?.pattern,
-      });
+      applyTextRules(
+        text,
+        {
+          minLength: validators?.minLength,
+          maxLength: validators?.maxLength,
+          pattern: validators?.pattern,
+        },
+        patternMessageFor(field),
+      );
       applyWordRules(
         text,
         validators?.minWords ?? field.minWords,
@@ -146,20 +150,28 @@ function applyRulesToField(scope: RuleScope, field: FieldSchema, path: ChildPath
     }
     case 'email': {
       email(text, { message: 'Debe ser un correo electrónico válido.' });
-      applyTextRules(text, {
-        minLength: validators?.minLength,
-        maxLength: validators?.maxLength,
-        pattern: validators?.pattern,
-      });
+      applyTextRules(
+        text,
+        {
+          minLength: validators?.minLength,
+          maxLength: validators?.maxLength,
+          pattern: validators?.pattern,
+        },
+        patternMessageFor(field),
+      );
       break;
     }
     case 'url': {
       validate(text, (ctx) => toError('url', validateUrl(ctx.value())));
-      applyTextRules(text, {
-        minLength: validators?.minLength,
-        maxLength: validators?.maxLength,
-        pattern: validators?.pattern,
-      });
+      applyTextRules(
+        text,
+        {
+          minLength: validators?.minLength,
+          maxLength: validators?.maxLength,
+          pattern: validators?.pattern,
+        },
+        patternMessageFor(field),
+      );
       break;
     }
     case 'date': {
@@ -202,11 +214,15 @@ function applyRulesToField(scope: RuleScope, field: FieldSchema, path: ChildPath
     }
     default:
       if (STRING_TYPES.has(field.type)) {
-        applyTextRules(text, {
-          minLength: validators?.minLength,
-          maxLength: validators?.maxLength,
-          pattern: validators?.pattern,
-        });
+        applyTextRules(
+          text,
+          {
+            minLength: validators?.minLength,
+            maxLength: validators?.maxLength,
+            pattern: validators?.pattern,
+          },
+          patternMessageFor(field),
+        );
       }
   }
 
@@ -248,8 +264,24 @@ function applyCommonRules(scope: RuleScope, field: FieldSchema, path: ChildPath<
   if (field.visibleWhen) {
     const condition = field.visibleWhen;
     hidden(path, {
-      when: (ctx) => !evaluateCondition(condition, ctx.valueOf(conditionPath(scope, condition))),
+      when: (ctx) =>
+        !evaluateCondition(condition, ctx.valueOf(conditionPath(scope, condition.field))),
     });
+  }
+  // Selección dependiente (guía §1, plan 6.6): el hijo no se puede tocar
+  // hasta que el padre tenga valor. Al estar `disabled` además queda fuera
+  // de la validación, así un `required` en el hijo no bloquea el guardado
+  // mientras no haya nada que elegir.
+  //
+  // Acá NO sirve `conditionPath`: eso devuelve el contenedor entero porque
+  // `evaluateCondition` recibe el objeto de hermanos. Acá se necesita el
+  // valor concreto del padre.
+  if (field.dependsOn) {
+    const parentKey = field.dependsOn;
+    const isSibling = scope.siblings.some((candidate) => candidate.key === parentKey);
+    const parent = isSibling ? scope.container : scope.root;
+    const parentPath = pathAt<unknown>(parent, parentKey);
+    disabled(path, ({ valueOf }) => isEmptyValue(valueOf(parentPath)));
   }
   if (field.readonly) {
     readonlyRule(path, { when: () => true });
@@ -257,9 +289,18 @@ function applyCommonRules(scope: RuleScope, field: FieldSchema, path: ChildPath<
   if (field.readonlyWhen) {
     const condition = field.readonlyWhen;
     readonlyRule(path, {
-      when: (ctx) => evaluateCondition(condition, ctx.valueOf(conditionPath(scope, condition))),
+      when: (ctx) =>
+        evaluateCondition(condition, ctx.valueOf(conditionPath(scope, condition.field))),
     });
   }
+}
+
+/** Vacío para el propósito de «el padre todavía no eligió nada». */
+function isEmptyValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') {
+    return true;
+  }
+  return Array.isArray(value) && value.length === 0;
 }
 
 /**
@@ -267,8 +308,8 @@ function applyCommonRules(scope: RuleScope, field: FieldSchema, path: ChildPath<
  * campo hermano, la raíz si no (base.md §4: «otro campo del mismo nivel o
  * del registro raíz»).
  */
-function conditionPath(scope: RuleScope, condition: FieldCondition): RootPath {
-  const isSibling = scope.siblings.some((field) => field.key === condition.field);
+function conditionPath(scope: RuleScope, key: string): RootPath {
+  const isSibling = scope.siblings.some((field) => field.key === key);
   const target = isSibling ? scope.container : scope.root;
   return target as RootPath;
 }
@@ -340,7 +381,21 @@ function pathAt<V>(parent: object, key: string): ChildPath<V> {
   return path as ChildPath<V>;
 }
 
-function applyTextRules(path: ChildPath<string>, rules: TextRules): void {
+/**
+ * Mensaje cuando el `pattern` no coincide (§2: «nada de *Formato inválido*»).
+ *
+ * El error **reemplaza** a la ayuda bajo el campo (`field-host.ts:284`), así
+ * que si el mensaje no repite lo que decía la ayuda el usuario pierde el
+ * único texto que explica lo esperado: «11 dígitos.» se convierte en
+ * «Formato esperado: 11 dígitos.». La ayuda de las schemas ya está escrita
+ * en lenguaje humano, así que se reutiliza en vez de inventar otro.
+ */
+function patternMessageFor(field: FieldSchema): string {
+  const hint = field.help?.trim().replace(/[.。]+$/, '');
+  return hint ? `Formato esperado: ${hint}.` : 'Revisa el formato de este campo.';
+}
+
+function applyTextRules(path: ChildPath<string>, rules: TextRules, patternMessage: string): void {
   if (rules.minLength !== undefined) {
     minLengthRule(path, rules.minLength, {
       message: `Debe tener al menos ${rules.minLength} caracteres.`,
@@ -350,7 +405,7 @@ function applyTextRules(path: ChildPath<string>, rules: TextRules): void {
     maxLengthRule(path, rules.maxLength, { message: `Como máximo ${rules.maxLength} caracteres.` });
   }
   if (rules.pattern !== undefined) {
-    patternRule(path, new RegExp(rules.pattern), { message: 'Formato no válido.' });
+    patternRule(path, new RegExp(rules.pattern), { message: patternMessage });
   }
 }
 

@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 
 import type { TextareaField } from '../../core/models/schema.model';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /**
@@ -11,7 +12,7 @@ import { childTree, type RootTree } from '../field-node';
  */
 @Component({
   selector: 'app-field-textarea',
-  imports: [FormField],
+  imports: [FieldAria, FormField],
   template: `
     <div>
       <textarea

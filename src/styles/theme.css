@@ -18,6 +18,46 @@
   --color-danger: #dc2626;
   --color-success: #0f766e;
 
+  /* Superficie: única fuente de "lo blanco" de la app.
+     Ningún componente usa `bg-white` directo (sólo el knob del switch,
+     que es blanco en ambos modos). El modo oscuro sobre-escribe ÉSTA
+     variable y nada más. */
+  --color-surface: #fff;
+
+  /* Escala de elevación (Fase 8). Van declaradas AQUÍ y no sólo dentro
+     del bloque oscuro: Tailwind sólo genera las utilidades
+     `bg-surface-raised` / `bg-surface-sunken` a partir de `@theme`, así
+     que si vivieran sólo en la media query esa clase no existiría en
+     claro y el elemento se quedaría sin fondo. En claro los tres valen
+     exactamente lo mismo, de modo que el modo actual no cambia ni un
+     píxel: la jerarquía sólo aparece en oscuro. */
+  --color-surface-raised: #fff;
+  --color-surface-sunken: #fff;
+
+  /* Variantes de texto para colores que NO llegan a AA como texto.
+     Medido sobre `bg-accent/15` (#fef0da), que es el único fondo donde se
+     usan: accent/secondary dan 1.91:1 y 2.94:1 (fallan 4.5:1). Como fondo
+     o borde decorativo están exentos de WCAG 1.4.3; como TEXTO no.
+     `text-secondary` hoy tiene 0 usos, por eso no lleva variante. */
+  --color-accent-text: #92400e;
+
+  /* Escala tipográfica (ui-ux.md §7): título de sección 18 px,
+     etiqueta 14 px, ayuda/mensaje 12 px.
+     Van en el espacio de nombres `--text-*` porque es el que Tailwind v4
+     convierte en utilidades (`text-section`, `text-label`, `text-help`);
+     un `--fs-*` plano en `:root` no generaría nada y habría que consumirlo
+     a mano. Los `--text-x--line-height` son obligatorios: sin ellos la
+     utilidad sólo pone el `font-size` y la altura de línea se heredaría,
+     cambiando el dibujo. Los valores replican exactamente a
+     `text-lg`/`text-sm`/`text-xs`, así que la extracción es SIN cambio
+     visual. */
+  --text-section: 18px;
+  --text-section--line-height: 1.75rem;
+  --text-label: 14px;
+  --text-label--line-height: 1.25rem;
+  --text-help: 12px;
+  --text-help--line-height: 1rem;
+
   /* Tipografía (2 fuentes) */
   --font-body:
     'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
@@ -26,4 +66,62 @@
 
   /* El preflight apunta a --font-sans; lo redirigimos a font-body */
   --default-font-family: var(--font-body);
+}
+
+/* ── Fase 8 · Modo oscuro ──────────────────────────────────────────────
+   Selector por ATRIBUTO y no por media query, porque hay tres estados
+   (Sistema / Claro / Oscuro) y sólo el atributo los distingue:
+
+     data-theme="dark"   elegido a mano, o elegido "Sistema" con el SO en oscuro
+     data-theme="light"  elegido a mano, o elegido "Sistema" con el SO en claro
+
+   Quien resuelve `Sistema` a un valor concreto es `index.html`, con un
+   script SINCRÓNICO en el <head> que corre ANTES del primer pintado (sin
+   flash), y `ThemeService`, que se suscribe a `matchMedia` para reaccionar
+   si el usuario cambia el tema del sistema con la app abierta. No hay
+   bloque de respaldo por media query: es una SPA, sin ese script no se
+   renderiza nada, así que duplicar la lista de tokens sólo abriría una
+   segunda copia que mantener.
+
+   Se emite FUERA de `@layer`: Tailwind pone `@theme` dentro de la capa
+   `theme` y una regla sin capa siempre gana a cualquier capa, así que
+   esto sobreescribe los tokens sin tocar una sola plantilla.
+
+   Escala de elevación (sólo se ve en oscuro; en claro los tres son #fff):
+     --color-surface-sunken  página (body) y fondos recesivos
+     --color-surface         tarjetas, campos y controles
+     --color-surface-raised  superposiciones: toast, modal, drawer, sidebar
+
+   Medidos sobre `--color-surface` #16191f (L = 0,0096):
+     neutral #9ca3af 6,93:1 · primary #6ea8ff 7,30:1 ·
+     danger #f87171 6,36:1 · success #34d399 9,16:1 — todos AA. */
+:root[data-theme='dark'] {
+  /* Pinta scrollbars y controles nativos (<select>, <input[type=checkbox]>)
+     en oscuro; sin esto siguen saliendo en blanco. */
+  color-scheme: dark;
+
+  /* Superficies */
+  --color-surface-sunken: #0e1014;
+  --color-surface: #16191f;
+  --color-surface-raised: #1e222a;
+
+  /* `neutral` es el token más repetido de la app (42 `text-*` y 36
+     `border-*`). Su valor de claro, #6b7280, da 3,6:1 sobre la tarjeta
+     oscura: no sirve como texto. Aclararlo arregla de paso los bordes,
+     que se calculan como `color-mix(var(--color-neutral) N%)`: en
+     oscuro pasan a ser hilos claros sobre fondo oscuro, que es lo
+     correcto. */
+  --color-neutral: #9ca3af;
+
+  /* Estado. En claro estos mismos pasan AA sobre blanco; aquí se
+     aclara el mismo tono para mantener ≥4,5:1 sobre la tarjeta. */
+  --color-primary: #6ea8ff;
+  --color-danger: #f87171;
+  --color-success: #34d399;
+  --color-accent: #fbbf24;
+  --color-secondary: #5eead4; /* 0 usos hoy: se alinea por consistencia */
+
+  /* Texto sobre `bg-accent/15` (form-view): #92400e da 1,9:1 sobre la
+     mezcla oscura, el mismo fallo que ya corrigió la Fase 1 en claro. */
+  --color-accent-text: #fbbf24;
 }

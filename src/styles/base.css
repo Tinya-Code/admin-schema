@@ -18,6 +18,15 @@
     color: inherit;
   }
 
+  /* Fondo de la página. Lo pinta aquí porque ningún token llega al
+     `<body>`: `layout` sólo pone `bg-neutral/5` encima del fondo del
+     navegador y en oscuro éste seguiría siendo blanco. En claro
+     `--color-surface-sunken` vale #fff, idéntico al fondo por defecto,
+     así que el modo actual no cambia. */
+  body {
+    background-color: var(--color-surface-sunken);
+  }
+
   /* Foco visible (WCAG 2.4.7) en todos los elementos interactivos */
   :focus-visible {
     outline: 2px solid var(--color-primary);
@@ -26,6 +35,15 @@
 
   ::selection {
     background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
+
+  /* Placeholder a color pleno: el preflight de Tailwind lo deja en
+     `color-mix(currentColor 50%)` = 3.95:1 sobre blanco (falla AA 4.5).
+     Esta regla va DESPUÉS del import de tailwindcss y en el mismo
+     @layer base, así que gana por orden. */
+  ::placeholder {
+    color: var(--color-neutral);
+    opacity: 1;
   }
 }
 
@@ -36,12 +54,19 @@
 @layer components {
   .field-input {
     width: 100%;
-    border-radius: 0.5rem;
+    /* `--radius-lg` (.5rem) lo emite Tailwind en :root; era un mágico. */
+    border-radius: var(--radius-lg);
     border: 1px solid color-mix(in srgb, var(--color-neutral) 30%, transparent);
-    background-color: #fff;
+    background-color: var(--color-surface);
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
+    /* Altura uniforme de control: 40 px (ui-ux.md §7).
+       Sin esto el alto emerge de padding+line-height+borde = 38 px y
+       varía según el tipo (select nativo, textarea con rows).
+       `box-sizing: border-box` viene del preflight -> 40 px totales.
+       Es MINIMO: el textarea sigue creciendo con su contenido. */
+    min-height: 40px;
   }
 
   .field-input:disabled {
@@ -55,5 +80,27 @@
 
   .field-input[aria-invalid='true'] {
     border-color: var(--color-danger);
+  }
+}
+
+/* §4.5 — campos condicionales: entran suaves en vez de aparecer de golpe.
+   Sólo ENTRADA: el `@if` de Angular retira el nodo sin poder animarlo, y
+   retrasar la salida de un campo donde el usuario está escribiendo sería
+   peor que nada. Sólo se marca la clase en campos con `visibleWhen`, así un
+   formulario normal no se pone a animar sus 19 campos al cargar. */
+.field-enter {
+  animation: field-enter 180ms ease-out;
+}
+
+@keyframes field-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-enter {
+    animation: none;
   }
 }

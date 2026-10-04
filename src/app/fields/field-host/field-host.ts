@@ -1,6 +1,8 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, forwardRef, input } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
+import { LucideCircleAlert } from '@lucide/angular';
 
+import { FIELD_ARIA, type FieldAriaContext } from '../field-aria';
 import type {
   BooleanField,
   CurrencyField,
@@ -25,6 +27,7 @@ import type {
   UrlField,
 } from '../../core/models/schema.model';
 import { colSpanClass } from '../../shared/utils/col-span';
+import { getSchema } from '../../schemas/registry';
 import { childTree, groupTree, type RootTree } from '../field-node';
 import { FieldBoolean } from '../boolean/boolean';
 import { FieldCurrency } from '../currency/currency';
@@ -120,17 +123,44 @@ export function isSupportedFieldType(type: string): boolean {
     FieldTime,
     FieldUrl,
     FormField,
+    LucideCircleAlert,
   ],
+  // El contexto llega a los controles por DI: cada tipo de campo vive en un
+  // componente hijo distinto, así que pasarle inputs sería repetirlo 14 veces.
+  providers: [{ provide: FIELD_ARIA, useExisting: forwardRef(() => FieldHost) }],
   template: `
     @if (supported()) {
-      <div class="mb-4" [attr.data-field]="state().name()">
+      <div
+        class="mb-4"
+        [class.field-enter]="field().visibleWhen"
+        [attr.data-field]="state().name()"
+      >
         @if (field().type !== 'group') {
-          <label [for]="state().name()" class="mb-1 block text-sm font-medium">
-            {{ field().label }}
-            @if (field().required) {
-              <span aria-hidden="true" class="text-danger">*</span>
-            }
-          </label>
+          @if (composite()) {
+            <!-- Sin control único no existe ancla para el atributo for del
+                 label: apuntaría a un id inexistente. Se dibuja como texto
+                 (los controles internos reciben su propia etiqueta por campo
+                 anidado). -->
+            <div class="mb-1 text-label font-medium">
+              {{ field().label }}
+              @if (showRequiredMark()) {
+                <span aria-hidden="true" class="text-danger">*</span>
+              }
+              @if (showOptionalMark()) {
+                <span class="font-normal text-neutral">(opcional)</span>
+              }
+            </div>
+          } @else {
+            <label [for]="state().name()" class="mb-1 block text-label font-medium">
+              {{ field().label }}
+              @if (showRequiredMark()) {
+                <span aria-hidden="true" class="text-danger">*</span>
+              }
+              @if (showOptionalMark()) {
+                <span class="font-normal text-neutral">(opcional)</span>
+              }
+            </label>
+          }
         }
 
         @switch (field().type) {
@@ -246,11 +276,17 @@ export function isSupportedFieldType(type: string): boolean {
           }
         }
 
-        @if (field().help; as help) {
-          <p class="mt-1 text-xs text-neutral">{{ help }}</p>
-        }
         @if (errorMessage(); as message) {
-          <p class="mt-1 text-xs text-danger" role="alert">{{ message }}</p>
+          <p
+            [id]="errorId()"
+            class="mt-1 flex items-center gap-1 text-help text-danger"
+            role="alert"
+          >
+            <svg lucideCircleAlert size="14" class="shrink-0" />
+            {{ message }}
+          </p>
+        } @else if (field().help; as help) {
+          <p [id]="helpId()" class="mt-1 text-help text-neutral">{{ help }}</p>
         }
       </div>
     }
@@ -329,6 +365,67 @@ export class FieldHost {
     if (!state.invalid() || !state.touched()) {
       return null;
     }
-    return state.errors()[0]?.message ?? 'Valor inválido';
+    // Todas las reglas de `form-schema.ts` envían mensaje propio; este es el
+    // último recurso y también tiene que ser humano (§2, guía «Errores»).
+    return state.errors()[0]?.message ?? 'Revisa este campo.';
   });
+
+  /**
+   * Compuestos: varios controles internos, ninguno único. Para ellos
+   * `<label for>` no tendría ancla, porque ningún elemento lleva el id del
+   * campo padre (los hijos tienen los suyos propios).
+   */
+  protected readonly composite = computed(() =>
+    new Set(['list', 'key-value', 'string-list', 'multiselect']).has(this.field().type),
+  );
+
+  // Contexto de accesibilidad consumido por `FieldAria` en los controles.
+
+  /**
+   * Ancla de la ayuda, sólo mientras no hay error: §2 dice que el error
+   * **reemplaza** la ayuda, de modo que el id no puede apuntar a un nodo
+   * que ya no está en el DOM.
+   */
+  readonly helpId = computed(() =>
+    this.field().help && !this.errorMessage() ? `${this.state().name()}-help` : null,
+  );
+
+  readonly errorId = computed(() => (this.errorMessage() ? `${this.state().name()}-error` : null));
+
+  readonly describedBy = computed(
+    () => [this.helpId(), this.errorId()].filter(Boolean).join(' ') || null,
+  );
+
+  /** Mismo criterio que `errorMessage()` — el estado del control no es público. */
+  readonly invalid = computed(() => this.errorMessage() !== null);
+
+  readonly required = computed(() => this.field().required);
+
+  // §2: "si casi todos son obligatorios, marcar los opcionales con
+  // «(opcional)»" en vez de sembrar `*` por todo el formulario.
+
+  private readonly schema = computed(() => getSchema(this.resource()));
+
+  /**
+   * Se decide una vez por recurso y se aplica a todos los niveles: es un
+   * juicio de diseño sobre el formulario, no sobre un campo suelto. Contado
+   * por nivel (sólo top-level) — un conteo plano mezcla los subcampos de
+   * `group`/`list` y da ratios imposibles.
+   */
+  protected readonly markOptionals = computed(() => {
+    const fields = this.schema()?.fields ?? [];
+    if (fields.length === 0) {
+      return false;
+    }
+    const required = fields.filter((field) => field.required).length;
+    return required / fields.length >= 0.75;
+  });
+
+  protected readonly showRequiredMark = computed(
+    () => !this.markOptionals() && this.field().required,
+  );
+
+  protected readonly showOptionalMark = computed(
+    () => this.markOptionals() && !this.field().required,
+  );
 }

@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 
 import type { NumberField } from '../../core/models/schema.model';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /**
@@ -10,7 +11,7 @@ import { childTree, type RootTree } from '../field-node';
  */
 @Component({
   selector: 'app-field-number',
-  imports: [FormField],
+  imports: [FieldAria, FormField],
   template: `
     <input
       type="number"

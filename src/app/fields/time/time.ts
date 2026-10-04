@@ -2,12 +2,13 @@ import { Component, computed, input } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 
 import type { TimeField } from '../../core/models/schema.model';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /** Selector de hora `HH:mm` (base.md §5.1). */
 @Component({
   selector: 'app-field-time',
-  imports: [FormField],
+  imports: [FieldAria, FormField],
   template: `
     <input
       type="time"

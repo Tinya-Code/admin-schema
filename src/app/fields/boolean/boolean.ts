@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 
 import type { BooleanField } from '../../core/models/schema.model';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /**
@@ -10,7 +11,7 @@ import { childTree, type RootTree } from '../field-node';
  */
 @Component({
   selector: 'app-field-boolean',
-  imports: [FormField],
+  imports: [FieldAria, FormField],
   template: `
     <label class="inline-flex cursor-pointer items-center gap-2">
       <input type="checkbox" class="peer sr-only" [id]="state().name()" [formField]="node()" />

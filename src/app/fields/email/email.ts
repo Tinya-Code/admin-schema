@@ -2,12 +2,13 @@ import { Component, computed, input } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 
 import type { EmailField } from '../../core/models/schema.model';
+import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
 
 /** Input de correo (base.md §5.1); la validación `email()` llega en Fase 10. */
 @Component({
   selector: 'app-field-email',
-  imports: [FormField],
+  imports: [FieldAria, FormField],
   template: `
     <input
       type="email"

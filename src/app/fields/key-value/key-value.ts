@@ -8,6 +8,7 @@ import {
   moveItemInArray,
 } from '@angular/cdk/drag-drop';
 
+import { LucideArrowDown, LucideArrowUp, LucideGripVertical, LucideTrash2 } from '@lucide/angular';
 import type { KeyValueField, KeyValueItem } from '../../core/models/schema.model';
 import { NotificationService } from '../../core/services/notification.service';
 import { Button } from '../../shared/components/button/button';
@@ -17,10 +18,11 @@ import {
   GAP,
   type PositionedItem,
 } from '../../shared/utils/gap-sorting';
+import { FieldAria } from '../field-aria';
 import { childTree, itemTree, listTree, type RootTree } from '../field-node';
 
 const TOOLBAR_BTN =
-  'rounded p-1 text-neutral/70 hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
+  'rounded p-1 text-neutral hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
 
 /**
  * Pares clave→valor (base.md §9 «ficha técnica»). Hoja: tabla con sus
@@ -29,7 +31,18 @@ const TOOLBAR_BTN =
  */
 @Component({
   selector: 'app-field-key-value',
-  imports: [Button, CdkDrag, CdkDragHandle, CdkDropList, FormField],
+  imports: [
+    FieldAria,
+    Button,
+    CdkDrag,
+    CdkDragHandle,
+    CdkDropList,
+    FormField,
+    LucideArrowDown,
+    LucideArrowUp,
+    LucideGripVertical,
+    LucideTrash2,
+  ],
   template: `
     @if (items().length === 0) {
       <p
@@ -38,7 +51,7 @@ const TOOLBAR_BTN =
         {{ field().emptyText ?? 'Sin elementos.' }}
       </p>
     } @else {
-      <div class="overflow-x-auto rounded-xl border border-neutral/20 bg-white">
+      <div class="overflow-x-auto rounded-xl border border-neutral/20 bg-surface">
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-neutral/20 text-left text-xs font-medium text-neutral">
@@ -64,12 +77,12 @@ const TOOLBAR_BTN =
                   @if (sortable()) {
                     <button
                       type="button"
-                      class="cursor-grab text-neutral/70 hover:text-primary"
+                      class="cursor-grab text-neutral hover:text-primary"
                       cdkDragHandle
                       [attr.aria-label]="'Reordenar fila ' + (i + 1)"
                       title="Arrastrar para reordenar"
                     >
-                      ⠿
+                      <svg lucideGripVertical size="16" />
                     </button>
                   }
                 </td>
@@ -79,6 +92,7 @@ const TOOLBAR_BTN =
                     type="text"
                     placeholder="Clave"
                     [attr.aria-label]="'Clave, fila ' + (i + 1)"
+                    [id]="idPrefix() + '-key-' + i"
                     [formField]="fieldNode(i, 'key')"
                   />
                 </td>
@@ -88,6 +102,7 @@ const TOOLBAR_BTN =
                     type="text"
                     placeholder="Valor"
                     [attr.aria-label]="'Valor, fila ' + (i + 1)"
+                    [id]="idPrefix() + '-value-' + i"
                     [formField]="fieldNode(i, 'value')"
                   />
                 </td>
@@ -100,7 +115,7 @@ const TOOLBAR_BTN =
                       [attr.aria-label]="'Subir fila ' + (i + 1)"
                       (click)="move(i, -1)"
                     >
-                      ↑
+                      <svg lucideArrowUp size="16" />
                     </button>
                     <button
                       type="button"
@@ -109,7 +124,7 @@ const TOOLBAR_BTN =
                       [attr.aria-label]="'Bajar fila ' + (i + 1)"
                       (click)="move(i, 1)"
                     >
-                      ↓
+                      <svg lucideArrowDown size="16" />
                     </button>
                     <button
                       type="button"
@@ -118,7 +133,7 @@ const TOOLBAR_BTN =
                       [attr.aria-label]="'Eliminar fila ' + (i + 1)"
                       (click)="remove(i)"
                     >
-                      ✕
+                      <svg lucideTrash2 size="16" />
                     </button>
                   </span>
                 </td>
@@ -146,6 +161,8 @@ export class FieldKeyValue {
     listTree<KeyValueItem>(this.tree(), this.field().key),
   );
   private readonly state = computed(() => this.itemsNode()());
+  /** Prefijo estable del campo para los id de cada celda (§8). */
+  protected readonly idPrefix = computed(() => this.state().name());
   protected readonly items = computed(() => this.state().value() ?? []);
 
   protected readonly sortable = computed(() => this.field().sortable ?? true);
