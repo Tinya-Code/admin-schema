@@ -1,9 +1,9 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist/admin-schema",
+  "outputDirectory": "dist/admin-schema/browser",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api|_next|static|favicon.ico).*)",
       "destination": "/index.html"
     }
   ]
