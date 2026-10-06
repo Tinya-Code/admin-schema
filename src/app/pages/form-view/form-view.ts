@@ -19,6 +19,7 @@ import { getSchema } from '../../schemas/registry';
 import { collectDependsOn } from '../../shared/utils/depends-on';
 import { Button } from '../../shared/components/button/button';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
+import { PostCreateModal } from '../../shared/components/post-create-modal/post-create-modal';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import { colSpanClass } from '../../shared/utils/col-span';
 import { isRecord, mergeRecord } from '../../shared/utils/seed';
@@ -98,7 +99,7 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
  */
 @Component({
   selector: 'app-form-view',
-  imports: [Button, DrawerForm, EmptyState, FieldHost, Skeleton],
+  imports: [Button, DrawerForm, EmptyState, FieldHost, PostCreateModal, Skeleton],
   template: `
     @if (schema()) {
       <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -413,6 +414,17 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
         />
       }
     }
+
+    @if (createdWithSummary(); as createdRec) {
+      @if (schema()?.postCreate; as postCreateConfig) {
+        <app-post-create-modal
+          [schema]="schema()!"
+          [config]="postCreateConfig"
+          [record]="createdRec"
+          (closed)="onPostCreateClosed()"
+        />
+      }
+    }
   `,
 })
 export class FormView {
@@ -431,6 +443,9 @@ export class FormView {
   readonly schema = computed(() => getSchema(this.params().get('id') ?? ''));
   /** Recurso actual (lo consumen `image` para pedir la firma, §11.2). */
   readonly resourceId = computed(() => this.schema()?.id ?? '');
+
+  /** Registro recién creado para alimentar el modal de resumen post-creación. */
+  readonly createdWithSummary = signal<Record<string, unknown> | null>(null);
 
   readonly mode = computed<FormMode>(() => {
     const schema = this.schema();
@@ -878,13 +893,21 @@ export class FormView {
 
     try {
       if (this.mode() === 'create') {
-        await firstValueFrom(this.api.create<Record<string, unknown>>(schema.endpoint, payload));
-        this.notifications.success('Registro creado.');
-        // Limpia `dirty` antes de navegar: si no, el guard pediría confirmar.
+        const created = await firstValueFrom(
+          this.api.create<Record<string, unknown>>(schema.endpoint, payload),
+        );
+        // Limpia `dirty` antes de navegar o abrir modal: si no, el guard pediría confirmar.
         tree().reset();
         // El borrador ya no aporta nada (§5.5).
         this.clearDraft();
         this.draftOffer.set(null);
+
+        if (schema.postCreate?.mode === 'modal') {
+          this.createdWithSummary.set(created ?? (payload as Record<string, unknown>));
+          return;
+        }
+
+        this.notifications.success('Registro creado.');
         // Vuelve al listado del recurso (el «inicio» de la colección); al
         // reentrar en `:id/new` el form se reconstruye limpio.
         void this.router.navigate(['/', schema.id]);
@@ -1041,6 +1064,14 @@ export class FormView {
 
   back(): void {
     void this.router.navigate(['/', this.schema()?.id]);
+  }
+
+  onPostCreateClosed(): void {
+    const schema = this.schema();
+    this.createdWithSummary.set(null);
+    if (schema) {
+      void this.router.navigate(['/', schema.id]);
+    }
   }
 
   // ── Helpers de template ──

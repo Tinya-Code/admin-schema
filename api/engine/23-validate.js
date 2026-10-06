@@ -96,12 +96,19 @@ function validatePayload_(ss, resource, map, opts) {
   // — se corren DESPUÉS de los declarativos y acumulan en el MISMO 422,
   // en el orden del array (el recurso fija su orden de error).
   if (Array.isArray(resource.checks) && resource.checks.length > 0) {
+    // `children` son SOLO las hijas del payload (childrenForValidation_) y
+    // `current` SOLO columnas (flatToContract_): ninguno da lo YA GUARDADO.
+    // `currentChildren` es ese snapshot, leído por 24-crud con
+    // readChildren_ — `{}` en create, porque el registro aún no existe.
+    // Sin normalizar a {}: un call site que se olvide de pasarlo se ve como
+    // undefined en el test y no como «no hay historial» (fail-open).
     var checkCtx = {
       ss: ss,
       isNew: opts.isNew,
       key: opts.key,
       current: opts.current,
       children: opts.children,
+      currentChildren: opts.currentChildren,
     };
     resource.checks.forEach(function (decl) {
       if (!decl || typeof decl.check !== 'string') {

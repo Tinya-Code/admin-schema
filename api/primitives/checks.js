@@ -125,6 +125,67 @@ REGISTRY.checks = {
 
     return errors;
   },
+
+  // history-append-only — el historial guardado (ctx.currentChildren.history)
+  // no se puede borrar ni modificar en updates; sólo se pueden agregar ítems.
+  'history-append-only': function (scope) {
+    var ctx = (scope && scope.ctx) || {};
+    if (ctx.isNew) return [];
+    var currentChildren =
+      ctx.currentChildren && typeof ctx.currentChildren === 'object' ? ctx.currentChildren : {};
+    var savedHistory = currentChildren.history;
+    if (!Array.isArray(savedHistory) || savedHistory.length === 0) return [];
+    var children = ctx.children && typeof ctx.children === 'object' ? ctx.children : {};
+    if (!Object.prototype.hasOwnProperty.call(children, 'history')) return [];
+    var incomingHistory = children.history;
+    if (!Array.isArray(incomingHistory) || incomingHistory.length < savedHistory.length) {
+      return [
+        validationIssue_('history', 'El historial no se puede modificar ni reducir (append-only)'),
+      ];
+    }
+    for (var i = 0; i < savedHistory.length; i++) {
+      var saved = savedHistory[i];
+      var inc = incomingHistory[i];
+      if (!inc || typeof inc !== 'object') {
+        return [
+          validationIssue_(
+            'history',
+            'El historial no se puede modificar ni reducir (append-only)',
+          ),
+        ];
+      }
+      if (saved.action !== inc.action || saved.detail !== inc.detail) {
+        return [
+          validationIssue_('history', 'El historial guardado es inmutable y no se puede alterar'),
+        ];
+      }
+    }
+    return [];
+  },
+
+  // no-auth-after-delivered — no permite modificar campos de autorización
+  // cuando el pedido ya tiene status 'ENTREGADO'.
+  'no-auth-after-delivered': function (scope) {
+    var ctx = (scope && scope.ctx) || {};
+    var current = ctx.current;
+    if (!current || current.status !== 'ENTREGADO') return [];
+    var incoming = ctx.incoming || {};
+    var authFields = ['authorized_name', 'authorized_photo', 'authorized_notes', 'auth_state'];
+    for (var i = 0; i < authFields.length; i++) {
+      var f = authFields[i];
+      if (Object.prototype.hasOwnProperty.call(incoming, f)) {
+        if (incoming[f] !== current[f]) {
+          return [
+            validationIssue_(
+              'auth_state',
+              'No se puede modificar la autorización de un pedido ya entregado',
+            ),
+          ];
+        }
+      }
+    }
+    return [];
+  },
 };
 
 // Primer match por valor; sólo strings (números/booleanos no son prosa).

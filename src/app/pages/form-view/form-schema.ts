@@ -250,6 +250,18 @@ function applyRulesToField(scope: RuleScope, field: FieldSchema, path: ChildPath
  *   para `isEmpty`, pero para el usuario una lista obligatoria necesita al
  *   menos un ítem). Lo resuelve `applyListCountRules`.
  */
+/**
+ * ¿Aplica `mode` en ESTE contexto de formulario?
+ *
+ * Lo comparten `readonlyOn` y `hiddenOn`: `always` vale en todos los modos,
+ * `create` sólo en alta y `update` sólo en edición. El modo se detecta por
+ * `scope.excludeKey !== undefined`, que es la señal que ya usaba `readonlyOn`
+ * (form-view define `mode` a partir de la misma condición).
+ */
+function modeAppliesTo(mode: 'create' | 'update' | 'always', isEdit: boolean): boolean {
+  return mode === 'always' || (mode === 'update' && isEdit) || (mode === 'create' && !isEdit);
+}
+
 function applyCommonRules(scope: RuleScope, field: FieldSchema, path: ChildPath<unknown>): void {
   const isList =
     field.type === 'list' || field.type === 'string-list' || field.type === 'key-value';
@@ -285,6 +297,16 @@ function applyCommonRules(scope: RuleScope, field: FieldSchema, path: ChildPath<
   }
   if (field.readonly) {
     readonlyRule(path, { when: () => true });
+  }
+  if (field.readonlyOn && modeAppliesTo(field.readonlyOn, scope.excludeKey !== undefined)) {
+    readonlyRule(path, { when: () => true });
+  }
+  // Ciclo de vida de la visibilidad — simétrico a `readonlyOn` de arriba.
+  // `hidden()` deja el campo fuera de la validación y del payload, así que en
+  // alta un campo que LLENA EL BACK no ocupa la sección ni exige nada: sin
+  // esto, `ref` y `pin` aparecían vacíos con un "se genera solo al guardar".
+  if (field.hiddenOn && modeAppliesTo(field.hiddenOn, scope.excludeKey !== undefined)) {
+    hidden(path, { when: () => true });
   }
   if (field.readonlyWhen) {
     const condition = field.readonlyWhen;

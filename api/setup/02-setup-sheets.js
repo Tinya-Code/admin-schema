@@ -105,10 +105,18 @@ function principalColSpecs_(resource) {
 
 // Specs de TODAS las hojas: principal + hijas por recurso, y las auxiliares.
 // Fuente única: REGISTRY.resources (schema/) + schema/05-aux-sheets.
+//
+// M1 (motor-plan 1.2): un recurso SIN `sheet` no tiene storage ⇒ no se le
+// crea ninguna hoja. Hace falta porque el descriptor del dashboard vive en
+// registry.ts (paridad exigida por contract-check.mjs:229) pero no persiste
+// filas; sin este guard specs.push({ name: undefined }) llegaba a
+// setupSheets/setupDrift y a getSheetByName(undefined). Las hijas tampoco:
+// necesitan la clave de una fila que no existe.
 function getSheetSpecs_() {
   var specs = [];
   Object.keys(REGISTRY.resources).forEach(function (id) {
     var resource = getResourceSchema(id);
+    if (!resource.sheet) return; // descriptor sin storage: sin hoja
     specs.push({
       name: resource.sheet,
       kind: resource.kind,

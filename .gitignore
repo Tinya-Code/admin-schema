@@ -54,3 +54,5 @@ api/.gas-smoke.env
 
 # Credenciales del front (API_URL + ADMIN_TOKEN) — baseapi §2.3, jamás commit
 src/environments/environment.local.ts
+# Local AI runtime state
+.atl/

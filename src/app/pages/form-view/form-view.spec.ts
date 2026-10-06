@@ -612,3 +612,99 @@ describe('FormView — selección dependiente', () => {
     expect(fieldOf(fixture, 'ciudad').value).toBe('');
   });
 });
+
+// ── readonlyOn ──────────────────────────────────────────────────────────────
+
+describe('FormView — readonlyOn', () => {
+  const TEST_SCHEMA_ID = 'readonly-test';
+  const READONLY_SCHEMA: ResourceSchema = {
+    id: TEST_SCHEMA_ID,
+    label: 'Test Readonly',
+    labelPlural: 'Test Readonlys',
+    kind: 'collection',
+    endpoint: {
+      list: '/admin/readonly-test',
+      get: '/admin/readonly-test/{key}',
+      update: '/admin/readonly-test/{key}',
+    },
+    keyField: 'id',
+    titleField: 'name',
+    listColumns: [],
+    fields: [
+      { key: 'id', label: 'ID', type: 'text', readonlyOn: 'update' },
+      { key: 'name', label: 'Nombre', type: 'text' },
+      { key: 'fixed', label: 'Fijo', type: 'text', readonlyOn: 'always' },
+    ],
+  };
+
+  const catalog = schemas as unknown as ResourceSchema[];
+
+  afterEach(() => {
+    const index = catalog.findIndex((s) => s.id === TEST_SCHEMA_ID);
+    if (index >= 0) catalog.splice(index, 1);
+  });
+
+  function inputOf(fixture: ComponentFixture<FormView>, key: string): HTMLInputElement | null {
+    return fixture.nativeElement.querySelector(`input[id$=".${key}"]`) as HTMLInputElement | null;
+  }
+
+  async function createForm(mode: 'create' | 'edit') {
+    catalog.push(READONLY_SCHEMA);
+    const paramMap =
+      mode === 'edit'
+        ? convertToParamMap({ id: TEST_SCHEMA_ID, key: 'rec-1' })
+        : convertToParamMap({ id: TEST_SCHEMA_ID });
+
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        { provide: ActivatedRoute, useValue: { paramMap: of(paramMap) } },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of({ id: 'rec-1', name: 'Test', fixed: 'val' })),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('campo readonlyOn:update queda readonly en modo edición', async () => {
+    const fixture = await createForm('edit');
+    const input = inputOf(fixture, 'id');
+    expect(input, 'debe existir el campo id').not.toBeNull();
+    expect(input!.readOnly).toBe(true);
+  });
+
+  it('campo readonlyOn:update es editable en modo creación', async () => {
+    const fixture = await createForm('create');
+    const input = inputOf(fixture, 'id');
+    expect(input, 'debe existir el campo id').not.toBeNull();
+    expect(input!.readOnly).toBe(false);
+  });
+
+  it('campo readonlyOn:always queda readonly en cualquier modo', async () => {
+    const fixture = await createForm('edit');
+    const input = inputOf(fixture, 'fixed');
+    expect(input, 'debe existir el campo fixed').not.toBeNull();
+    expect(input!.readOnly).toBe(true);
+  });
+});

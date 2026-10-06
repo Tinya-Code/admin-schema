@@ -1,7 +1,10 @@
 import type { ResourceSchema } from '../core/models/schema.model';
 
 import { categoriesSchema } from './categories.schema';
+import { dashboardSchema } from './dashboard.schema';
 import { legalSchema } from './legal.schema';
+import { ordersSchema } from './orders.schema';
+import { pickpassSchema } from './pickpass.schema';
 import { productsSchema } from './products.schema';
 import { siteSchema } from './site.schema';
 
@@ -16,8 +19,11 @@ import { siteSchema } from './site.schema';
  * el recurso sólo-backend (F7-4) que se sintetizara desde esa proyección.
  */
 export const schemas: readonly ResourceSchema[] = [
+  dashboardSchema,
   categoriesSchema,
   productsSchema,
+  ordersSchema,
+  pickpassSchema,
   siteSchema,
   legalSchema,
 ];

@@ -1,16 +1,19 @@
 import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import {
   LucideChevronDown,
   LucideChevronUp,
+  LucideEye,
   LucideGripVertical,
   LucidePencil,
   LucidePlus,
   LucideRotateCw,
+  LucideShare2,
   LucideTrash2,
+  LucideZap,
 } from '@lucide/angular';
 import { ApiError } from '../../core/models/api.model';
 import type {
@@ -22,6 +25,7 @@ import type {
   SelectOption,
 } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
+import { ConfigService } from '../../core/services/config.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { DrawerForm } from '../drawer-form/drawer-form';
 import { getSchema } from '../../schemas/registry';
@@ -30,6 +34,8 @@ import { Button } from '../../shared/components/button/button';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import { getValue } from '../../shared/utils/field-path';
+import { interpolateTemplate } from '../../core/utils/template-interpolator';
+import { buildShareMessage, writeClipboard } from '../../core/utils/clipboard';
 
 type Row = Record<string, unknown>;
 type Status = 'loading' | 'ready' | 'error';
@@ -85,11 +91,14 @@ function formatNumber(value: unknown): string {
     EmptyState,
     LucideChevronDown,
     LucideChevronUp,
+    LucideEye,
     LucideGripVertical,
     LucidePencil,
     LucidePlus,
     LucideRotateCw,
+    LucideShare2,
     LucideTrash2,
+    LucideZap,
     Skeleton,
   ],
   template: `
@@ -204,12 +213,14 @@ function formatNumber(value: unknown): string {
                 >
                   @for (row of visibleRows(); track keyOf(row); let i = $index) {
                     <tr
-                      class="border-b border-neutral/10 last:border-0 hover:bg-neutral/5"
+                      class="border-b border-neutral/10 last:border-0 hover:bg-neutral/5 transition-colors"
+                      [class.cursor-pointer]="isRowClickable()"
                       cdkDrag
                       [cdkDragDisabled]="dropDisabled()"
+                      (click)="onRowClick(row)"
                     >
                       @if (canReorder()) {
-                        <td class="px-2 py-2.5 align-middle">
+                        <td class="px-2 py-2.5 align-middle" (click)="$event.stopPropagation()">
                           <div class="flex items-center gap-1">
                             <button
                               type="button"
@@ -266,6 +277,7 @@ function formatNumber(value: unknown): string {
                                   [checked]="booleanValue(row, column)"
                                   [disabled]="savingKey() === keyOf(row)"
                                   [attr.aria-label]="column.label + ': ' + titleOf(row)"
+                                  (click)="$event.stopPropagation()"
                                   (change)="toggleActive(row, checkboxValue($event))"
                                 />
                               } @else if (badgeInfo(row, column); as badge) {
@@ -293,16 +305,36 @@ function formatNumber(value: unknown): string {
                         </td>
                       }
                       @if (hasRowActions()) {
-                        <td class="px-4 py-2.5">
-                          <div class="flex justify-end gap-2">
+                        <td class="px-4 py-2.5" (click)="$event.stopPropagation()">
+                          <div class="flex items-center justify-end gap-1">
+                            @if (schema().detail?.enabled) {
+                              <button
+                                app-button
+                                variant="ghost"
+                                type="button"
+                                (click)="goView(row)"
+                                title="Ver ficha de detalle"
+                                class="h-8 px-2.5 text-xs text-neutral-light hover:text-primary hover:bg-primary/10"
+                              >
+                                <svg lucideEye size="15" />
+                                <span>Ver</span>
+                              </button>
+                            }
                             @for (action of schema().actions ?? []; track action.id) {
                               <button
                                 app-button
                                 variant="ghost"
                                 type="button"
+                                [title]="action.label"
+                                [attr.aria-label]="action.label"
                                 (click)="runAction(action, row)"
+                                class="h-8 px-2 text-xs text-neutral hover:text-primary hover:bg-primary/10"
                               >
-                                {{ action.label }}
+                                @if (action.type === 'copy-share') {
+                                  <svg lucideShare2 size="15" />
+                                } @else {
+                                  {{ action.label }}
+                                }
                               </button>
                             }
                             @if (canQuickEdit()) {
@@ -311,30 +343,37 @@ function formatNumber(value: unknown): string {
                                 variant="ghost"
                                 type="button"
                                 (click)="quickEditRow.set(row)"
+                                title="Edición rápida"
+                                class="h-8 px-2 text-xs text-neutral hover:text-primary hover:bg-neutral/10"
                               >
-                                Edición rápida
+                                <svg lucideZap size="15" />
+                                <span>Edición rápida</span>
                               </button>
                             }
                             @if (canUpdate()) {
                               <button
                                 app-button
-                                variant="outline"
+                                variant="ghost"
                                 type="button"
                                 (click)="goEdit(row)"
+                                title="Editar registro"
+                                class="h-8 px-2.5 text-xs text-primary hover:bg-primary/10"
                               >
-                                <svg lucidePencil size="16" />
-                                Editar
+                                <svg lucidePencil size="15" />
+                                <span>Editar</span>
                               </button>
                             }
                             @if (canRemove()) {
                               <button
                                 app-button
-                                variant="danger"
+                                variant="ghost"
                                 type="button"
                                 (click)="removeRow(row)"
+                                title="Eliminar registro"
+                                class="h-8 px-2 text-xs text-danger hover:bg-danger/10"
                               >
-                                <svg lucideTrash2 size="16" />
-                                Eliminar
+                                <svg lucideTrash2 size="15" />
+                                <span>Eliminar</span>
                               </button>
                             }
                           </div>
@@ -368,7 +407,11 @@ function formatNumber(value: unknown): string {
 export class ListView {
   readonly schema = input.required<ResourceSchema>();
 
+  /** Emitido al pulsar «Editar» cuando `schema.detail.enabled === true`. */
+  readonly viewRecord = output<Row>();
+
   private readonly api = inject(ApiService);
+  private readonly configService = inject(ConfigService, { optional: true });
   private readonly router = inject(Router);
   readonly notifications = inject(NotificationService);
 
@@ -519,11 +562,31 @@ export class ListView {
     void this.load(this.schema());
   }
 
+  isRowClickable(): boolean {
+    return Boolean(this.schema().detail?.enabled || this.canUpdate());
+  }
+
+  goView(row: Row): void {
+    this.viewRecord.emit(row);
+  }
+
+  onRowClick(row: Row): void {
+    if (this.schema().detail?.enabled) {
+      this.goView(row);
+    } else if (this.canUpdate()) {
+      this.goEdit(row);
+    }
+  }
+
   goCreate(): void {
     void this.router.navigate(['/', this.schema().id, 'new']);
   }
 
   goEdit(row: Row): void {
+    if (this.schema().detail?.enabled === true) {
+      this.viewRecord.emit(row);
+      return;
+    }
     void this.router.navigate(['/', this.schema().id, this.keyOf(row), 'edit']);
   }
 
@@ -643,11 +706,29 @@ export class ListView {
     }
   }
 
-  runAction(action: ResourceAction, row: Row): void {
-    if (action.urlTemplate) {
-      const url = action.urlTemplate.replace(/\{(\w+)\}/g, (_, field: string) =>
-        String(getValue(row, field) ?? ''),
-      );
+  async runAction(action: ResourceAction, row: Row): Promise<void> {
+    const ctx = this.configService
+      ? this.configService.buildInterpolationContext(row as Record<string, unknown>)
+      : (row as Record<string, unknown>);
+
+    if (action.type === 'copy-share') {
+      const url = interpolateTemplate(action.urlTemplate, ctx);
+      const text = action.shareTextTemplate
+        ? interpolateTemplate(action.shareTextTemplate, ctx)
+        : '';
+      // Mismo mensaje que `copy-share` (core/utils/clipboard): el formateado
+      // completo —saludo, ref, enlace y PIN— con fallback en un solo sitio.
+      const message = buildShareMessage(url, text);
+      const copied = await writeClipboard(message);
+      if (copied) {
+        this.notifications.success('Mensaje copiado al portapapeles.');
+      } else {
+        this.notifications.info(`Copiar manualmente: ${message}`);
+      }
+      return;
+    }
+    if ('urlTemplate' in action && action.urlTemplate) {
+      const url = interpolateTemplate(action.urlTemplate, ctx);
       if (/^https?:\/\//.test(url)) {
         window.open(url, '_blank', 'noopener');
       } else {

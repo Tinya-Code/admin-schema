@@ -3,3 +3,5 @@
 !appsscript.json
 !**/*.js
 !**/*.html
+# __tests__/ usa import/export de ES modules — NO es código GAS
+__tests__/**

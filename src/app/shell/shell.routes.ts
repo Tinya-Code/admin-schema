@@ -27,6 +27,14 @@ export const shellRoutes: Routes = [
         loadComponent: () => import('../pages/form-view/form-view').then((m) => m.FormView),
         canDeactivate: [unsavedChangesGuard],
       },
+      // Ficha de detalle enlazable (`/orders/{ref}`): la comparte el widget
+      // `record-list` del dashboard y cualquier link externo. El orden
+      // importa — va después de `new` y de `…/edit`, que son más específicas.
+      {
+        path: ':id/:key',
+        loadComponent: () =>
+          import('../pages/resource-page/resource-page').then((m) => m.ResourcePage),
+      },
       {
         path: ':id',
         loadComponent: () =>

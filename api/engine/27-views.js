@@ -10,6 +10,8 @@
 //     limit: <n>,
 //     extends: '<otra vista>',   hereda su where (guard anti-ciclo)
 //     handler: '<REGISTRY.handlers>'   escape hatch §6 (sin where)
+//     aggregate: 'count'|'sum'|'avg',  devuelve UNA fila { value } y no
+//               los ítems (motor-plan T2b); sum/avg exigen `field`
 //   }
 // Operandos: value (literal) | from: '$item.<campo>' (ancla ctx.self,
 // sin ancla ⇒ la condición no resuelve ⇒ false) | ref: '<recurso>'
@@ -187,6 +189,50 @@ function applyViewFilter_(resource, name, items, ctx) {
   return out;
 }
 
+// ── Aggregate (motor-plan T2b / M2) ─────────────────────────────────────────
+
+// Cláusulas admitidas. Con `aggregate` la vista devuelve UNA fila
+// { value } en vez de los ítems: es el dato que consume un widget del panel,
+// no un listado. Sin ella todo sigue funcionando igual (el escape hatch
+// sigue siendo `handler`).
+var VIEW_AGGREGATES_ = { count: true, sum: true, avg: true };
+
+// Config rota ⇒ 500 (§16: el schema manda). Se valida ANTES de resolver la
+// vista, para que falle igual con la lista vacía que con la cacheada.
+function validateViewAggregate_(view, name) {
+  if (!Object.prototype.hasOwnProperty.call(VIEW_AGGREGATES_, view.aggregate)) {
+    throw apiError_(500, 'aggregate mal declarado: ' + name);
+  }
+  if (view.aggregate === 'sum' || view.aggregate === 'avg') {
+    if (typeof view.field !== 'string' || view.field === '') {
+      throw apiError_(500, 'aggregate ' + view.aggregate + ' exige `field`: ' + name);
+    }
+  }
+  if (view.handler) {
+    throw apiError_(500, 'Una vista handler no puede agregar: ' + name);
+  }
+  if (view.shape) {
+    throw apiError_(500, 'Una vista aggregate no admite `shape`: ' + name);
+  }
+}
+
+// Fila única con el resultado. `count` no usa `field`; `sum`/`avg` ignoran
+// los valores no numéricos (semántica SQL de SUM/AVG con NULL) y `avg`
+// divide entre los que SÍ aportaron. Sin ningún valor numérico devuelve
+// `null` y no 0, que sería indistinguible de «promedio real igual a cero».
+function aggregateItems_(view, items) {
+  if (view.aggregate === 'count') return [{ value: items.length }];
+  var sum = 0;
+  var n = 0;
+  items.forEach(function (item) {
+    var num = opsNumber_(item[view.field]);
+    if (num === null) return;
+    sum += num;
+    n++;
+  });
+  return [{ value: view.aggregate === 'sum' ? sum : n === 0 ? null : sum / n }];
+}
+
 function applyDeclaredView_(resource, name, items, ctx) {
   var views = resource.views || {};
   if (!Object.prototype.hasOwnProperty.call(views, name)) {
@@ -196,6 +242,8 @@ function applyDeclaredView_(resource, name, items, ctx) {
   if (!view || typeof view !== 'object' || Array.isArray(view)) {
     throw apiError_(500, 'Vista mal declarada: ' + name);
   }
+  var hasAggregate = view.aggregate !== undefined && view.aggregate !== null;
+  if (hasAggregate) validateViewAggregate_(view, name);
   if (view.handler) {
     var fn =
       typeof view.handler === 'string' &&
@@ -214,6 +262,9 @@ function applyDeclaredView_(resource, name, items, ctx) {
   });
   if (view.sort !== undefined && view.sort !== null) out = sortItems_(out, view.sort);
   if (typeof view.limit === 'number') out = out.slice(0, view.limit);
+  // where ⇒ sort ⇒ limit ⇒ aggregate: el `limit` acota EL CONJUNTO que se
+  // agrega ("suma de los 5 más grandes"), que es lo que se espera.
+  if (hasAggregate) return aggregateItems_(view, out);
   return out;
 }
 

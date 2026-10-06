@@ -49,8 +49,22 @@ export interface FieldBase<T> {
   required?: boolean;
   default?: T;
   readonly?: boolean;
+  /** Ciclo de vida: bloquea el campo solo en creación, solo en edición o siempre. */
+  readonlyOn?: 'create' | 'update' | 'always';
   readonlyWhen?: FieldCondition;
   visibleWhen?: FieldCondition;
+  /**
+   * Ciclo de vida de la VISIBILIDAD: oculta el campo en creación, en edición
+   * o siempre. Símétrico a `readonlyOn`, pero NO lo mismo que `visibleWhen`,
+   * que expresa una condición sobre el valor de otro campo.
+   *
+   * Vale para los campos que LLENA EL BACK (`ref`, `pin`): en alta no existen
+   * aún, así que mostrarlos vacíos y solo-lectura con un `help` que dice "se
+   * genera solo al guardar" es ruido ocupando la sección. `hidden()` de Signal
+   * Forms además los deja FUERA de la validación y del payload
+   * (field-host:311 no los dibuja, form-model:52 los salta).
+   */
+  hiddenOn?: 'create' | 'update' | 'always';
   /**
    * Selección dependiente (guía §1: país → ciudad). Clave del campo padre
    * del MISMO nivel: mientras el padre esté vacío este campo queda
@@ -240,6 +254,113 @@ export interface KeyValueField extends FieldBase<KeyValueItem[]>, ListOptions {
 }
 
 // ─────────────────────────────────────────────────────────────
+// §5.6 Widgets de panel (sólo `kind: 'dashboard'` — motor-plan T5/T7)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Base de un widget de panel. Se declara en `ResourceSchema.widgets` — no
+ * en `fields`, porque un KPI no es un campo: no se valida, no se envía y
+ * `field-host` no lo renderiza. Sólo un recurso `kind: 'dashboard'` los
+ * dibuja, y agregar un widget es tocar el schema, no el template.
+ *
+ * Su `key` es además la clave del dato en la respuesta del endpoint del
+ * dashboard (`{ key: 'pendientes' }` ↔ `{ pendientes: 3 }`), salvo que el
+ * widget declare `source: 'payload'` (abajo).
+ */
+export interface WidgetBase {
+  key: string;
+  label: string;
+  help?: string;
+  /** Ancho en la grilla del panel (1–12), igual que un campo. */
+  width?: GridWidth;
+  /**
+   * De dónde saca sus datos respecto de la respuesta del endpoint.
+   *
+   * - `'key'` (por defecto): `data[widget.key]`. Es el contrato normal.
+   * - `'payload'`: la respuesta COMPLETA. Para widgets que se componen a
+   *   partir de varias claves (p. ej. `status-progress` leyendo
+   *   `pendientes` + `entregados` + `cancelados`) sin que el orquestador
+   *   tenga que saber qué tipo de widget es.
+   */
+  source?: 'key' | 'payload';
+}
+
+/** KPI de una cifra suelta («3 pendientes»). */
+export interface MetricCardWidget extends WidgetBase {
+  type: 'metric-card';
+  /** Texto secundario bajo la cifra (estático, va en el schema). */
+  hint?: string;
+}
+
+/** Barras por categoría con CSS/SVG — sin librería. */
+export interface BarChartWidget extends WidgetBase {
+  type: 'bar-chart';
+  /** Sufijo de las cifras del eje («unidades», «S/»). */
+  unit?: string;
+}
+
+/**
+ * Serie temporal con Chart.js **detrás de `@defer (on viewport)`**.
+ *
+ * La librería (61,4 K gz medidos) vive en el chunk diferido que Angular
+ * genera para `<app-chart-line>` dentro del `@defer` de `widget-host`, así
+ * que **no entra en el bundle inicial** — mientras `chart-line` sólo se
+ * referencie dentro de ese bloque y nunca por un barrel (angular.dev
+ * «Deferred loading with @defer»: standalone + referencia exclusiva dentro
+ * del bloque + import directo de fichero).
+ */
+export interface ChartLineWidget extends WidgetBase {
+  type: 'chart-line';
+  /** Sufijo de las cifras del eje («unidades», «S/»). */
+  unit?: string;
+}
+
+/** Tabla embebida de registros operativos (ej. pedidos que requieren atención). */
+export interface RecordListWidget extends WidgetBase {
+  type: 'record-list';
+  /** Recurso al que pertenecen los registros (ej. `orders`). */
+  resource: string;
+  /** Claves de columnas a mostrar en la tabla compacta. */
+  columns: string[];
+  /** Acción de navegación por fila. */
+  action?: {
+    label: string;
+    routeTemplate: string;
+  };
+}
+
+/** Grid de botones de accesos directos operativos. */
+export interface QuickActionsWidget extends WidgetBase {
+  type: 'quick-actions';
+  actions: {
+    label: string;
+    icon?: string;
+    navigateTo: string;
+    variant?: 'primary' | 'secondary' | 'outline';
+  }[];
+}
+
+/** Barra de distribución porcentual de estados o categorías. */
+export interface StatusProgressWidget extends WidgetBase {
+  type: 'status-progress';
+  segments: {
+    key: string;
+    label: string;
+    color: 'success' | 'warning' | 'danger' | 'neutral';
+  }[];
+}
+
+export type WidgetSchema =
+  | MetricCardWidget
+  | BarChartWidget
+  | ChartLineWidget
+  | RecordListWidget
+  | QuickActionsWidget
+  | StatusProgressWidget;
+
+export type WidgetType = WidgetSchema['type'];
+
+// ─────────────────────────────────────────────────────────────
 // Unión discriminada por `type` (20 tipos, base.md §5)
 // ─────────────────────────────────────────────────────────────
 
@@ -301,13 +422,57 @@ export interface ResourceLayout {
   // Las columnas se definen con `field.width` (1–12) dentro de cada sección.
 }
 
-/** Acciones extra del listado (base.md §3): duplicar, activar/desactivar… */
-export interface ResourceAction {
+export interface ResourceActionBase {
   id: string;
   label: string;
   icon?: string;
-  /** Para `open-url`: plantilla con marcadores, ej. `/products/{slug}`. */
-  urlTemplate?: string;
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+  visibleWhen?: { field: string; op: 'eq' | 'neq' | 'in'; value: unknown }[];
+}
+
+export interface CopyShareAction extends ResourceActionBase {
+  type: 'copy-share';
+  urlTemplate: string;
+  shareTextTemplate?: string;
+}
+
+export interface NavigateAction extends ResourceActionBase {
+  type?: 'navigate';
+  /** Plantilla con marcadores, ej. `/products/{slug}` o `/admin/orders?id={ref}`. */
+  urlTemplate: string;
+}
+
+export interface TriggerAction extends ResourceActionBase {
+  type: 'trigger-endpoint';
+  endpoint: string;
+  method?: 'POST' | 'PUT';
+  confirmMessage?: string;
+}
+
+/** Acciones extra de registro o listado (duplicar, compartir, navegar…). */
+export type ResourceAction = CopyShareAction | NavigateAction | TriggerAction;
+
+/** Configuración de diálogo/modal o acción tras crear un registro con éxito. */
+export interface PostCreateSchema {
+  mode: 'modal' | 'toast' | 'redirect_detail' | 'stay';
+  title?: string;
+  description?: string;
+  summaryFields?: string[];
+  actions?: ResourceAction[];
+}
+
+/** Configuración de Ficha de Detalle (modo lectura estructurado). */
+export interface DetailViewSchema {
+  enabled: boolean;
+  headerFields?: string[];
+  sections?: {
+    id: string;
+    label: string;
+    fields: string[];
+  }[];
+  actions?: ResourceAction[];
+  allowEdit?: boolean;
+  allowDelete?: boolean;
 }
 
 /** Operaciones permitidas (base.md §3). `undefined` = permitido. */
@@ -336,7 +501,12 @@ export interface ResourceSchema {
   id: string;
   label: string;
   labelPlural: string;
-  kind: 'collection' | 'singleton';
+  /**
+   * `collection` → listado, `singleton` → formulario directo,
+   * `dashboard` → panel de sólo lectura (motor-plan T4; sus datos llegan de
+   * un endpoint declarativo, no de CRUD).
+   */
+  kind: 'collection' | 'singleton' | 'dashboard';
   endpoint: ResourceEndpoints;
   /** Campo que identifica el registro (`slug`). */
   keyField: string;
@@ -351,8 +521,22 @@ export interface ResourceSchema {
   search?: string[];
   /** Árbol de campos del formulario (base.md §4–§6). */
   fields: FieldSchema[];
+  /**
+   * Widgets del panel — sólo `kind: 'dashboard'` (motor-plan T5).
+   *
+   * Van aparte de `fields`: un KPI no es un campo y no comparte `FieldBase`
+   * (`required`/`visibleWhen`/`validators`…). Decisión tomada tras medir el
+   * ripple de unirlos a `FieldSchema`: 18+ errores de tipos en 4 ficheros.
+   * `contract-check` sólo recorre `fields`, así que esta propiedad no se
+   * compara back↔front — el widget es config de UI, no dato almacenado.
+   */
+  widgets?: WidgetSchema[];
   layout?: ResourceLayout;
   actions?: ResourceAction[];
+  /** Configuración de Ficha de Detalle estructurada para el recurso. */
+  detail?: DetailViewSchema;
+  /** Configuración de diálogo/modal post-creación. */
+  postCreate?: PostCreateSchema;
   permissions?: ResourcePermissions;
   /**
    * Claves de `fields` que el listado edita en un drawer sin navegar

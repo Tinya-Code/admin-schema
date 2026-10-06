@@ -4,7 +4,7 @@ import { provideRouter } from '@angular/router';
 import { Sidebar } from './sidebar';
 
 describe('Sidebar — menú desde el catálogo estático', () => {
-  it('lista los 4 recursos del catálogo, en orden, con sus hrefs', async () => {
+  it('lista los recursos del catálogo, en orden, con sus hrefs', async () => {
     await TestBed.configureTestingModule({
       imports: [Sidebar],
       providers: [provideRouter([])],
@@ -16,14 +16,20 @@ describe('Sidebar — menú desde el catálogo estático', () => {
 
     const links = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('nav a'));
     expect(links.map((a) => a.textContent?.trim())).toEqual([
+      'Dashboard',
       'Categorías',
       'Productos',
+      'Pedidos',
+      'Configuración PickPass',
       'Sitio',
       'Legal',
     ]);
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
+      '/dashboard',
       '/categories',
       '/products',
+      '/orders',
+      '/pickpass',
       '/site',
       '/legal',
     ]);

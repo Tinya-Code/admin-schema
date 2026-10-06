@@ -29,6 +29,11 @@
 //   policies (F6, §8): cache.ttl / audit / lock salen de
 //     resource.policies — ttlOf_ y auditWrite_ los leen y las escrituras
 //     pasan por withPolicyLock_ (con lock salvo policies.lock === false).
+//   hooks (T2c / M3): resource.hooks.<acción> = ['<REGISTRY.hooks>', …]
+//     → el MOTOR emite el evento, no el navegador (antes había que
+//       recordar un endpoint declarativo). validateHooks_ corre EAGER
+//       antes del lock; emitHook_ corre después de cacheInvalidate_ y
+//       aísla los errores: un hook que falla no deshace la escritura.
 // Top-level: sólo declaraciones.
 
 // ── Despacho ───────────────────────────────────────────────────────────────
@@ -167,6 +172,7 @@ function resourceCreate_(ss, resource, map, request) {
   if (resource.kind === 'singleton') {
     throw apiError_(400, 'Un singleton no se crea: usa PUT /admin/' + resource.id);
   }
+  validateHooks_(resource); // falla rápido: antes del lock y de leer filas
   var payload = preparePayload_(resource, request.payload, { isNew: true });
 
   // Validar ANTES del lock: falla rápido sin retener el recurso (§8).
@@ -179,6 +185,7 @@ function resourceCreate_(ss, resource, map, request) {
     incoming: payload,
     current: null,
     children: childrenForValidation_(map, payload, true),
+    currentChildren: {}, // no existe el registro ⇒ no hay hijos guardados
     principalRows: entries0,
   });
 
@@ -192,6 +199,7 @@ function resourceCreate_(ss, resource, map, request) {
       incoming: payload,
       current: null,
       children: childrenForValidation_(map, payload, true),
+      currentChildren: {}, // no existe el registro ⇒ no hay hijos guardados
       principalRows: entries,
     });
 
@@ -227,8 +235,10 @@ function resourceCreate_(ss, resource, map, request) {
       writeChildren_(ss, child, key, items);
     });
 
-    auditWrite_(ss, resource, 'create', key, auditSummary_(resource, payload, 'Alta', key));
+    var summary = auditSummary_(resource, payload, 'Alta', key);
+    auditWrite_(ss, resource, 'create', key, summary);
     cacheInvalidate_(resource.id);
+    emitHook_(ss, resource, 'create', key, payload, summary);
     return shapeResponse_(resource, 'create', readDetail_(ss, resource, map, key));
   });
 }
@@ -236,6 +246,7 @@ function resourceCreate_(ss, resource, map, request) {
 // ── Actualizar ─────────────────────────────────────────────────────────────
 
 function resourcePut_(ss, resource, map, request) {
+  validateHooks_(resource); // cubre update de colección, de singleton y reorder
   if (resource.kind === 'singleton') return updateSingleton_(ss, resource, map, request);
 
   var key = request.params[map.keyField];
@@ -259,6 +270,9 @@ function updateCollection_(ss, resource, map, request, key) {
   var idx0 = entryIndexOf_(entries0, map.keyField, key);
   if (idx0 === -1) throw apiError_(404, 'No existe: ' + key);
   var current0 = flatToContract_(map, entries0[idx0].flat);
+  // Snapshot de hijos guardados ANTES del lock: los checks que comparan
+  // contra lo existente deben poder fallar rápido, como los declarativos.
+  var currentChildren0 = readChildren_(ss, map, key);
   validateAndThrow_(ss, resource, map, {
     isNew: false,
     key: key,
@@ -266,6 +280,7 @@ function updateCollection_(ss, resource, map, request, key) {
     incoming: payload,
     current: current0,
     children: childrenForValidation_(map, payload, false),
+    currentChildren: currentChildren0,
     principalRows: entries0,
   });
 
@@ -286,6 +301,7 @@ function updateCollection_(ss, resource, map, request, key) {
       incoming: payload,
       current: current,
       children: childrenForValidation_(map, payload, false),
+      currentChildren: children, // ya leído en la línea de arriba
       principalRows: entries,
     });
 
@@ -312,8 +328,10 @@ function updateCollection_(ss, resource, map, request, key) {
       writeChildren_(ss, child, key, effective[child.key]);
     });
 
-    auditWrite_(ss, resource, 'update', key, auditSummary_(resource, payload, 'Edición', key));
+    var summary = auditSummary_(resource, payload, 'Edición', key);
+    auditWrite_(ss, resource, 'update', key, summary);
     cacheInvalidate_(resource.id);
+    emitHook_(ss, resource, 'update', key, payload, summary);
     return shapeResponse_(resource, 'update', readDetail_(ss, resource, map, key));
   });
 }
@@ -323,6 +341,7 @@ function updateSingleton_(ss, resource, map, request) {
 
   var data0 = readSheetData_(ss, map.sheet);
   var current0 = flatToContract_(map, kvRowsToFlat_(data0));
+  var currentChildren0 = readChildren_(ss, map, null);
   validateAndThrow_(ss, resource, map, {
     isNew: false,
     key: null,
@@ -330,6 +349,7 @@ function updateSingleton_(ss, resource, map, request) {
     incoming: payload,
     current: current0,
     children: childrenForValidation_(map, payload, false),
+    currentChildren: currentChildren0,
     principalRows: null,
   });
 
@@ -347,6 +367,7 @@ function updateSingleton_(ss, resource, map, request) {
       incoming: payload,
       current: current,
       children: childrenForValidation_(map, payload, false),
+      currentChildren: children,
       principalRows: null,
     });
 
@@ -357,14 +378,10 @@ function updateSingleton_(ss, resource, map, request) {
       writeChildren_(ss, child, null, effective[child.key]);
     });
 
-    auditWrite_(
-      ss,
-      resource,
-      'update',
-      resource.id,
-      auditSummary_(resource, payload, 'Edición', resource.id),
-    );
+    var summary = auditSummary_(resource, payload, 'Edición', resource.id);
+    auditWrite_(ss, resource, 'update', resource.id, summary);
     cacheInvalidate_(resource.id);
+    emitHook_(ss, resource, 'update', resource.id, payload, summary);
     return shapeResponse_(resource, 'update', readSingletonDetail_(ss, resource, map));
   });
 }
@@ -468,8 +485,10 @@ function reorderCollection_(ss, resource, map, request) {
     });
     data.sheet.getRange(2, colIdx + 1, column.length, 1).setValues(column);
 
-    auditWrite_(ss, resource, 'reorder', String(intent.key), 'Reorden: ' + intent.key);
+    var summary = 'Reorden: ' + intent.key;
+    auditWrite_(ss, resource, 'reorder', String(intent.key), summary);
     cacheInvalidate_(resource.id);
+    emitHook_(ss, resource, 'reorder', String(intent.key), intent, summary);
     return listCollection_(ss, resource, map); // fresco, ya con la caché invalidada
   });
 }
@@ -480,6 +499,7 @@ function resourceDelete_(ss, resource, map, request) {
   if (resource.kind === 'singleton') {
     throw apiError_(400, 'Un singleton no se borra');
   }
+  validateHooks_(resource); // falla rápido: antes del lock y de leer filas
   var key = request.params[map.keyField];
   if (key === undefined || key === null || String(key) === '') {
     throw apiError_(400, 'Falta la clave del registro en la ruta');
@@ -519,8 +539,12 @@ function resourceDelete_(ss, resource, map, request) {
       });
     writeRowsBlock_(data.sheet, data.headers, remaining);
 
-    auditWrite_(ss, resource, 'delete', key, 'Baja: ' + key);
+    var summary = 'Baja: ' + key;
+    var gone = {};
+    gone[map.keyField] = key;
+    auditWrite_(ss, resource, 'delete', key, summary);
     cacheInvalidate_(resource.id);
+    emitHook_(ss, resource, 'delete', key, gone, summary);
     return shapeResponse_(resource, 'delete', { deleted: key });
   });
 }
@@ -710,4 +734,62 @@ function auditSummary_(resource, payload, prefix, fallback) {
   var title = resource.titleField ? payload[resource.titleField] : undefined;
   var label = isEmptyValue_(title) ? fallback : String(title);
   return prefix + ': ' + label;
+}
+
+// ── Hooks: el motor EMITE el evento (motor-plan T2c / M3) ───────────────────
+//
+// Antes los eventos de uso sólo se reportaban desde un endpoint declarativo
+// (upload-signature): dependía de que el navegador se acordara de llamarlo.
+// Con `hooks` la emisión la garantiza EL MOTOR, atada a la escritura.
+//
+//   resource.hooks = { create: ['<REGISTRY.hooks>', …], update: […],
+//                      delete: […], reorder: […] }
+//
+// Validación EAGER (mismo criterio que validateAndThrow_): una declaración
+// rota tira 500 ANTES del lock y ANTES de escribir, así nada queda a medias
+// y ningún hook corre si el grupo no está completo.
+function validateHooks_(resource) {
+  var hooks = resource.hooks;
+  if (hooks === undefined || hooks === null) return;
+  if (typeof hooks !== 'object' || Array.isArray(hooks)) {
+    throw apiError_(500, 'hooks debe ser un objeto: ' + resource.id);
+  }
+  Object.keys(hooks).forEach(function (action) {
+    if (!Array.isArray(hooks[action])) {
+      throw apiError_(500, 'hooks.' + action + ' debe ser una lista: ' + resource.id);
+    }
+    hooks[action].forEach(function (name) {
+      if (!REGISTRY.hooks || typeof REGISTRY.hooks[name] !== 'function') {
+        throw apiError_(500, 'Hook ausente: ' + String(name));
+      }
+    });
+  });
+}
+
+// Post-escritura. Se llama DESPUÉS de cacheInvalidate_ para que un hook
+// jamás la esquive. Los errores del hook no deshacen ni enmascaran el
+// hecho: la escritura ya es irreversible y el hook es REACCIÓN, no la
+// causa — se registran en consola para no ser silenciosos.
+function emitHook_(ss, resource, action, key, payload, summary) {
+  var hooks = resource.hooks;
+  if (!hooks) return;
+  var names = hooks[action];
+  if (!Array.isArray(names) || names.length === 0) return;
+  var ctx = {
+    ss: ss,
+    resource: resource,
+    action: action,
+    key: key,
+    payload: payload,
+    summary: summary,
+  };
+  names.forEach(function (name) {
+    try {
+      REGISTRY.hooks[name](ctx);
+    } catch (err) {
+      console.error(
+        '[hooks] ' + action + ' ' + resource.id + '/' + key + ': ' + ((err && err.message) || err),
+      );
+    }
+  });
 }

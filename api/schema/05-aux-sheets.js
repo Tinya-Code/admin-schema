@@ -12,9 +12,17 @@ var AUX_SHEETS = {
     columns: ['timestamp', 'actor', 'action', 'entity', 'entity_key', 'summary'],
     note: 'action ∈ create | update | delete | reorder (api.md §3.13)',
   },
+  _pin: {
+    columns: ['ref', 'pin_hash', 'created_at', 'used_at'],
+    note: 'PIN de autorización de pedidos — NUNCA texto plano, sólo SHA-256 (Fase 5)',
+  },
+  _events: {
+    columns: ['timestamp', 'event', 'ref', 'session_id', 'meta'],
+    note: 'Eventos de uso del cliente — señal de adopción, NO fuente de verdad de estado (A4.13, Fase 6)',
+  },
 };
 
-var AUX_SHEET_ORDER = ['_enums', '_placeholders', '_audit_log'];
+var AUX_SHEET_ORDER = ['_enums', '_placeholders', '_audit_log', '_pin', '_events'];
 
 // Columnas efectivas de una hoja auxiliar (resolución en runtime: evita
 // referencias a otros archivos en tiempo de carga).

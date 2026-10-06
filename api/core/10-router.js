@@ -42,7 +42,9 @@ function routeTable_() {
   var endpointIds = Object.keys(REGISTRY.endpoints);
   for (i = 0; i < endpointIds.length; i++) {
     var endpoint = REGISTRY.endpoints[endpointIds[i]];
-    exact[endpoint.route] = {
+    var route = endpoint.route;
+    var paramMatch = route ? /^(.+)\/:([A-Za-z0-9_]+)$/.exec(route) : null;
+    var entry = {
       kind: 'handler',
       handler: endpoint.handler,
       params: {},
@@ -52,6 +54,12 @@ function routeTable_() {
         limits: normalizeLimits_(endpoint.limits),
       },
     };
+    if (paramMatch) {
+      entry.paramKey = paramMatch[2];
+      keyed[paramMatch[1]] = entry;
+    } else {
+      exact[route] = entry;
+    }
   }
 
   // 2) resources: scope y ruta salen del resource (F2-3). 'admin' es el
@@ -61,6 +69,12 @@ function routeTable_() {
   for (i = 0; i < resourceIds.length; i++) {
     var resource = getResourceSchema(resourceIds[i]);
     if (resource === null) continue;
+    // Un descriptor sin storage (`sheet: null`, p. ej. el dashboard) no tiene
+    // filas que servir: publicar su ruta sólo produce 500 "Falta la hoja", y
+    // además PISARÍA la de un endpoint homónimo, porque los endpoints se
+    // cargan primero en `exact` y ésta es la misma clave (F2-3: la ruta sale
+    // del resource, pero sólo si hay storage que servir).
+    if (resource.sheet === null || resource.sheet === undefined) continue;
     var base = resourceRoute_(resource);
     var entry = { resource: resource, policy: policyFor_(resource) };
     if (resource.kind === 'collection') keyed[base] = entry;
@@ -245,7 +259,7 @@ function normalizePath_(path) {
 function resolveRoute_(path) {
   var table = routeTable_();
   if (table.exact[path] !== undefined) return table.exact[path];
-  if (table.keyed[path] !== undefined) {
+  if (table.keyed[path] !== undefined && table.keyed[path].resource) {
     var baseHit = table.keyed[path];
     return {
       kind: 'resource',
@@ -269,6 +283,10 @@ function resolveRoute_(path) {
     throw apiError_(400, 'Clave inválida en la ruta');
   }
   var params = {};
+  if (owner.kind === 'handler') {
+    params[owner.paramKey] = key;
+    return { kind: 'handler', handler: owner.handler, params: params, policy: owner.policy };
+  }
   params[owner.resource.keyField] = key; // { slug: 'mi-slug' } según el recurso
   return { kind: 'resource', resource: owner.resource, params: params, policy: owner.policy };
 }
@@ -283,7 +301,8 @@ function dispatchRoute_(route, envelope) {
     payload: envelope.payload,
   };
   if (route.kind === 'handler') {
-    var handler = globalThis[route.handler];
+    var handler =
+      (REGISTRY.handlers && REGISTRY.handlers[route.handler]) || globalThis[route.handler];
     if (typeof handler !== 'function') {
       throw apiError_(500, 'Función no disponible: ' + route.handler);
     }

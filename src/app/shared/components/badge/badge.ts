@@ -1,10 +1,11 @@
 import { Component, computed, input } from '@angular/core';
 
-export type BadgeKind = 'success' | 'danger' | 'info' | 'neutral';
+export type BadgeKind = 'success' | 'danger' | 'warning' | 'info' | 'neutral';
 
 const KINDS: Record<BadgeKind, string> = {
   success: 'bg-success text-surface',
   danger: 'bg-danger text-surface',
+  warning: 'bg-accent/20 text-accent-text font-semibold',
   info: 'bg-primary text-surface',
   neutral: 'bg-neutral text-surface',
 };

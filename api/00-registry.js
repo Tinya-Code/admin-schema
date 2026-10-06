@@ -24,6 +24,7 @@ const REGISTRY = {
   transforms: {},
   checks: {},
   handlers: {},
+  hooks: {}, // emisión de eventos post-escritura (motor-plan T2c / M3)
 };
 
 // Devuelve el schema declarativo del recurso, o null si no existe.
