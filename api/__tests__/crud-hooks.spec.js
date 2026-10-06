@@ -1,5 +1,5 @@
 // api/__tests__/crud-hooks — engine/24-crud: emisión de REGISTRY.hooks
-// (motor-plan T2c / M3, TEST PRIMERO).
+// (refactormotor.md B9, TEST PRIMERO).
 //
 // 24-crud.js tiene 713 líneas y hasta ahora 0 tests: para probar que
 // create/update/delete EMITEN hay que ejercitar el write path real. La

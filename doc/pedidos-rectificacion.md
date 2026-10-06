@@ -253,13 +253,13 @@ sustitución de la fila en `_pin` en la misma transacción.
 
 ### Automatizada — verde
 
-| Gate                      | Resultado                                                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm test` (front)        | **147/147** — 29 ficheros                                                                                                                                    |
-| `npm run test:api` (back) | **144/144** — 15 ficheros                                                                                                                                    |
-| `npm run api:check`       | 🟢 7 recursos, **84 campos** comparados                                                                                                                      |
-| `npm run build`           | 🟢                                                                                                                                                           |
-| `npx prettier --check .`  | 🟢 (los 16 warnings restantes son deuda preexistente: `doc/ui-ux.md`, `doc/plan.md`, `api/PLAN*.md`, `api/fixtures/*.json`, `tsconfig.*`, `.postcssrc.json`) |
+| Gate                      | Resultado                                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm test` (front)        | **147/147** — 29 ficheros                                                                                                                     |
+| `npm run test:api` (back) | **144/144** — 15 ficheros                                                                                                                     |
+| `npm run api:check`       | 🟢 7 recursos, **84 campos** comparados                                                                                                       |
+| `npm run build`           | 🟢                                                                                                                                            |
+| `npx prettier --check .`  | 🟢 (los 15 warnings restantes son deuda preexistente: `doc/ui-ux.md`, `api/PLAN*.md`, `api/fixtures/*.json`, `tsconfig.*`, `.postcssrc.json`) |
 
 ### Manual — pendiente (no verificable sin la hoja real)
 

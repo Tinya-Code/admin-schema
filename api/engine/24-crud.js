@@ -736,7 +736,7 @@ function auditSummary_(resource, payload, prefix, fallback) {
   return prefix + ': ' + label;
 }
 
-// ── Hooks: el motor EMITE el evento (motor-plan T2c / M3) ───────────────────
+// ── Hooks: el motor EMITE el evento (refactormotor.md B9) ───────────────────
 //
 // Antes los eventos de uso sólo se reportaban desde un endpoint declarativo
 // (upload-signature): dependía de que el navegador se acordara de llamarlo.

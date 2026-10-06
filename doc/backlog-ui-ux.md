@@ -1,7 +1,7 @@
 # Backlog de controles UI/UX pendientes
 
-> **Origen:** §7 «Qué NO hacemos» de `plan-mejoras-ui-ux.md`, confirmada por el
-> mantenimiento el 2026-10-04.
+> **Origen:** §7 «Qué NO hacemos» (histórico: `plan-mejoras-ui-ux.md`),
+> confirmada por el mantenimiento el 2026-10-04.
 >
 > **Regla de admisión:** un ítem sale de este documento y entra en un plan
 > **cuando un requisito real lo pide**, con el schema que lo declara en la mano.

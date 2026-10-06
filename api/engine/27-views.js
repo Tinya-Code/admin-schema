@@ -11,7 +11,7 @@
 //     extends: '<otra vista>',   hereda su where (guard anti-ciclo)
 //     handler: '<REGISTRY.handlers>'   escape hatch §6 (sin where)
 //     aggregate: 'count'|'sum'|'avg',  devuelve UNA fila { value } y no
-//               los ítems (motor-plan T2b); sum/avg exigen `field`
+//               los ítems (refactormotor.md B6); sum/avg exigen `field`
 //   }
 // Operandos: value (literal) | from: '$item.<campo>' (ancla ctx.self,
 // sin ancla ⇒ la condición no resuelve ⇒ false) | ref: '<recurso>'
@@ -189,7 +189,7 @@ function applyViewFilter_(resource, name, items, ctx) {
   return out;
 }
 
-// ── Aggregate (motor-plan T2b / M2) ─────────────────────────────────────────
+// ── Aggregate (refactormotor.md B6) ─────────────────────────────────────────
 
 // Cláusulas admitidas. Con `aggregate` la vista devuelve UNA fila
 // { value } en vez de los ítems: es el dato que consume un widget del panel,

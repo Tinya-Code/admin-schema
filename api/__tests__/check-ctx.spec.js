@@ -1,5 +1,5 @@
 // api/__tests__/check-ctx — engine/23-validate: `checkCtx.currentChildren`
-// (pickpass-plan Fase 1.1 / T1.2, TEST PRIMERO).
+// (histórico: pickpass-plan Fase 1.1 / T1.2, TEST PRIMERO).
 //
 // Los checks declarados sólo reciben `ctx = { ss, isNew, key, current,
 // children }`, y `children` son SOLO las hijas del payload

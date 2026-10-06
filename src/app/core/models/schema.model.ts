@@ -254,7 +254,7 @@ export interface KeyValueField extends FieldBase<KeyValueItem[]>, ListOptions {
 }
 
 // ─────────────────────────────────────────────────────────────
-// §5.6 Widgets de panel (sólo `kind: 'dashboard'` — motor-plan T5/T7)
+// §5.6 Widgets de panel (sólo `kind: 'dashboard'` — refactormotor.md F4)
 // ─────────────────────────────────────────────────────────────
 
 /**
@@ -503,7 +503,7 @@ export interface ResourceSchema {
   labelPlural: string;
   /**
    * `collection` → listado, `singleton` → formulario directo,
-   * `dashboard` → panel de sólo lectura (motor-plan T4; sus datos llegan de
+   * `dashboard` → panel de sólo lectura (refactormotor.md F4; sus datos llegan
    * un endpoint declarativo, no de CRUD).
    */
   kind: 'collection' | 'singleton' | 'dashboard';
@@ -522,7 +522,7 @@ export interface ResourceSchema {
   /** Árbol de campos del formulario (base.md §4–§6). */
   fields: FieldSchema[];
   /**
-   * Widgets del panel — sólo `kind: 'dashboard'` (motor-plan T5).
+   * Widgets del panel — sólo `kind: 'dashboard'` (refactormotor.md F4).
    *
    * Van aparte de `fields`: un KPI no es un campo y no comparte `FieldBase`
    * (`required`/`visibleWhen`/`validators`…). Decisión tomada tras medir el

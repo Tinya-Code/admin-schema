@@ -106,7 +106,7 @@ function principalColSpecs_(resource) {
 // Specs de TODAS las hojas: principal + hijas por recurso, y las auxiliares.
 // Fuente única: REGISTRY.resources (schema/) + schema/05-aux-sheets.
 //
-// M1 (motor-plan 1.2): un recurso SIN `sheet` no tiene storage ⇒ no se le
+// Guard de storage (refactormotor.md B12): un recurso SIN `sheet` no tiene storage ⇒ no se le
 // crea ninguna hoja. Hace falta porque el descriptor del dashboard vive en
 // registry.ts (paridad exigida por contract-check.mjs:229) pero no persiste
 // filas; sin este guard specs.push({ name: undefined }) llegaba a

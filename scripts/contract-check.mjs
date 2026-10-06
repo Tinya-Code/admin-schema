@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/contract-check.mjs — Contract check: schemas back ↔ front
-// (plan doc/plan-schemas-separados.md, Fase 1, decisión D2).
+// (doc/refactormotor.md §5 — contrato front ↔ back, una sola fuente).
 //
 // Compara los resources de api/schema/resources/*.js con los schemas de
 // src/app/schemas/*.schema.ts:

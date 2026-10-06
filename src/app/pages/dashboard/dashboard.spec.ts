@@ -6,9 +6,9 @@ import { ApiService } from '../../core/services/api.service';
 import { Dashboard } from './dashboard';
 
 /**
- * Schema sintético con datos fixture — el criterio de salida de la Etapa 1
- * (motor-plan): «un schema sintético declara y dibuja sin errores de
- * render». Si esto dibuja, el problema no es del renderizador.
+ * Schema sintético con datos fixture — el criterio de salida de la primera
+ * etapa (histórico: motor-plan): «un schema sintético declara y dibuja sin
+ * errores de render». Si esto dibuja, el problema no es del renderizador.
  */
 const SCHEMA: ResourceSchema = {
   id: 'pickpass',

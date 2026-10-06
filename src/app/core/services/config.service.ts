@@ -12,8 +12,8 @@ import type { ResourceEndpoints } from '../models/schema.model';
  * Es genérico a propósito: NO conoce ningún singleton concreto. Los
  * endpoints los inyecta `app.config.ts` con `provideAppInitializer`,
  * derivándolos del registry — agregar un singleton de configuración nuevo
- * = declarar su schema, sin tocar este fichero (motor-plan: el schema es el
- * único plano de control).
+ * = declarar su schema, sin tocar este fichero (refactormotor.md §1 — el
+ * schema es el único plano de control).
  *
  * No hay efectos en el constructor: la carga es explícita (`load`), así un
  * TestBed que sólo provee un ApiService parcial no recibe una llamada

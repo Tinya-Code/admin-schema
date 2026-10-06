@@ -61,7 +61,7 @@ REGISTRY.resources.orders = {
   },
   views: {
     // Contadores para las metric-cards del dashboard.
-    // aggregate: 'count' → devuelve [{ value: n }] (motor-plan T2b / M2).
+    // aggregate: 'count' → devuelve [{ value: n }] (refactormotor.md B6).
     pendientes: {
       where: [{ field: 'status', op: 'eq', value: 'PENDIENTE' }],
       aggregate: 'count',

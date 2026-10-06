@@ -1,6 +1,6 @@
 // api/__tests__/setup-sheets — getSheetSpecs_ (setup/02-setup-sheets).
 //
-// M1 de motor-plan: el guard que evita crear hoja a un recurso sin storage.
+// Guard de storage (refactormotor.md B12): evita crear hoja a un recurso sin storage.
 // Necesario porque el descriptor del dashboard vive en `registry.ts`
 // (decisión explícita) y `contract-check.mjs:229` exige paridad back ↔ front,
 // pero un dashboard NO tiene filas que persistir.

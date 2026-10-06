@@ -97,7 +97,7 @@ src/
     │   │                             # línea acá. No hay auto-registro:
     │   │                             # import.meta.glob no transforma en el
     │   │                             # bundler de Angular (esbuild) — ver
-    │   │                             # doc/plan-schemas-separados.md, Fase 4.
+    │   │                             # doc/refactormotor.md §5 (histórico: plan-schemas-separados).
     │   │                             # Si te olvidás la línea, api:check sale
     │   │                             # rojo (contract check disco ↔ registry).
     │   ├── categories.schema.ts

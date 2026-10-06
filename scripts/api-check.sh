@@ -6,8 +6,8 @@
 #                    core/, engine/ ni primitives/.
 #   Regla 5 (§11.5): schema como fuente única — el registry y los archivos
 #                    de recurso declaran exactamente los mismos ids.
-#   Contract check:  schemas back ↔ front (doc/plan-schemas-separados.md
-#                    Fase 1) — paths + required + validators; divergencia =
+#   Contract check:  schemas back ↔ front (doc/refactormotor.md §5)
+#                    — paths + required + validators; divergencia =
 #                    rojo.
 #
 # Sale con código 1 si hay hallazgos (modos pre-F1 y F1+ según exista

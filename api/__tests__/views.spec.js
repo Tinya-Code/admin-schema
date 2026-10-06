@@ -1,5 +1,5 @@
 // api/__tests__/views — engine/27-views: evalWhere_, sortItems_,
-// applyDeclaredView_ y la cláusula `aggregate` (motor-plan T2b / M2).
+// applyDeclaredView_ y la cláusula `aggregate` (refactormotor.md B6).
 //
 // ANTES de este fichero, 27-views.js tenía 253 líneas y 0 tests: son las
 // funciones que ejecutan TODO lo declarativo de vistas, así que primero se
@@ -179,7 +179,7 @@ describe('applyDeclaredView_', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Parte B — cláusula `aggregate` (motor-plan T2b / M2)
+// Parte B — cláusula `aggregate` (refactormotor.md B6)
 // Estos tests FALLAN antes del cambio: sin `aggregate` la vista devuelve
 // los ítems filtrados en vez de una fila con el total.
 // ─────────────────────────────────────────────────────────────

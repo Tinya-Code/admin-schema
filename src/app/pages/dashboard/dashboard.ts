@@ -8,7 +8,7 @@ import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { WidgetHost } from '../../widgets/widget-host/widget-host';
 
 /**
- * Panel de métricas — tercer `kind` del registry (motor-plan T4).
+ * Panel de métricas — tercer `kind` del registry (refactormotor.md F4).
  *
  * Sólo lectura: no hay CRUD y los datos llegan de un endpoint declarativo
  * (Etapa 2, S4). Los widgets se declaran en `widgets` del schema — no en
