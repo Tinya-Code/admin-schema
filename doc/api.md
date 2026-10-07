@@ -5,7 +5,7 @@
 > `api/PLAN.md:6`. El resto (§1, §5–§8) está **superado por
 > `doc/baseapi.md`**, la autoridad de diseño según `api/PLAN.md:5`.
 >
-> Diseño derivado de `api-modelo-datos.md`. Google Sheets = base de datos.
+> Google Sheets = base de datos.
 > Apps Script = lógica del backend (reglas R1–R8 y endpoints). Sin código aquí:
 > solo estructura, columnas, relaciones y convenciones.
 

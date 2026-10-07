@@ -1,12 +1,12 @@
 /**
- * Contrato HTTP con el backend (doc/api.md §6 — Opción A, §7).
+ * Contrato HTTP con el backend (doc/baseapi.md §8 «Errores»).
  *
  * El backend responde SIEMPRE HTTP 200; los errores viajan en el body
- * con `{ error: { status, message } }`. El interceptor (Fase 3) los
- * convierte en `ApiError`.
+ * con `{ error: { status, message, errors?: [{ path, message }] } }`.
+ * El interceptor (Fase 3) los convierte en `ApiError`.
  */
 
-/** Shape del body de error (api.md §7). */
+/** Shape del body de error (doc/baseapi.md §8 «Errores»). */
 export interface ApiErrorBody {
   error: {
     status: number;

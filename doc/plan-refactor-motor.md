@@ -6,7 +6,8 @@
 >
 > **Fuentes:** `doc/refactormotor.md` (mejoras F1–F10 / B1–B14) y
 > `doc/auth.md` (autenticación, audiencias, overrides).
-> **Absorbe** `doc/plan-motor-de-renderizado.md` (31 tareas) — ver mapa §3.
+> **Absorbió** `doc/plan-motor-de-renderizado.md` (31 tareas, **borrado por
+> D8** el 2026-10-06) — ver mapa §3.
 >
 > Precedido por `doc/plan-limpieza.md` (limpieza y decisión de arranque).
 
@@ -146,10 +147,12 @@ terminado**:
   - **(7)** ¿se acepta logout «best-effort»?
   - **Hecho cuando:** las 7 están en §6.
 
-- [ ] **R0.5** — Cerrar D8: absorción del plan anterior
-  - **Pasos:** confirmar que `doc/plan-motor-de-renderizado.md` queda
-    **histórico** tras esta absorción (mapa en §3) y añadirle cabecera.
-  - **Hecho cuando:** no hay dos planes paralelos compitiendo.
+- [x] **R0.5** — Cerrar D8: absorción del plan anterior ✅ **RESUELTA**
+  - **Decisión del mantenedor: absorber y borrar.** El mapa §3 ya cubre las
+    31/31 tareas.
+  - **Ejecutado:** `git rm doc/plan-motor-de-renderizado.md` + citas
+    reparadas en `motor-renderizado-actual.md:7` y `refactormotor.md:4`.
+  - **Hecho cuando:** no hay dos planes paralelos compitiendo. ✅
 
 - [ ] **R0.6** — Fijar nomenclatura vigente
   - **Pasos:** confirmar §5 con las tablas de `refactormotor.md` §2
@@ -855,8 +858,8 @@ reorder, bulk }` con cada una encendible/apagable.
 - [ ] **R10.7** — Reejecutar gates y comparar contra el baseline (R0.2)
 - [ ] **R10.8** — Actualizar `doc/motor-renderizado-actual.md` con el estado
       final
-- [ ] **R10.9** — Archivar `doc/plan-motor-de-renderizado.md` (D8) y este
-      documento al cerrarse
+- [ ] **R10.9** — Archivar este documento al cerrarse _(el plan anterior ya
+      se borró con D8 en el Plan 1)_
 
 ---
 
@@ -892,17 +895,17 @@ reorder, bulk }` con cada una encendible/apagable.
 
 ## §4. Decisiones pendientes
 
-| ID      | Decisión                                         | Bloquea | Estado  |
-| ------- | ------------------------------------------------ | ------- | ------- |
-| **D9**  | `refactormotor` §9 — 6 decisiones                | R0.3    | abierta |
-| **D10** | `auth` §9 — 7 decisiones                         | R0.4    | abierta |
-| **D8**  | Absorber `plan-motor-de-renderizado.md`          | R0.5    | abierta |
-| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)       | R8.1    | abierta |
-| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos? | R8.2    | abierta |
-| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?     | R8.3    | abierta |
-| **D14** | R10: recrear pedidos o regenerar PIN             | R8.8    | abierta |
-| **D15** | `confirm-dialog`: usar o retirar                 | R10.1   | abierta |
-| **D16** | `POST /admin/events`: retirar o justificar       | R10.2   | abierta |
+| ID      | Decisión                                         | Bloquea | Estado                     |
+| ------- | ------------------------------------------------ | ------- | -------------------------- |
+| **D9**  | `refactormotor` §9 — 6 decisiones                | R0.3    | abierta                    |
+| **D10** | `auth` §9 — 7 decisiones                         | R0.4    | abierta                    |
+| **D8**  | Absorber `plan-motor-de-renderizado.md`          | R0.5    | ✅ **absorbido y borrado** |
+| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)       | R8.1    | abierta                    |
+| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos? | R8.2    | abierta                    |
+| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?     | R8.3    | abierta                    |
+| **D14** | R10: recrear pedidos o regenerar PIN             | R8.8    | abierta                    |
+| **D15** | `confirm-dialog`: usar o retirar                 | R10.1   | abierta                    |
+| **D16** | `POST /admin/events`: retirar o justificar       | R10.2   | abierta                    |
 
 ---
 

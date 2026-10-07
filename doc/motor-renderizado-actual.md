@@ -4,7 +4,8 @@
 > No propone cambios: describe el sistema tal como está, con referencias a
 > archivo:línea verificables.
 >
-> El plan de reforma asociado es `doc/plan-motor-de-renderizado.md`.
+> El plan de reforma asociado es `doc/plan-refactor-motor.md`
+> (histórico: `plan-motor-de-renderizado.md`, absorbido por D8).
 > Los hallazgos R1–R10 están en `doc/pedidos-rectificacion.md`.
 
 ---
