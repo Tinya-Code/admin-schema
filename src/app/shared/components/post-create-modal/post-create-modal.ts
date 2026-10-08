@@ -1,4 +1,4 @@
-import { Component, computed, input, output } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { LucideCheckCircle2 } from '@lucide/angular';
 
 import type {
@@ -7,6 +7,7 @@ import type {
   ResourceAction,
   ResourceSchema,
 } from '../../../core/models/schema.model';
+import { ConfigService } from '../../../core/services/config.service';
 import { interpolateTemplate } from '../../../core/utils/template-interpolator';
 import { Button } from '../button/button';
 import { CopyShare } from '../copy-share/copy-share';
@@ -82,20 +83,44 @@ export class PostCreateModal {
   readonly schema = input.required<ResourceSchema>();
   readonly config = input.required<PostCreateSchema>();
   readonly record = input.required<Record<string, unknown>>();
+
+  /**
+   * Override puntual del contexto de interpolación (tests, o quien quiera
+   * forzar un valor). **No** es la vía normal: la config global la aporta
+   * `ConfigService`, igual que en `list-view`.
+   */
   readonly configValues = input<Record<string, unknown>>({});
 
   readonly closed = output<void>();
 
+  /**
+   * Inyectado y NO opcional a propósito. El bug que motivó esto (D18): con
+   * el input `configValues` como única fuente y nadie bindeándolo, la
+   * plantilla salía con `{public_base_url}` vacío y el operador copiaba
+   * `…aquí: /p/ORD-0001.` — un enlace inpegable.
+   *
+   * `buildInterpolationContext` mezcla config global + fila y fija
+   * `public_base_url` (`config.service.ts:64-73`); `configValues` se aplica
+   * encima, sólo como override.
+   */
+  private readonly configService = inject(ConfigService);
+
+  /** Contexto único con el que se resuelven título, descripción, URL y mensaje. */
+  private readonly context = computed(() => ({
+    ...this.configService.buildInterpolationContext(this.record()),
+    ...this.configValues(),
+  }));
+
   protected readonly title = computed(() => {
     const raw = this.config().title || '¡Registro Creado con Éxito!';
-    return interpolateTemplate(raw, this.record(), this.configValues());
+    return interpolateTemplate(raw, this.context());
   });
 
   protected readonly description = computed(() => {
     const raw =
       this.config().description ||
       'El registro fue creado correctamente y ya se encuentra guardado en el sistema.';
-    return interpolateTemplate(raw, this.record(), this.configValues());
+    return interpolateTemplate(raw, this.context());
   });
 
   protected readonly summaryItems = computed<SummaryItem[]>(() => {
@@ -121,11 +146,11 @@ export class PostCreateModal {
   });
 
   protected resolvedShareUrl(action: CopyShareAction): string {
-    return interpolateTemplate(action.urlTemplate, this.record(), this.configValues());
+    return interpolateTemplate(action.urlTemplate, this.context());
   }
 
   protected resolvedShareText(action: CopyShareAction): string {
     if (!action.shareTextTemplate) return '';
-    return interpolateTemplate(action.shareTextTemplate, this.record(), this.configValues());
+    return interpolateTemplate(action.shareTextTemplate, this.context());
   }
 }

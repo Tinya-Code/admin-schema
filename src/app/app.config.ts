@@ -9,8 +9,9 @@ import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
 import { apiErrorInterceptor } from './core/interceptors/api-error.interceptor';
+import { AuthService } from './core/services/auth.service';
 import { ConfigService } from './core/services/config.service';
-import { ADMIN_TOKEN, API_URL } from './core/tokens';
+import { API_URL } from './core/tokens';
 import { schemas } from './schemas/registry';
 import { environment } from '../environments/environment';
 
@@ -34,10 +35,14 @@ export const appConfig: ApplicationConfig = {
     // Carga de config en bootstrap (explícita, fuera del constructor del
     // servicio): un singleton que falle no rompe el arranque.
     provideAppInitializer(() => inject(ConfigService).load(configEndpoints())),
-    // URL del Web App + token de admin (baseapi §2.3): viven en
-    // `environments/environment.local.ts` (gitignored; ver ejemplo en
-    // `environment.local.example.ts`). El token NUNCA se commitea.
+    // Sesión (R2.12): revalida contra `/auth/me` el token que restauró el
+    // AuthService de `sessionStorage`. Corre ANTES del primer guard, así
+    // que un usuario desactivado mientras la pestaña estaba abierta cae a
+    // login en el arranque, no en mitad de una edición. Sin token no hay
+    // viaje, y un fallo no puede romper el bootstrap (`restore` traga).
+    provideAppInitializer(() => inject(AuthService).restore()),
+    // URL del Web App (baseapi §2.3): vive en `environments/environment.local.ts`
+    // (gitignored; ver ejemplo en `environment.local.example.ts`).
     { provide: API_URL, useValue: environment.apiUrl },
-    { provide: ADMIN_TOKEN, useValue: environment.adminToken },
   ],
 };

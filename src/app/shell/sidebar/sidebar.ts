@@ -1,7 +1,8 @@
-import { Component, computed, model } from '@angular/core';
+import { Component, computed, inject, model } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import { allSchemas } from '../../schemas/registry';
+import { AuthService } from '../../core/services/auth.service';
 import { ThemeToggle } from '../theme-toggle/theme-toggle';
 import type { ResourceSchema } from '../../core/models/schema.model';
 
@@ -59,9 +60,16 @@ export class Sidebar {
    *  navegar) — binding de dos vías `[(open)]`. */
   readonly open = model(false);
 
+  private readonly auth = inject(AuthService);
+
+  /**
+   * R2.10 — el menú se corta dos veces: `isVisible` (permisos declarados
+   * en el schema) y `canAccess` (auth.md §5.3, `access` de la sesión).
+   * Sólo UX: filtrar acá no protege nada, el back re-verifica en R2.6.
+   */
   readonly menuItems = computed<MenuEntry[]>(() =>
     allSchemas()
-      .filter(isVisible)
+      .filter((schema) => isVisible(schema) && this.auth.canAccess(schema.access))
       .map((schema) => ({
         id: schema.id,
         label: schema.labelPlural,

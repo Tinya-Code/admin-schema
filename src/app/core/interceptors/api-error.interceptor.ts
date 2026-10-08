@@ -1,8 +1,10 @@
 import { HttpErrorResponse, HttpInterceptorFn, HttpResponse } from '@angular/common/http';
+import { inject } from '@angular/core';
 import { catchError, map, throwError } from 'rxjs';
 
 import { ApiError } from '../models/api.model';
 import type { ApiErrorBody } from '../models/api.model';
+import { AuthService } from '../services/auth.service';
 
 /**
  * Mensaje humano para un error HTTP real (§2).
@@ -49,13 +51,24 @@ function isErrorBody(body: unknown): body is ApiErrorBody {
  * (api.md §7), así que se detectan en el canal de **éxito** y se relanzan
  * como `ApiError` (con `fieldPath` cuando el backend envía `path`).
  * Los errores HTTP reales (red caída, proxy) también se normalizan.
+ *
+ * **R2.9 — paso dos de dos.** Éste archivo es el ÚNICO punto donde el
+ * sobre de error se abre; lo que decide qué ocurre con un `AUTH_*` es
+ * `AuthService.applyAuthCode` (la tabla de §4.5). Aquí sólo se le entrega
+ * el código y se propaga el `ApiError` con él — un segundo sitio que
+ * «interprete» el código sería una regla duplicada y, a la larga, una que
+ * se contradiga con la primera.
  */
-export const apiErrorInterceptor: HttpInterceptorFn = (req, next) =>
-  next(req).pipe(
+export const apiErrorInterceptor: HttpInterceptorFn = (req, next) => {
+  const auth = inject(AuthService);
+
+  return next(req).pipe(
     map((event) => {
       if (event instanceof HttpResponse && isErrorBody(event.body)) {
-        const { status, message, path } = event.body.error;
-        throw new ApiError(status, message, path);
+        const { status, message, path, code } = event.body.error;
+        // R2.9: ésta es la ÚNICA llamada a la tabla de §4.5.
+        auth.applyAuthCode(code);
+        throw new ApiError(status, message, path, code);
       }
       return event;
     }),
@@ -69,3 +82,4 @@ export const apiErrorInterceptor: HttpInterceptorFn = (req, next) =>
       return throwError(() => err);
     }),
   );
+};

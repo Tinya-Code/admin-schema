@@ -539,6 +539,16 @@ export interface ResourceSchema {
   postCreate?: PostCreateSchema;
   permissions?: ResourcePermissions;
   /**
+   * Acceso declarado por recurso (auth.md §5.3) — **sólo UX**: oculta
+   * ruta, entrada de menú y botones. Aunque el front se manipule, el back
+   * vuelve a verificar en cada petición: esto nunca es una barrera.
+   *
+   * No lo declara ningún schema mientras sólo exista el rol `admin`
+   * (§9.4): sin declaración el efecto es «sesión», que es lo correcto hoy.
+   * Aparece el día que haya un segundo rol.
+   */
+  access?: ResourceAccess;
+  /**
    * Claves de `fields` que el listado edita en un drawer sin navegar
    * (plan 6.5, guía §5: «edición rápida de pocos campos, panel lateral en
    * lugar de pantalla nueva»). 1–3 campos; si no se declara, no hay atajo.
@@ -609,4 +619,38 @@ export interface ViewDescriptor {
 /** Políticas públicas: sólo `access`, lo mínimo para menú/acciones. */
 export interface ResourcePolicies {
   access: { read: string; write: string };
+}
+
+/** §5.3 — `access` de un recurso. `requires` usa el vocabulario de §4.4. */
+export interface ResourceAccess {
+  requires?: string;
+  roles?: string[];
+}
+
+/** Un campo de la pantalla de login (auth.md §5.1). */
+export interface AuthFieldDeclaration {
+  key: string;
+  /** `email` | `password` — tipos primitivos; el registro de render los
+   *  absorberá en Fase 3 (R3.3), cuando exista el descriptor `password`. */
+  type: string;
+  required?: boolean;
+}
+
+/**
+ * Pantalla de login declarada (auth.md §5.1): **vive sólo en el schema del
+ * front** — el back no conoce estas etiquetas ni este layout, sólo declara
+ * el `input` de `/auth/login`. El `contract-check` (R2.11) verifica que las
+ * claves de `loginFields` existan en ese `input`.
+ */
+export interface AuthSchema {
+  /** Proveedores disponibles. §9.1 eligió B: **sólo `password`**. */
+  providers: string[];
+  loginFields: AuthFieldDeclaration[];
+  redirectAfterLogin: string;
+  /**
+   * D10-3 → **`false` siempre.** La opción «recordarme» con `localStorage`
+   * quedó denegada (§9.3): el token vive en `sessionStorage` y muere con la
+   * pestaña. Declarar `true` prometería un storage que nadie usa.
+   */
+  rememberMe: boolean;
 }

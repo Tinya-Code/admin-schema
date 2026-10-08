@@ -109,19 +109,46 @@ describe('ordersSchema — creación de pedidos', () => {
       expect(template, `template ${i} sin la URL pública`).toContain('{public_base_url}');
     }
 
-    // El de la vista de detalle/lista se interpola SOBRE LA FILA PROYECTADA,
-    // por eso `pin` tiene que estar en `listProjection` (orders.js). Acá se
-    // comprueba el extremo que sí importa: el texto copiado con el PIN puesto.
-    const rendered = interpolateTemplate(templates[1]!, {
-      ref: 'ORD-0001',
-      pin: '482913',
-      customer_name: 'Ana Pérez',
+    // Los DOS contextos, con la FIRMA REAL de cada call site — no un objeto
+    // a mano, que es como se tapó esto antes:
+    //
+    //  - alta: `post-create-modal.ts:129` → interpolateTemplate(tpl, record, configValues)
+    //  - lista: `list-view.ts:717`      → interpolateTemplate(tpl, buildInterpolationContext(row))
+    //
+    // `record` es la respuesta del `create` y la fila proyectada: el PIN
+    // viene del back en los dos. Si el back deja de mandarlo,
+    // `interpolateTemplate` lo resuelve a '' y el mensaje ya no termina con
+    // el PIN — que es exactamente el bug original (R4).
+    const respuestaCreate = { ref: 'ORD-0001', pin: '482913', customer_name: 'Ana Pérez' };
+    const configValues = { public_base_url: 'https://example.test' };
+    // `buildInterpolationContext` mezcla config + fila y fija
+    // `public_base_url` al final (config.service.ts:64-73).
+    const contextoLista = {
+      ...configValues,
+      ...respuestaCreate,
       public_base_url: 'https://example.test',
-    });
-    expect(rendered).toBe(
+    };
+
+    const esperado =
       'Hola Ana Pérez, puede retirar su pedido ORD-0001 aquí: ' +
-        'https://example.test/p/ORD-0001. Su PIN es 482913.',
-    );
+      'https://example.test/p/ORD-0001. Su PIN es 482913.';
+
+    const alta = interpolateTemplate(templates[0]!, respuestaCreate, configValues);
+    const lista = interpolateTemplate(templates[1]!, contextoLista);
+
+    expect(alta, 'alta').toBe(esperado);
+    expect(lista, 'lista').toBe(esperado);
+
+    for (const [nombre, rendered] of [
+      ['alta', alta],
+      ['lista', lista],
+    ] as const) {
+      expect(rendered, `${nombre}: el PIN no terminó el mensaje`).toContain('Su PIN es 482913.');
+      expect(rendered, `${nombre}: el PIN quedó sin resolver`).not.toContain('{pin}');
+      expect(rendered, `${nombre}: la URL pública quedó vacía`).toContain(
+        'https://example.test/p/',
+      );
+    }
   });
 
   it('los dos mensajes de compartir dicen exactamente lo mismo', () => {

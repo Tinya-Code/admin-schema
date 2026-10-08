@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 
+import { roleGuard } from '../core/guards/auth.guard';
 import { unsavedChangesGuard } from '../core/guards/unsaved-changes.guard';
 import { Layout } from './layout/layout';
 
@@ -20,11 +21,13 @@ export const shellRoutes: Routes = [
       {
         path: ':id/new',
         loadComponent: () => import('../pages/form-view/form-view').then((m) => m.FormView),
+        canActivate: [roleGuard],
         canDeactivate: [unsavedChangesGuard],
       },
       {
         path: ':id/:key/edit',
         loadComponent: () => import('../pages/form-view/form-view').then((m) => m.FormView),
+        canActivate: [roleGuard],
         canDeactivate: [unsavedChangesGuard],
       },
       // Ficha de detalle enlazable (`/orders/{ref}`): la comparte el widget
@@ -32,11 +35,13 @@ export const shellRoutes: Routes = [
       // importa — va después de `new` y de `…/edit`, que son más específicas.
       {
         path: ':id/:key',
+        canActivate: [roleGuard],
         loadComponent: () =>
           import('../pages/resource-page/resource-page').then((m) => m.ResourcePage),
       },
       {
         path: ':id',
+        canActivate: [roleGuard],
         loadComponent: () =>
           import('../pages/resource-page/resource-page').then((m) => m.ResourcePage),
       },

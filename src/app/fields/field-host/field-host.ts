@@ -1,4 +1,4 @@
-import { Component, computed, forwardRef, input } from '@angular/core';
+import { Component, computed, effect, forwardRef, input, isDevMode } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
 import { LucideCircleAlert } from '@lucide/angular';
 
@@ -9,6 +9,7 @@ import type {
   DateField,
   EmailField,
   FieldSchema,
+  FieldType,
   GroupField,
   ImageField,
   KeyValueField,
@@ -48,10 +49,21 @@ import { FieldStringList } from '../string-list/string-list';
 import { FieldText } from '../text/text';
 import { FieldTextarea } from '../textarea/textarea';
 import { FieldTime } from '../time/time';
+import { UnknownRender } from '../unknown-render/unknown-render';
 import { FieldUrl } from '../url/url';
 
-/** Tipos que la UI sabe renderizar. */
-const SUPPORTED_FIELD_TYPES = new Set<string>([
+/**
+ * Tipos que la UI sabe renderizar.
+ *
+ * El `satisfies` + el `Exclude` de abajo son el tripwire de R1.7 (D17) en
+ * AMBAS direcciones:
+ *   · un valor que no esté en la unión `FieldSchema` ⇒ `satisfies` falla;
+ *   · un tipo de la unión que falte acá ⇒ `FaltaEnLaUi` no es `never`.
+ *
+ * Vive en producción, no en un `.spec.ts`, para que lo vean por igual
+ * `npm run build` y `npm test` sin depender de que un test lo ejecute.
+ */
+const SUPPORTED_FIELD_TYPE_LIST = [
   'text',
   'textarea',
   'slug',
@@ -72,7 +84,14 @@ const SUPPORTED_FIELD_TYPES = new Set<string>([
   'key-value',
   'relation',
   'image',
-]);
+] as const satisfies readonly FieldType[];
+
+type FaltaEnLaUi = Exclude<FieldType, (typeof SUPPORTED_FIELD_TYPE_LIST)[number]>;
+const _exhaustivo: FaltaEnLaUi extends never
+  ? true
+  : ['Falta en SUPPORTED_FIELD_TYPE_LIST', FaltaEnLaUi] = true;
+
+const SUPPORTED_FIELD_TYPES = new Set<string>(SUPPORTED_FIELD_TYPE_LIST);
 
 /** ¿La UI sabe renderizar este tipo de campo? */
 export function isSupportedFieldType(type: string): boolean {
@@ -124,6 +143,7 @@ export function isSupportedFieldType(type: string): boolean {
     FieldUrl,
     FormField,
     LucideCircleAlert,
+    UnknownRender,
   ],
   // El contexto llega a los controles por DI: cada tipo de campo vive en un
   // componente hijo distinto, así que pasarle inputs sería repetirlo 14 veces.
@@ -289,6 +309,13 @@ export function isSupportedFieldType(type: string): boolean {
           <p [id]="helpId()" class="mt-1 text-help text-neutral">{{ help }}</p>
         }
       </div>
+    } @else if (showUnknown()) {
+      <!-- R1.10: degradación controlada. El @switch no tiene @default, así
+           que el tipo desconocido no revienta; acá se avisa en dev y en
+           producción sólo se omite (console.warn en el effect de la clase).
+           Tampoco se dibuja si el campo además está oculto por visibleWhen.
+           Sin backticks: esto vive DENTRO del template literal. -->
+      <app-unknown-render [type]="field().type" [label]="field().label" />
     }
   `,
 })
@@ -306,10 +333,49 @@ export class FieldHost {
   /** Recurso dueño del formulario (lo consume `image` para la firma, §11.2). */
   readonly resource = input('');
 
+  /**
+   * Resuelto una vez por instancia: Angular lo apaga en el build de
+   * producción (`enableProdMode`), así que el aviso de R1.10 no llega a
+   * renderizarse ahí — sólo queda el `console.warn`.
+   */
+  private readonly dev = isDevMode();
+
   /** Fuera del catálogo o oculto por `visibleWhen`: no se dibuja. */
   protected readonly supported = computed(
     () => isSupportedFieldType(this.field().type) && !this.state().hidden(),
   );
+
+  /**
+   * Tipo fuera de `SUPPORTED_FIELD_TYPE_LIST`, con independencia de si está oculto.
+   *
+   * No se toca `state()` acá: un tipo desconocido se siembra como
+   * `undefined` (`seedValue` no tiene `@default`), Signal Forms no le crea
+   * nodo y `childTree` lanza «El formulario no contiene el campo». Es el
+   * MISMO motivo por el que `supported()` sobrevive: el `&&` corta antes de
+   * leer el estado.
+   */
+  protected readonly unsupported = computed(() => !isSupportedFieldType(this.field().type));
+
+  /**
+   * Aviso de R1.10: sólo en dev.
+   *
+   * Un campo OCULTO de tipo soportado cae en la misma rama `@else` del
+   * template, y acá no se pinta porque `unsupported()` es falso — no hace
+   * falta (ni sería posible) releer `state().hidden()`.
+   */
+  protected readonly showUnknown = computed(() => this.unsupported() && this.dev);
+
+  /**
+   * En producción no se pinta nada — «nunca pantalla rota» — pero el tipo
+   * desconocido queda trazado: sin esto, un schema que declare un `type`
+   * inexistente es indistinguible de un campo legítimamente vacío.
+   */
+  private readonly _trazaTipoDesconocido = effect(() => {
+    if (!this.unsupported() || this.dev) return;
+    console.warn(
+      `[field-host] tipo de campo sin renderizador: "${this.field().type}" — se omite el control.`,
+    );
+  });
 
   // El @switch garantiza el tipo; los computeds estrechan el union.
   protected readonly text = computed(() => this.field() as TextField);

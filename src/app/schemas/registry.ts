@@ -18,6 +18,14 @@ import { siteSchema } from './site.schema';
  * No hay capa remota: `/admin/schema` no se consume en runtime y no existe
  * el recurso sólo-backend (F7-4) que se sintetizara desde esa proyección.
  */
+/**
+ * Pantalla de login (auth.md §5.1). Se re-exporta acá junto a los
+ * recursos porque es la MISMA idea: una pieza declarada del front, y el
+ * `contract-check` valida sus `loginFields` contra el `input` de
+ * `/auth/login` — mismo mecanismo que los `*.schema.ts`.
+ */
+export { authSchema } from './auth.schema';
+
 export const schemas: readonly ResourceSchema[] = [
   dashboardSchema,
   categoriesSchema,

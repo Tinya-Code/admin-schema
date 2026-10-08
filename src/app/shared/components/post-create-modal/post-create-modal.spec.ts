@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import type { PostCreateSchema, ResourceSchema } from '../../../core/models/schema.model';
+import { CopyShare } from '../copy-share/copy-share';
 import { PostCreateModal } from './post-create-modal';
 
 describe('PostCreateModal', () => {
@@ -118,5 +120,46 @@ describe('PostCreateModal', () => {
     fixture.detectChanges();
 
     expect(closedEmitted).toBe(true);
+  });
+
+  it('5. el enlace copiado lleva la URL pública sin que nadie pase configValues', () => {
+    // Réplica EXACTA del binding de producción: `form-view.ts:420-425` sólo
+    // pasa `schema`, `config`, `record` y `closed`. Nadie bindea
+    // `[configValues]`, así que la única fuente posible de
+    // `{public_base_url}` es `ConfigService` inyectado en el componente
+    // (D18): antes no lo estaba y el enlace salía sin dominio.
+    const configConUrl: PostCreateSchema = {
+      ...mockConfig,
+      actions: [
+        {
+          id: 'share',
+          type: 'copy-share',
+          label: 'Copiar Enlace de Retiro',
+          urlTemplate: '{public_base_url}/p/{ref}',
+          shareTextTemplate:
+            'Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}.',
+        },
+      ],
+    };
+
+    fixture.componentRef.setInput('schema', mockSchema);
+    fixture.componentRef.setInput('config', configConUrl);
+    fixture.componentRef.setInput('record', { ref: 'ORD-999', customer_name: 'Ana Pérez' });
+    fixture.detectChanges();
+
+    const share = fixture.debugElement.query(By.directive(CopyShare))
+      .componentInstance as CopyShare;
+
+    // Sin `configValues`, el dominio lo aporta `ConfigService` (fallback a
+    // `window.location.origin`, config.service.ts:30).
+    const esperado = `${window.location.origin}/p/ORD-999`;
+    expect(share.url(), 'el enlace quedó sin dominio').toBe(esperado);
+    expect(share.shareText(), 'el mensaje quedó con la URL rota').toContain(esperado);
+
+    // Y el input sigue mandando cuando alguien lo pasa: es un override,
+    // no la fuente principal.
+    fixture.componentRef.setInput('configValues', { public_base_url: 'https://retiro.com' });
+    fixture.detectChanges();
+    expect(share.url(), 'el override dejó de aplicar').toBe('https://retiro.com/p/ORD-999');
   });
 });

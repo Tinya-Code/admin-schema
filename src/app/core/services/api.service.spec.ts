@@ -1,10 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
-import { ADMIN_TOKEN, API_URL } from '../tokens';
+import { API_URL } from '../tokens';
 import { ApiService } from './api.service';
+import { SESSION_TOKEN_KEY, SESSION_USER_KEY } from './auth.service';
 
 interface Row {
   slug: string;
@@ -17,19 +19,26 @@ describe('ApiService — desarrollo del envelope de listado (F7-3)', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
+    // La sesión se restaura desde `sessionStorage` (R2.12): sembrarla antes
+    // de inyectar es lo mismo que hacer login y recargar la pestaña.
+    sessionStorage.setItem(SESSION_TOKEN_KEY, 'tok');
+    sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify({ id: 'u_1', role: 'admin' }));
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideRouter([]),
         { provide: API_URL, useValue: '/api' },
-        { provide: ADMIN_TOKEN, useValue: 'tok' },
       ],
     });
     api = TestBed.inject(ApiService);
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.verify();
+    sessionStorage.clear();
+  });
 
   it('pide POST text/plain con el envelope y desenvuelve { items, total }', async () => {
     const pending = firstValueFrom(api.list<Row>(ENDPOINTS));
