@@ -86,7 +86,22 @@ function entryIndexOf_(entries, column, value) {
 // ── Escritura ──────────────────────────────────────────────────────────────
 
 // Objeto plano {columna: valor} → arreglo alineado a headers (faltantes '' ).
+//
+// FAIL-LOUD (R1.1): una clave de `flat` sin columna en la hoja NO puede
+// escribirse. Antes `headers.map` ni la consultaba — se descartaba en
+// silencio y la operación respondía OK mientras el dato se perdía para
+// siempre. El desajuste es del ALMACÉN (schema ⇄ hoja desalineados), nunca
+// del payload: por eso 500 y no 422, y por eso nombra las columnas.
 function rowValues_(headers, flat) {
+  var missing = Object.keys(flat).filter(function (k) {
+    return headers.indexOf(k) === -1;
+  });
+  if (missing.length > 0) {
+    throw apiError_(
+      500,
+      'Columna ausente en la hoja: ' + missing.join(', ') + '. Correr setupDrift.',
+    );
+  }
   return headers.map(function (h) {
     var v = flat[h];
     return v === undefined || v === null ? '' : v;

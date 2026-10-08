@@ -20,9 +20,26 @@ var AUX_SHEETS = {
     columns: ['timestamp', 'event', 'ref', 'session_id', 'meta'],
     note: 'Eventos de uso del cliente — señal de adopción, NO fuente de verdad de estado (A4.13, Fase 6)',
   },
+  _users: {
+    columns: [
+      'id',
+      'email',
+      'name',
+      'role',
+      'active',
+      'token_version',
+      'pass_hash',
+      'pass_salt',
+      'last_login_at',
+      'created_at',
+    ],
+    // Nunca expuesta: no hay recurso `users` todavía (viene en R7.6, Fase 7),
+    // así que no aparece en REGISTRY.resources ni en /admin/schema.
+    note: 'Usuarios y roles — hoja interna, NUNCA expuesta (auth.md §4.1). password = opción B (SHA-256 iterado con sal)',
+  },
 };
 
-var AUX_SHEET_ORDER = ['_enums', '_placeholders', '_audit_log', '_pin', '_events'];
+var AUX_SHEET_ORDER = ['_enums', '_placeholders', '_audit_log', '_pin', '_events', '_users'];
 
 // Columnas efectivas de una hoja auxiliar (resolución en runtime: evita
 // referencias a otros archivos en tiempo de carga).

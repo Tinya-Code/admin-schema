@@ -54,6 +54,18 @@ export function fakeSheet_(grid) {
       };
     },
 
+    /**
+     * `appendRow` — sólo lo usa `50-audit.js`. Se ajusta al ancho de la
+     * cabecera, como haría la hoja real al no recibir más columnas.
+     */
+    appendRow(values) {
+      const row = new Array(state.grid[0].length).fill('');
+      values.forEach((value, i) => {
+        if (i < row.length) row[i] = value;
+      });
+      state.grid.push(row);
+    },
+
     /** Inspección directa desde el test. */
     rows: () => state.grid,
   };

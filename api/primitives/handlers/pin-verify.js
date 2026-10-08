@@ -1,6 +1,6 @@
 // primitives/handlers/pin-verify — Verificación pública de PIN de autorización (Fase 5).
 //
-// Resuelto desde `REGISTRY.endpoints.pinVerify` (POST /p/orders/:ref/pin).
+// Resuelto desde `REGISTRY.endpoints.pinVerify` (POST /p/pin/:ref).
 // Flujo:
 //   1. Lee la hoja auxiliar `_pin` buscando filas para el `ref`.
 //   2. Si no hay PIN configurado → 404 (el pedido no requiere PIN).

@@ -3,9 +3,14 @@
 // GAS NO permite fijar el código de estado → TODAS las respuestas son HTTP
 // 200 y el estado real viaja DENTRO del JSON:
 //   éxito  → JSON plano
-//   error  → { error: { status, message, errors?: [{ path, message }] } }
-// Estados usados: 400 · 401 · 404 · 409 · 422 · 429 · 500.
+//   error  → { error: { status, message, code?, errors?: [{ path, message }] } }
+// Estados usados: 400 · 401 · 403 · 404 · 409 · 422 · 429 · 500.
 // Los errores de validación llevan la lista COMPLETA con ruta (criterio 8).
+//
+// `code` es ADITIVO (auth.md §4.5 / D10-5): SÓLO aparece para los cinco
+// códigos de sesión que el front necesita distinguir (AUTH_REQUIRED,
+// AUTH_INVALID, AUTH_EXPIRED, FORBIDDEN, RATE_LIMITED). El resto de errores
+// conserva EXACTAMENTE el envelope de siempre — y jamás `{ ok: false }`.
 
 // Respuesta de éxito: JSON plano, sin envoltorios.
 function respond_(data) {
@@ -15,18 +20,21 @@ function respond_(data) {
 }
 
 // Respuesta de error con el envelope canónico.
-function respondError_(status, message, errors) {
+function respondError_(status, message, errors, code) {
   var error = { status: status, message: message };
+  if (code) error.code = code;
   if (errors && errors.length > 0) error.errors = errors;
   return respond_({ error: error });
 }
 
 // Lanza un error con estado (y opcionalmente la lista de errores con ruta)
 // para que el router lo capture y lo responda con respondError_.
-function apiError_(status, message, errors) {
+// `code` es el código de sesión de auth.md §4.5 (ver cabecera).
+function apiError_(status, message, errors, code) {
   var err = new Error(message);
   err.apiStatus = status;
   if (errors && errors.length > 0) err.apiErrors = errors;
+  if (code) err.apiCode = code;
   return err;
 }
 
@@ -41,7 +49,7 @@ function validationError_(errors) {
 //     respuesta: puede contener información interna).
 function errorResponse_(err) {
   if (err && typeof err.apiStatus === 'number') {
-    return respondError_(err.apiStatus, String(err.message || 'Error'), err.apiErrors);
+    return respondError_(err.apiStatus, String(err.message || 'Error'), err.apiErrors, err.apiCode);
   }
   Logger.log('✗ ' + (err && err.stack ? err.stack : String(err)));
   return respondError_(500, 'Error interno del servidor');

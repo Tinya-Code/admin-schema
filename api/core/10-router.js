@@ -16,6 +16,18 @@
 // Métodos lógicos admitidos en el cuerpo de la petición.
 var ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
+// Funciones sólo ejecutables desde el editor de Apps Script (R2.2, auth.md
+// §4.7). El router resuelve handlers con `globalThis[route.handler]`, así que
+// un endpoint que declarara uno de estos nombres lo expondría por HTTP.
+// Esta lista es la barrera; schema/validate-registry.js además la comprueba
+// al cargar, para que el error salga en el arranque y no en producción.
+// Debe declararse ANTES de validate-registry.js (core/ < schema/ en orden
+// de carga, igual que en filePushOrder).
+// `setupAll` entra en la lista aunque ninguna ruta lo declare hoy: encadena
+// `bootstrapAdmin_` y crea un administrador, así que el guard tiene que
+// existir ANTES de que a alguien se le ocurra declararlo (D24).
+var EDITOR_ONLY_FNS = ['setupAuth_', 'bootstrapAdmin_', 'setupAll'];
+
 // Paridad método lógico ↔ operación (F2-4): EXACTAMENTE la semántica que
 // despacha engine/24-crud, hecha explícita acá para que el contrato sea
 // visible y verificable:
@@ -123,13 +135,20 @@ function normalizeAccess_(declared) {
 }
 
 // `limits` declarado: string ('<n>/min') o { read, write }. Ausencia ⇒ null.
+//
+// Un objeto puede llevar además `account` (R2.13, auth.md §4.6): la ventana
+// de fallos por cuenta del login. No es un grupo de método — el router no
+// lo lee; lo recibe el handler en `request.limits` y lo ejecuta
+// `26-lock-cache`. Se conserva aquí para que el que declara y el que ejecuta
+// lean la MISMA declaración.
 function normalizeLimits_(declared) {
   if (typeof declared === 'string' && declared !== '') {
-    return { read: declared, write: declared };
+    return { read: declared, write: declared, account: null };
   }
   return {
     read: declared && typeof declared.read === 'string' ? declared.read : null,
     write: declared && typeof declared.write === 'string' ? declared.write : null,
+    account: declared && typeof declared.account === 'string' ? declared.account : null,
   };
 }
 
@@ -176,13 +195,19 @@ function doPost(e) {
     }
     var policy = route !== null ? route.policy : null; // null ⇒ fail-closed
     var group = envelope.method === 'GET' ? 'read' : 'write';
-    requireAccess_(envelope.token, policyAccess_(policy, group)); // 401
+    // §3.4: la cadena corre ANTES que cualquier 400/404 de resolución, como
+    // antes — 401 primero, que es lo que el orden actual garantiza. En rutas
+    // `public` no se verifica nada (el nivel ya lo normaliza abajo).
+    var accessLevel = normalizeAccessLevel_(policyAccess_(policy, group));
+    var session = null;
+    if (accessLevel !== 'public') session = verifySession_(envelope.token);
+    requireAccess_(session === null ? null : session.user, accessLevel); // 401/403
     if (resolveError !== null) throw resolveError; // 400 (clave inválida)
     if (route === null) {
       throw apiError_(404, 'Ruta no encontrada: ' + truncate_(envelope.path));
     }
     enforceRateLimit_(policy, group); // 429 (F6-3, §8)
-    return dispatchRoute_(route, envelope);
+    return dispatchRoute_(route, envelope, session);
   } catch (err) {
     // El token NUNCA llega a un log ni a una respuesta (baseapi §10.2).
     if (envelope && typeof envelope.token === 'string' && envelope.token !== '') {
@@ -293,27 +318,63 @@ function resolveRoute_(path) {
 
 // Delega según la ruta y envuelve la respuesta plana en el envelope 200.
 // Los handlers DEVUELVEN datos (no TextOutput): el envoltorio es acá.
-function dispatchRoute_(route, envelope) {
+function dispatchRoute_(route, envelope, session) {
+  // `session` es opcional: el router siempre lo pasa, pero invocar el
+  // dispatch a mano (tests, editor) sin cadena debe seguir significando
+  // «sin identidad», no «excepción al leer .user».
+  session = session || null;
   var request = {
     method: envelope.method,
     path: envelope.path,
     params: route.params,
     payload: envelope.payload,
+    // §3.4 paso 6: la identidad YA está verificada por la cadena. El handler
+    // no comprueba nada — sólo lee. `sid` va aparte porque es lo que R2.16
+    // necesita para revocar.
+    user: session === null ? null : session.user,
+    sid: session === null ? null : session.payload.sid,
+    // Política de la ruta ya resuelta (R2.13): el handler necesita leer la
+    // declaración `limits` del endpoint que le corresponde, y acá ya está
+    // normalizada. Los handlers que no la usan no ven diferencia.
+    limits: route.policy ? route.policy.limits : null,
   };
   if (route.kind === 'handler') {
+    // Sólo ejecutables desde el editor de Apps Script (R2.2 / auth.md §4.7).
+    // El fallback a globalThis de más abajo significa que basta con que un
+    // endpoint DECLARE el nombre para que sea invocable por HTTP: sin ésta
+    // lista el «nunca por endpoint» sería cierto sólo por suerte.
+    if (EDITOR_ONLY_FNS.indexOf(route.handler) !== -1) {
+      throw apiError_(403, 'Función sólo ejecutable desde el editor de Apps Script');
+    }
     var handler =
       (REGISTRY.handlers && REGISTRY.handlers[route.handler]) || globalThis[route.handler];
     if (typeof handler !== 'function') {
       throw apiError_(500, 'Función no disponible: ' + route.handler);
     }
-    return respond_(handler(envelope.payload, request));
+    return respond_(withRenewal_(handler(envelope.payload, request), session));
   }
   // Motor genérico (engine/24-crud): dispatchResource_(resource, request)
   var dispatch = globalThis['dispatchResource_'];
   if (typeof dispatch !== 'function') {
     throw apiError_(500, 'El motor de recursos no está disponible');
   }
-  return respond_(dispatch(route.resource, request));
+  return respond_(withRenewal_(dispatch(route.resource, request), session));
+}
+
+// §3.2 paso 7 — renovación deslizante: si queda menos del TOKEN_RENEW_RATIO
+// de vida, la respuesta lleva `meta.renewedToken` y el front lo reemplaza.
+//
+// Sólo se AÑADE la clave `meta`: el formato plano de la respuesta no cambia
+// (§4.5 manda conservarlo). Si el resultado no es un objeto no se toca —
+// preferimos perder una renovación a reescribirle la forma a una respuesta
+// que alguien ya está parseando.
+function withRenewal_(result, session) {
+  if (session === null) return result;
+  var renew = renewMeta_(session.payload);
+  if (renew === null) return result;
+  if (result === null || typeof result !== 'object') return result;
+  result.meta = renew;
+  return result;
 }
 
 // ── Utilidades internas ───────────────────────────────────────────────────

@@ -134,6 +134,20 @@ function childRowsToItems_(child, headers, rows, parentKey) {
 
 // Entrada de la hoja principal → objeto de contrato COMPLETO (con todas
 // sus hojas hijas). Es el detalle: el listado usa projectItem_ después.
+// Fila recién escrita (arreglo alineado a headers) → el MISMO `entry` que
+// readDetail_ reconstruye desde la hoja, sin releerla.
+//
+// R1.3: la respuesta de create/update sale de LO ESCRITO + los computados
+// que ya están en la fila. Antes dependía de readDetail_: si la relectura
+// no encontraba el valor (columna ausente, carrera), el campo volvía vacío
+// en la respuesta aunque el payload lo traía. `at` no participa en el
+// ensamblado (assembleFull_ sólo lee `flat`); va para conservar el shape.
+function writtenEntry_(headers, row) {
+  var flat = {};
+  for (var i = 0; i < headers.length; i++) flat[headers[i]] = row[i];
+  return { flat: flat, at: 0, values: row };
+}
+
 function assembleFull_(ss, resource, map, entry) {
   var obj = flatToContract_(map, entry.flat);
   var parentKey = entry.flat[map.keyField];

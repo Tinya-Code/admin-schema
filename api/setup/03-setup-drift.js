@@ -6,9 +6,18 @@
 //   • tipo con datos incompatibles      → BLOQUEA (ok:false + el detalle)
 //   • SCHEMA_VERSION cambió             → propiedad + fila en _audit_log
 // Idempotente: 2ª corrida sin cambios ⇒ report vacío, sin filas nuevas.
+//
+// R1.2 / B4: `setupDrift({ dryRun: true })` ejecuta MISMO chequeo pero NO
+// escribe nada — ni crea hojas/columnas ni toca SCHEMA_VERSION. Es la fuente
+// del `sheet-check` que corre en Node (scripts/sheet-drift-check.mjs), donde
+// un check no puede mutar la hoja de producción. Misma implementación para
+// ambos: no puede haber deriva entre «lo que reporta el check» y «lo que
+// hace la migración».
 
 // Punto de entrada: aplica lo que el schema exige y reporta lo dudoso.
-function setupDrift() {
+// `opts.dryRun` ⇒ sólo reporta (por defecto, aplica).
+function setupDrift(opts) {
+  var dryRun = !!(opts && opts.dryRun === true);
   var ss = openSpreadsheet_();
   var specs = getSheetSpecs_();
   var report = {
@@ -26,6 +35,13 @@ function setupDrift() {
 
     // Hoja inexistente o vacía → crearla/escriturarla y no seguir (sin datos que comparar)
     if (sheet === null || getHeaders_(sheet).length === 0) {
+      if (dryRun) {
+        report.createdSheets.push(spec.name);
+        spec.colSpecs.forEach(function (col) {
+          report.added.push(spec.name + '.' + col.name);
+        });
+        return;
+      }
       ensureSheet_(ss, spec);
       report.createdSheets.push(spec.name);
       return;
@@ -34,13 +50,14 @@ function setupDrift() {
     // Columnas del schema que faltan → insertar AL FINAL (orden irrelevante, §14)
     spec.colSpecs.forEach(function (col) {
       if (getHeaders_(sheet).indexOf(col.name) !== -1) return;
+      report.added.push(spec.name + '.' + col.name);
+      if (dryRun) return;
       // La nueva columna se calcula ANTES de insertar: tras insertar está
       // vacía y getLastColumn() seguiría devolviendo la anterior.
       var colIndex = sheet.getLastColumn() + 1;
       sheet.insertColumnAfter(sheet.getLastColumn());
       sheet.getRange(1, colIndex).setValue(col.name);
       applyColumnStyle_(sheet, col, colIndex);
-      report.added.push(spec.name + '.' + col.name);
     });
 
     // Huérfanas de columnas (renombrado o campo retirado) → reportar, no borrar
@@ -69,13 +86,19 @@ function setupDrift() {
 
   // SCHEMA_VERSION + traza (sólo si el hash del schema cambió)
   if (report.ok) {
-    var version = updateSchemaVersion_(ss);
-    report.schemaVersion = version.version;
-    report.schemaVersionChanged = version.changed;
+    if (dryRun) {
+      // Sólo LEE: compara contra la propiedad sin persistirla ni auditar.
+      report.schemaVersion = schemaVersion_();
+      report.schemaVersionChanged = report.schemaVersion !== Props.get('SCHEMA_VERSION');
+    } else {
+      var version = updateSchemaVersion_(ss);
+      report.schemaVersion = version.version;
+      report.schemaVersionChanged = version.changed;
+    }
   }
 
   Logger.log(
-    '✓ setupDrift: ' +
+    (dryRun ? '✓ setupDrift[dryRun]: ' : '✓ setupDrift: ') +
       JSON.stringify({
         ok: report.ok,
         createdSheets: report.createdSheets,

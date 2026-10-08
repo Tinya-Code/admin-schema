@@ -7,7 +7,7 @@
 // encadenan en el mismo orden en que los llama un operador y se pide
 // idempotencia (2ª corrida ⇒ 0 cambios).
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadBackend } from './_harness.js';
 
@@ -193,5 +193,83 @@ describe('setup completo contra un libro en memoria', () => {
     expect(seed.kvRowsAdded).toEqual([]);
     expect(Object.keys(ss._sheets).length).toBe(before);
     expect(first.ok).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// R1.2 · sheet-check en modo SÓLO-LECTURA (dryRun)
+//
+// `setupDrift({ dryRun: true })` es la fuente del `sheet-check` que corre en
+// Node (`scripts/sheet-drift-check.mjs`). Un check de CI no puede mutar la
+// hoja de producción: ni crear hojas, ni insertar columnas, ni tocar
+// SCHEMA_VERSION. Usa la MISMA implementación que la migración manual, así
+// no puede haber deriva entre lo que reporta y lo que aplica.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('R1.2 — setupDrift({ dryRun: true })', () => {
+  let openByIdOriginal;
+
+  beforeEach(() => {
+    openByIdOriginal = globalThis.SpreadsheetApp.openById;
+  });
+
+  afterEach(() => {
+    globalThis.SpreadsheetApp.openById = openByIdOriginal;
+  });
+
+  /** Apunta `openSpreadsheet_()` a un libro distinto para este test. */
+  const usarLibro = (libro) => {
+    globalThis.SpreadsheetApp.openById = () => libro;
+  };
+
+  it('sobre un libro vacío: reporta todo lo que falta y NO crea nada', () => {
+    const vacio = makeWorkbook();
+    usarLibro(vacio);
+
+    const report = setupDrift({ dryRun: true });
+
+    expect(report.createdSheets.length).toBeGreaterThan(0);
+    expect(report.added.length).toBeGreaterThan(0);
+    // El punto entero: dryRun no escribe.
+    expect(Object.keys(vacio._sheets)).toEqual([]);
+  });
+
+  it('habría atrapado el bug de `pin`: columna en el schema, ausente en la hoja', () => {
+    const spec = globalThis
+      .getSheetSpecs_()
+      .find((s) => s.colSpecs.length >= 2 && typeof s.name === 'string');
+    expect(spec, 'necesito un spec con 2+ columnas').toBeDefined();
+
+    // Hoja existente pero ROTA: sólo la primera de las columnas declaradas.
+    const corta = makeSheet(spec.name, [spec.colSpecs.slice(0, 1).map((c) => c.name)]);
+    usarLibro(makeWorkbook({ [spec.name]: corta }));
+
+    const report = setupDrift({ dryRun: true });
+
+    const falta = `${spec.name}.${spec.colSpecs[1].name}`;
+    expect(report.added).toContain(falta);
+    // Y no la creó: la hoja queda idéntica a como estaba antes del chequeo.
+    expect(corta.getLastColumn()).toBe(1);
+  });
+
+  it('el endpoint está declarado como admin y apunta al handler registrado', () => {
+    const ep = globalThis.REGISTRY.endpoints.sheetDrift;
+    expect(ep).toBeDefined();
+    expect(ep.route).toBe('/admin/sheet-drift');
+    expect(ep.method).toBe('GET');
+    expect(ep.access).toBe('admin');
+    expect(typeof globalThis.REGISTRY.handlers[ep.handler]).toBe('function');
+  });
+
+  it('handleSheetDrift devuelve el reporte sin mutar el libro', () => {
+    const libro = makeWorkbook();
+    usarLibro(libro);
+
+    const report = globalThis.REGISTRY.handlers.handleSheetDrift();
+
+    for (const key of ['ok', 'createdSheets', 'added', 'orphans', 'blocked']) {
+      expect(report, `falta ${key}`).toHaveProperty(key);
+    }
+    expect(Object.keys(libro._sheets)).toEqual([]);
   });
 });

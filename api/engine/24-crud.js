@@ -86,14 +86,19 @@ function getSingleton_(ss, resource, map) {
 
 // Singleton armado: filas KV → objeto anidado + hijas completas (hours,
 // social). Sin proyección: un singleton no tiene listado.
-function readSingletonDetail_(ss, resource, map) {
-  var data = readSheetData_(ss, map.sheet);
-  var obj = flatToContract_(map, kvRowsToFlat_(data));
+// Detalle del singleton a partir de un flat YA ESCRITO (R1.3). Sólo se
+// releen las hojas HIJAS: son hojas distintas, acá no hay nada que confirmar.
+function singletonDetail_(ss, resource, map, flat) {
+  var obj = flatToContract_(map, flat);
   map.children.forEach(function (child) {
     var childData = readSheetData_(ss, child.sheet);
     obj[child.key] = childRowsToItems_(child, childData.headers, childData.rows, null);
   });
   return obj;
+}
+
+function readSingletonDetail_(ss, resource, map) {
+  return singletonDetail_(ss, resource, map, kvRowsToFlat_(readSheetData_(ss, map.sheet)));
 }
 
 function getOne_(ss, resource, map, key) {
@@ -239,7 +244,12 @@ function resourceCreate_(ss, resource, map, request) {
     auditWrite_(ss, resource, 'create', key, summary);
     cacheInvalidate_(resource.id);
     emitHook_(ss, resource, 'create', key, payload, summary);
-    return shapeResponse_(resource, 'create', readDetail_(ss, resource, map, key));
+    // R1.3: la respuesta sale de la fila escrita, no de una relectura.
+    return shapeResponse_(
+      resource,
+      'create',
+      assembleFull_(ss, resource, map, writtenEntry_(data.headers, row)),
+    );
   });
 }
 
@@ -318,9 +328,8 @@ function updateCollection_(ss, resource, map, request, key) {
     map.columns.forEach(function (col) {
       if (col.computed === 'now') row[col.flatKey] = nowStamp_();
     });
-    data.sheet
-      .getRange(entries[idx].at, 1, 1, data.headers.length)
-      .setValues([rowValues_(data.headers, row)]);
+    var written = rowValues_(data.headers, row);
+    data.sheet.getRange(entries[idx].at, 1, 1, data.headers.length).setValues([written]);
 
     // Hijas: sólo las que el payload trae (PATCH quirúrgico), en lote.
     map.children.forEach(function (child) {
@@ -332,7 +341,12 @@ function updateCollection_(ss, resource, map, request, key) {
     auditWrite_(ss, resource, 'update', key, summary);
     cacheInvalidate_(resource.id);
     emitHook_(ss, resource, 'update', key, payload, summary);
-    return shapeResponse_(resource, 'update', readDetail_(ss, resource, map, key));
+    // R1.3: la respuesta sale de la fila escrita, no de una relectura.
+    return shapeResponse_(
+      resource,
+      'update',
+      assembleFull_(ss, resource, map, writtenEntry_(data.headers, written)),
+    );
   });
 }
 
@@ -371,7 +385,7 @@ function updateSingleton_(ss, resource, map, request) {
       principalRows: null,
     });
 
-    writeSingletonBlock_(map, data, merged);
+    var writtenFlat = writeSingletonBlock_(map, data, merged);
 
     map.children.forEach(function (child) {
       if (!Object.prototype.hasOwnProperty.call(payload, child.key)) return;
@@ -382,7 +396,8 @@ function updateSingleton_(ss, resource, map, request) {
     auditWrite_(ss, resource, 'update', resource.id, summary);
     cacheInvalidate_(resource.id);
     emitHook_(ss, resource, 'update', resource.id, payload, summary);
-    return shapeResponse_(resource, 'update', readSingletonDetail_(ss, resource, map));
+    // R1.3: el detalle sale del flat escrito, no de una relectura del KV.
+    return shapeResponse_(resource, 'update', singletonDetail_(ss, resource, map, writtenFlat));
   });
 }
 
@@ -417,6 +432,17 @@ function writeSingletonBlock_(map, data, merged) {
     if (!known[String(row.values[kIdx])]) rows.push(row.values);
   });
   writeRowsBlock_(data.sheet, data.headers, rows);
+
+  // R1.3: devuelve el flat YA ESCRITO — el mismo que kvRowsToFlat_
+  // reconstruiría tras releer la hoja, así el detalle no depende de esa
+  // relectura. Espejo exacto de kvRowsToFlat_: clave en `key`, valor en `value`.
+  var vIdx = data.headers.indexOf('value');
+  if (kIdx === -1 || vIdx === -1) return {};
+  var written = {};
+  rows.forEach(function (r) {
+    written[String(r[kIdx])] = r[vIdx];
+  });
+  return written;
 }
 
 // ── Reorden (intención, §9) ────────────────────────────────────────────────
@@ -719,9 +745,19 @@ function validateAndThrow_(ss, resource, map, opts) {
   if (errors.length > 0) throw validationError_(errors);
 }
 
+// Escribe UNA celda por nombre de cabecera.
+//
+// FAIL-LOUD (§1.1): si la columna no existe, el valor se perdía en silencio
+// — era el eslabón 2 de la cadena que dejó `pin` vacío (ver
+// doc/pedidos-rectificacion.md §1): `rowValues_` no la metía en la fila, y
+// esta función no avisaba. La columna faltante es un desajuste de ALMACÉN,
+// así que 500 nombrándola, nunca un OK sin el dato.
 function setHeaderCell_(row, headers, name, value) {
   var idx = headers.indexOf(name);
-  if (idx !== -1) row[idx] = value;
+  if (idx === -1) {
+    throw apiError_(500, 'Columna ausente en la hoja: ' + name + '. Correr setupDrift.');
+  }
+  row[idx] = value;
 }
 
 function auditWrite_(ss, resource, action, entityKey, summary) {

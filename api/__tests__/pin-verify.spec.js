@@ -86,11 +86,11 @@ afterEach(() => {
   globalThis.readSheetData_ = originalReadSheetData;
 });
 
-describe('Fase 5 — Verificación de PIN (POST /p/orders/:ref/pin)', () => {
+describe('Fase 5 — Verificación de PIN (POST /p/pin/:ref)', () => {
   it('REGISTRY declara el endpoint pinVerify con access: public, method: POST y limits', () => {
     const ep = REGISTRY.endpoints.pinVerify;
     expect(ep).toBeDefined();
-    expect(ep.route).toBe('/p/orders/:ref/pin');
+    expect(ep.route).toBe('/p/pin/:ref');
     expect(ep.method).toBe('POST');
     expect(ep.access).toBe('public');
     expect(ep.limits).toBe('5/min');

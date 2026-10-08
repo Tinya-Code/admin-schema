@@ -191,12 +191,29 @@ contrato legible. **Del lado del frontend** sí hay una línea: crear
 
 habilitada en este proyecto)
 
-| Función                | Qué hace                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| `01-setup-spreadsheet` | crea/valida el libro y guarda `SPREADSHEET_ID` en Script Properties            |
-| `02-setup-sheets`      | crea las hojas base con sus cabeceras                                          |
-| `04-setup-seed`        | datos de demostración opcionales                                               |
-| `03-setup-drift`       | **idempotente**: sincroniza hojas ⇄ schema (crea faltantes, reporta `orphans`) |
+| Función                | Qué hace                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------- |
+| `00-check-properties`  | **crea** en Script Properties las claves manuales que falten (con `""`) y lista las que siguen vacías |
+| `01-setup-spreadsheet` | crea/valida el libro y guarda `SPREADSHEET_ID` en Script Properties                                   |
+| `02-setup-sheets`      | crea las hojas base con sus cabeceras                                                                 |
+| `04-setup-seed`        | datos de demostración opcionales                                                                      |
+| `03-setup-drift`       | **idempotente**: sincroniza hojas ⇄ schema (crea faltantes, reporta `orphans`)                        |
+| `05-setup-auth`        | tablas de auth y alta del admin (`bootstrapAdmin_`)                                                   |
+
+**De una sola pieza — `setupAll()`.** Corre las seis en ese orden y devuelve qué
+pasó en cada paso. Si un paso **lanza**, la cadena se detiene ahí: nada corre a
+ciegas detrás de un fallo. Un `ok: false` de `checkProperties` **no** detiene
+nada — sólo dice que faltan valores, que se rellenan en Script Properties.
+
+```js
+setupAll(); // todo, incluido seed
+setupAll({ seed: false }); // sin datos de demostración
+setupAll({ email: 'yo@x.com', password: '...' }); // credenciales del admin
+```
+
+Las credenciales del admin, en orden: argumentos → `ADMIN_EMAIL` /
+`ADMIN_PASSWORD` (Script Properties) → **dueño del proyecto + contraseña
+generada** (una sola vez, impresa en el log del editor).
 
 Los secretos (token, IDs, claves de Cloudinary) viven **sólo en Script
 Properties** (`13-props`), jamás en el repo.

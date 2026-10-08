@@ -257,7 +257,18 @@ Nunca por endpoint. Funciones **solo ejecutables desde el editor de Apps Script*
 ```
 setupAuth_()      genera AUTH_SECRET (y guarda GOOGLE_CLIENT_ID si aplica) en Script Properties
 bootstrapAdmin_() crea la fila inicial en _users (email del dueño, role admin)
+setupAll()        encadena el setup completo y aplica las credenciales de arriba
 ```
+
+**Contraseña explícita = fuente de verdad.** Si `ADMIN_PASSWORD` (o el segundo
+argumento) trae valor y el email **ya existe** en `_users`, la fila se
+**actualiza** con esa contraseña en vez de devolver `409`. Cambiar la propiedad
+y volver a correr `setupAll()` la aplica; si ya era esa contraseña no se
+re-hashea (idempotente).
+
+Sin contraseña explícita la fila **no se toca**: `409`, como siempre. Una cuenta
+desactivada tampoco se reactiva desde acá — reactivar es una acción de admin,
+nunca de setup.
 
 Rotar `AUTH_SECRET` invalida todas las sesiones (es un «cerrar sesión global» de emergencia).
 

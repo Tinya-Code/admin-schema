@@ -14,8 +14,14 @@
 // Rate-limit (F6-3, §8): UNA sola implementación para todos los caminos.
 // El router la llama con la política de la ruta ya resuelta ({ scope,
 // limits: { read, write } }); el spec declarativo es '<n>/<min|sec|hour>'
-// (p. ej. '<n>/min'). Ventana fija con reinicio en cada intento, en la
-// caché del script y SIN lock: es control de uso, no barrera de seguridad.
+// (p. ej. '<n>/min') y desde R2.13 admite ventana con multiplicador
+// '<n>/<m><unidad>' (p. ej. '5/15min'). Ventana fija con reinicio en cada
+// intento, en la caché del script y SIN lock: es control de uso, no
+// barrera de seguridad.
+//
+// EXCEPCIÓN — el rate-limit del login (R2.13, auth.md §4.6): va BAJO
+// LockService y cuenta fallos por cuenta, no intentos por ruta. No es un
+// capricho: perder un conteo allí es abrir la ventana de fuerza bruta.
 // Top-level: sólo declaraciones.
 
 var CACHE_CHUNK_CHARS = 60000; // holgado bajo el límite de ~100 KB/valor
@@ -47,15 +53,30 @@ function withPolicyLock_(resource, fn) {
 
 // '<n>/<unidad>' → { limit, windowSeconds, human }; spec roto ⇒ 500 visible
 // (una declaración ilegible NO debe degradarse en "sin límite").
+//
+// Desde R2.13 acepta además '<n>/<m><unidad>': '5/15min' abre la ventana a
+// 15 minutos sin tocar el contador (auth.md §4.6: «5 fallos / 15 min por
+// email»). El multiplicador va en la VENTANA, nunca en el límite — '5/15min'
+// es 5 en 900 s, no 75 en 60 s. Sin multiplicador el spec sigue significando
+// exactamente lo mismo que antes: '10/min' no cambia de ningún recurso.
 function parseLimitSpec_(spec) {
-  var match = /^(\d+)\/(min|sec|hour)$/.exec(String(spec));
+  var match = /^(\d+)\/(\d+)?(min|sec|hour)$/.exec(String(spec));
   var limit = match ? Number(match[1]) : 0;
   var windows = { min: 60, sec: 1, hour: 3600 };
-  var humans = { min: 'un minuto', sec: 'un segundo', hour: 'una hora' };
+  var humans1 = { min: 'un minuto', sec: 'un segundo', hour: 'una hora' };
+  var humansN = { min: 'minutos', sec: 'segundos', hour: 'horas' };
   if (!match || limit < 1) {
     throw apiError_(500, 'Límite inválido: ' + truncate_(String(spec)));
   }
-  return { limit: limit, windowSeconds: windows[match[2]], human: humans[match[2]] };
+  var mult = match[2] ? Number(match[2]) : 1;
+  if (!isFinite(mult) || mult < 1) {
+    throw apiError_(500, 'Límite inválido: ' + truncate_(String(spec)));
+  }
+  return {
+    limit: limit,
+    windowSeconds: windows[match[3]] * mult,
+    human: mult === 1 ? humans1[match[3]] : mult + ' ' + humansN[match[3]],
+  };
 }
 
 // Aplica el límite del grupo (read/write) para la política de la ruta.
@@ -70,9 +91,57 @@ function enforceRateLimit_(policy, group) {
   var used = Number(cache.get(key));
   if (!isFinite(used)) used = 0;
   if (used >= parsed.limit) {
-    throw apiError_(429, 'Demasiadas solicitudes; espera ' + parsed.human);
+    throw apiError_(429, 'Demasiadas solicitudes; espera ' + parsed.human, null, 'RATE_LIMITED');
   }
   cache.put(key, String(used + 1), parsed.windowSeconds);
+}
+
+// ── R2.13 — Ventana de FALLOS por cuenta (auth.md §4.6) ──────────────────
+//
+// Tres diferencias con el genérico de arriba, cada una por una razón:
+//
+//  1. Cuenta FALLOS, no intentos: sólo sube cuando las credenciales no
+//     pasan. Un cliente que acierta no gasta presupuesto, y la ventana no
+//     se consume por simplemente pisar el formulario.
+//  2. El INCREMENTO va bajo LockService: `cache.get` + `cache.put` en dos
+//     ejecuciones simultáneas pierde un conteo, y perder un conteo en login
+//     es abrir la ventana. §4.6 lo pide a mano — el genérico de arriba es
+//     control de uso y se queda sin lock a propósito.
+//  3. La clave lleva la CUENTA: un email inexistente se bloquea igual que
+//     uno real. Si no, el propio 429 diría «este email existe» — el rate
+//     limit sería un comprobador de direcciones con cronómetro.
+//
+// Se declara en `limits.account` del endpoint ('<n>/<m><unidad>'), junto al
+// límite global que sigue usando read/write. La clave se compone con el
+// alcance que pase el caller (la ruta ya resuelta), no con un id crudo.
+function accountLimitKey_(scope, account) {
+  return 'rlf:' + scope + ':' + account;
+}
+
+// ¿La cuenta ya agotó su ventana? Sólo LEE — no necesita lock: un valor
+// viejo retrasa el corte como mucho un intento, nunca lo salta.
+function enforceAccountLimit_(scope, account, spec) {
+  if (!spec) return;
+  var parsed = parseLimitSpec_(spec);
+  var used = Number(CacheService.getScriptCache().get(accountLimitKey_(scope, account)));
+  if (isFinite(used) && used >= parsed.limit) {
+    throw apiError_(429, 'Demasiados intentos; espera ' + parsed.human, null, 'RATE_LIMITED');
+  }
+}
+
+// Registra un fallo BAJO LOCK. La ventana se reescribe entera en cada
+// fallo, así que se desliza hacia atrás: con 5 fallos / 15 min, un ataque
+// sostenido no desbloquea antes reintentando mucho.
+function registerAccountFailure_(scope, account, spec) {
+  if (!spec) return;
+  var parsed = parseLimitSpec_(spec);
+  var cache = CacheService.getScriptCache();
+  var key = accountLimitKey_(scope, account);
+  withLock_(scope, function () {
+    var used = Number(cache.get(key));
+    if (!isFinite(used)) used = 0;
+    cache.put(key, String(used + 1), parsed.windowSeconds);
+  });
 }
 
 function cacheGenKey_(resourceId) {

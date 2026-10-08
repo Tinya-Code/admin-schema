@@ -283,7 +283,92 @@ describe('circuito create → computed pin → hook pinHash', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 4. listProjection: el PIN tiene que llegar a la fila de la lista
+// 4. La RESPUESTA del create trae el PIN (hallazgo R1)
+// ─────────────────────────────────────────────────────────────
+
+// R1 (doc/pedidos-rectificacion.md §2.1): faltaba la columna `orders.pin`,
+// así que `rowValues_` (21-repo.js) — que itera LOS HEADERS DE LA HOJA, no
+// el payload — ni siquiera metía el valor en la fila. Y como la respuesta
+// salía de `readDetail_`, no del payload, `ref` aparecía (columna existente)
+// y `pin` no: MISMA transformación, distinta existencia de columna. Todo
+// eso sin un solo warning.
+//
+// La afirmación que cierra R1 no es «el transform genera un PIN» (sección 1)
+// ni «la fila lo tiene» (sección 3): es que LO QUE RECIBE EL FRONT sí lo
+// trae. Es lo que consume `postCreate.actions[].shareTextTemplate`
+// (D18/R1.8 del plan).
+describe('respuesta del create — R1: el PIN llega al front', () => {
+  it('la respuesta incluye `pin` no vacío aunque el payload NO lo traiga', () => {
+    globalThis.Props.hashText = (text) => `${HASH}:${text}`;
+    const appended = [];
+    const resource = buildResource_();
+    const s = scenario_(resource, appended);
+
+    const out = resourceCreate_(s.ss, resource, s.map, {
+      method: 'POST',
+      // Sin `pin` en el payload: sólo puede venir del computed.
+      payload: { key: 'p1', name: 'María López' },
+    });
+
+    expect(out).toBeDefined();
+    expect(out.pin).toMatch(/^\d{6}$/);
+    // Y las claves base siguen ahí — el PIN no tapa nada.
+    expect(out.key).toBe('p1');
+    expect(out.name).toBe('María López');
+  });
+
+  it('el `pin` de la respuesta es EXACTAMENTE el de la fila escrita', () => {
+    globalThis.Props.hashText = (text) => `${HASH}:${text}`;
+    const appended = [];
+    const resource = buildResource_();
+    const s = scenario_(resource, appended);
+
+    const out = resourceCreate_(s.ss, resource, s.map, {
+      method: 'POST',
+      payload: { key: 'p1', name: 'María López' },
+    });
+
+    // R1.3: la respuesta se arma desde lo ESCRITO, no desde una relectura ni
+    // desde el payload. Si las dos fuentes divergieran, el front vería un PIN
+    // que no es el que compara `pin-verify`.
+    const pinIdx = s.headers.indexOf('pin');
+    expect(pinIdx).toBeGreaterThan(-1);
+    expect(out.pin).toBe(s.sheet.rows()[1][pinIdx]);
+    // Y el hash que quedó en `_pin` es el de ESE pin de la respuesta: si
+    // divergieran, `pin-verify` compararía contra otro valor.
+    expect(appended[0][1]).toBe(`${HASH}:${out.pin}`);
+  });
+
+  it('columna `pin` ausente ⇒ el motor FALLA RUIDOSAMENTE, no la descarta', () => {
+    // R1 era silencioso: `setHeaderCell_` hacía `if (idx !== -1)` y seguía.
+    // R1.1 convirtió esa clase en error (500). Este test fija ese contrato
+    // sobre el caso concreto de R1 para que nadie lo vuelva a silenciar.
+    globalThis.Props.hashText = (text) => `${HASH}:${text}`;
+    const resource = buildResource_();
+    const s = scenario_(resource, []);
+
+    // Hoja con TODAS las columnas MENOS `pin`: el escenario exacto de R1.
+    const headersSinPin = s.headers.filter((h) => h !== 'pin');
+    const hojaRota = fakeSheet_([headersSinPin]);
+    const ssRoto = {
+      getSheetByName: (name) => {
+        if (name === PIN_SHEET) return { appendRow: () => {} };
+        if (name === resource.sheet) return hojaRota;
+        return null;
+      },
+    };
+
+    expect(() =>
+      resourceCreate_(ssRoto, resource, s.map, {
+        method: 'POST',
+        payload: { key: 'p1', name: 'María López' },
+      }),
+    ).toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// 5. listProjection: el PIN tiene que llegar a la fila de la lista
 // ─────────────────────────────────────────────────────────────
 
 describe('orders.listProjection — el PIN llega al listado', () => {

@@ -36,7 +36,12 @@ var Props = {
   // responde como 500 con el NOMBRE de la propiedad (nunca el valor).
   require: function (name) {
     var value = Props.get(name);
-    if (value === null) {
+    // `''` cuenta como NO configurada (D24): el setup crea las propiedades
+    // manuales vacías para que sólo haga falta cambiar el valor, y `require`
+    // tiene que seguir distinguiendo «sin valor» de «valor correcto». Sin
+    // esto, un placeholder vacío produciría un fallo tardío y confuso
+    // (ej. una firma de subida con cloud_name vacío) en vez de este aviso.
+    if (value === null || String(value).trim() === '') {
       var err = new Error('Falta configurar la propiedad: ' + name);
       err.apiStatus = 500; // convención de core/12-http
       throw err;
@@ -70,12 +75,8 @@ var Props = {
       .join('');
   },
 
-  // Hash del token admin (respalda ADMIN_TOKEN_HASH; lo usa core/11-auth).
-  hashToken: function (token) {
-    return Props.hashText(token);
-  },
-
-  // Token admin aleatorio (dos UUID = 244 bits de entropía).
+  // Token aleatorio de dos UUID (244 bits): se usa para AUTH_SECRET y para
+  // la contraseña generada de bootstrapAdmin_.
   generateToken: function () {
     return Utilities.getUuid() + Utilities.getUuid();
   },
