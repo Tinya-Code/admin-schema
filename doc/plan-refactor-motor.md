@@ -120,31 +120,27 @@ terminado**:
 
 **Objetivo:** línea base, decisiones de arranque y plan único.
 
-- [ ] **R0.1** — Confirmar `doc/plan-limpieza.md` cerrado
-  - **Hecho cuando:** Fases 1–6 del plan de limpieza marcadas y gates verdes.
+- [x] **R0.1** — Confirmar `doc/plan-limpieza.md` cerrado ✅ **HECHO**
+  - **Resultado:** **33/33** tareas, fases 1–6 marcadas, **12/12 decisiones**
+    cerradas, 5 gates verdes, commit `a32c0e8` (2026-10-06).
+  - **Hecho cuando:** Fases 1–6 del plan de limpieza marcadas y gates verdes. ✅
 
-- [ ] **R0.2** — Baseline de gates con cifras
+- [x] **R0.2** — Baseline de gates con cifras ✅ **HECHO**
   - **Pasos:** ejecutar los 5 gates; anotar en §7.
-  - **Hecho cuando:** §7 tiene los 5 resultados con fecha.
+  - **Resultado:** §7 completada y **corregida** — el prettier figuraba
+    «18 → 16»; el valor real es **17**.
+  - **Hecho cuando:** §7 tiene los 5 resultados con fecha. ✅
 
-- [ ] **R0.3** — Resolver `refactormotor.md` §9 (6 decisiones)
-  - **(1)** autodescubrimiento vs registro manual de una línea
-  - **(2)** `snake_case` vs `kebab-case` para ids de recurso
-  - **(3)** codegen DATA→front → **ya resuelto por O1**: _no aplica_; queda
-    «dos schemas independientes + contrato por consumidor»
-  - **(4)** qué parte del lenguaje de condiciones se comparte literalmente
-  - **(5)** hasta dónde llegan los `aggregates` en Sheets
-  - **(6)** política de deprecación (cuántas versiones)
+- [x] **R0.3** — Resolver `refactormotor.md` §9 (6 decisiones) ✅ **HECHO**
+  - **Resultado:** las 6 resueltas y escritas en **§6** (veredicto) y con la
+    evidencia completa en `plan-limpieza §5.2`. **(3)** ya venía resuelta por
+    **O1**: _dos schemas independientes + contrato por consumidor_.
   - **Hecho cuando:** las 6 están en §6.
 
-- [ ] **R0.4** — Resolver `auth.md` §9 (7 decisiones)
-  - **(1)** proveedor A (Google) / B (contraseña) / ambos
-  - **(2)** duración de sesión (propuesta 6 h + renovación deslizante)
-  - **(3)** «recordarme» en `localStorage`
-  - **(4)** cuántos roles
-  - **(5)** formato de respuesta existente (para no romperlo)
-  - **(6)** ¿habrá cuentas de cliente (audiencia `customer`)?
-  - **(7)** ¿se acepta logout «best-effort»?
+- [x] **R0.4** — Resolver `auth.md` §9 (7 decisiones) ✅ **HECHO**
+  - **Resultado:** las 7 resueltas y escritas en **§6**, con la evidencia
+    completa en `plan-limpieza §5.1`. **(5)** resuelta por **O7** (sobre de
+    respuesta conservado).
   - **Hecho cuando:** las 7 están en §6.
 
 - [x] **R0.5** — Cerrar D8: absorción del plan anterior ✅ **RESUELTA**
@@ -154,23 +150,43 @@ terminado**:
     reparadas en `motor-renderizado-actual.md:7` y `refactormotor.md:4`.
   - **Hecho cuando:** no hay dos planes paralelos compitiendo. ✅
 
-- [ ] **R0.6** — Fijar nomenclatura vigente
+- [x] **R0.6** — Fijar nomenclatura vigente ✅ **HECHO**
   - **Pasos:** confirmar §5 con las tablas de `refactormotor.md` §2
     (identificadores, sufijos, archivos, funciones).
-  - **Hecho cuando:** quien escriba código tiene una referencia única.
+  - **Resultado:** §5 completa con **ambas** fuentes. **D9-2 fijada a
+    `kebab-case`** (la fila y la nota de colisión estaban sin resolver).
+  - **Hecho cuando:** quien escriba código tiene una referencia única. ✅
 
-- [ ] **R0.7** — Documentar los gates y el flujo de trabajo
+- [x] **R0.7** — Documentar los gates y el flujo de trabajo ✅ **HECHO**
   - **Archivo:** `README.md`
   - **Pasos:** tabla de comandos + aviso del `2>&1` de prettier.
     _(Absorbe T6.3.)_
-  - **Hecho cuando:** un agente nuevo sabe qué correr sin preguntar.
+  - **Resultado:** sección **«Gates»** añadida al inicio del `README` con los
+    5 comandos, el aviso de `stderr` y el baseline con el aviso de **no
+    reformatear la deuda**.
+  - **Hecho cuando:** un agente nuevo sabe qué correr sin preguntar. ✅
 
-- [ ] **R0.8** — Inventario de consumo de endpoints
+- [x] **R0.8** — Inventario de consumo de endpoints ✅ **HECHO**
   - **Pasos:** evidencia archivo:línea para los 6 endpoints
     (`schema`, `uploadSignature`, `dashboard`, `events`, `publicOrder`,
     `pinVerify`). _(Absorbe T2.1.)_
+  - **Evidencia y veredicto:**
+
+    | Endpoint          | Registro back                                              | Consumidor front                                         | Veredicto                   |
+    | ----------------- | ---------------------------------------------------------- | -------------------------------------------------------- | --------------------------- |
+    | `schema`          | `endpoints/schema.js:10`                                   | 57 ficheros en `src/`                                    | ✅ vivo                     |
+    | `dashboard`       | `endpoints/dashboard.js:8`                                 | 6 ficheros en `src/`                                     | ✅ vivo                     |
+    | `uploadSignature` | `endpoints/upload-signature.js:10`                         | `upload.service.ts:49` (`POST /admin/upload-signature`)  | ✅ vivo                     |
+    | `publicOrder`     | `endpoints/public-order.js:6`                              | **otro repo** — web pública `/p/…`                       | ✅ vivo por diseño (**D1**) |
+    | `pinVerify`       | `endpoints/pin-verify.js:8`                                | **otro repo** — flujo público de PIN                     | ✅ vivo por diseño (**D1**) |
+    | **`events`**      | `endpoints/events.js:10` + `primitives/handlers/events.js` | **ninguno** — no existe servicio de analíticas en `src/` | 🔴 **huérfano**             |
+
+  - **Conclusión:** los 3 dudosos quedan con veredicto fundado. `publicOrder`
+    y `pinVerify` **no son código muerto** — 0 en este front es lo esperado
+    porque sirven a la web pública de otro repo. **`events` sí es huérfano**
+    y está registrado como **D16** (§4): _retirar o justificar_.
   - **Hecho cuando:** los tres dudosos (`events`, `publicOrder`, `pinVerify`)
-    tienen veredicto fundado.
+    tienen veredicto fundado. ✅
 
 ---
 
@@ -184,14 +200,24 @@ terminado**:
 
 ### 1.1 Fail-loud en la escritura (B4 — cierra R1/R2)
 
-- [ ] **R1.1** — `rowValues_` no puede descartar en silencio
-  - **Archivo:** `api/engine/24-crud.js` (y/o `21-repo.js`)
+- [x] **R1.1** — `rowValues_` no puede descartar en silencio ✅
+  - **Archivo:** `api/engine/21-repo.js` (`rowValues_`) y
+    `api/engine/24-crud.js` (`setHeaderCell_`)
   - **Pasos:** si el payload trae una clave que `storageMap` espera y la hoja
     **no** tiene la columna → **error explícito** (422/500), no descarte.
   - **Verificación:** test que mande un campo sin columna y falle ruidoso.
   - **Hecho cuando:** imposible que un campo vuelva vacío por esta vía.
+  - ✅ **Hecho en las DOS puntas de la cadena del bug `pin`:**
+    - `rowValues_` (`21-repo.js:90`) devuelve **500** listando las claves de
+      `flat` sin columna. 500 y no 422 porque falla el almacén (la hoja está
+      desincronizada del schema), no el payload del cliente.
+    - `setHeaderCell_` (`24-crud.js:755`) hacía `if (idx !== -1)`: si la
+      columna no existía **se tragaba el valor en silencio**. Ahora tira 500
+      con «Correr setupDrift».
+  - **Spec:** `api/__tests__/row-values.spec.js` (5 tests) — 4 de ellos
+    fallan con el fix revertido.
 
-- [ ] **R1.2** — `sheet-check` (drift schema ↔ hoja)
+- [x] **R1.2** — `sheet-check` (drift schema ↔ hoja) ✅
   - **Archivo nuevo:** `scripts/sheet-drift-check.mjs`
   - **Pasos:**
     1. Comparar `storageMap_` de cada recurso con los headers reales.
@@ -201,34 +227,94 @@ terminado**:
        existe en clasp 3.4.1 y pisaría cambios.
   - **Verificación:** detecta un campo ficticio añadido a un recurso.
   - **Hecho cuando:** habría fallado antes de R1.
+  - ✅ **Decisión del usuario: endpoint admin + script Node** (frente a
+    `clasp pull`). El `NOT_FOUND` de `PLAN-MEJORAS.md:692` (P-2) aplica a
+    `clasp run`/Execution API, **no a las rutas webapp**, así que el chequeo
+    se expone como `GET /admin/sheet-drift` (`access: 'admin'`, handler
+    `handleSheetDrift`) y el script lo consume con la **misma receta de
+    `curl`** que `api-regression.sh` — no `fetch`, porque GAS devuelve 302.
+  - **Archivos:** `api/schema/endpoints/sheet-drift.js`,
+    `api/primitives/handlers/sheet-drift.js`,
+    `scripts/sheet-drift-check.mjs` · script `npm run api:drift`.
+  - `setupDrift(opts)` acepta **`{ dryRun: true }`**: ejecuta el mismo
+    chequeo pero **no** crea hojas/columnas ni toca `SCHEMA_VERSION`.
+    Rojo (exit 1) si `blocked`/`createdSheets`/`added`; amarillo si hay
+    `orphans`; **aviso + exit 0** si faltan credenciales.
+  - **Spec:** 4 tests en `api/__tests__/setup-flujo.spec.js`.
+  - ⚠️ **Pendiente de verificación end-to-end:** el script sólo es
+    comprobable contra un despliegue real (`clasp push` +
+    `api/.gas-smoke.env`). Hoy sólo está verificado el handler.
 
-- [ ] **R1.3** — Respuesta desde lo escrito, no desde la relectura
+- [x] **R1.3** — Respuesta desde lo escrito, no desde la relectura ✅
   - **Archivo:** `api/engine/24-crud.js` (`shapeResponse_` + `readDetail_`)
   - **Pasos:** construir la respuesta de `create/update` desde **lo escrito +
     computed**, y releer sólo para confirmar.
   - **Verificación:** test R6.2 (abajo) en verde.
   - **Hecho cuando:** un campo computado jamás vuelve vacío por fallo de
     lectura.
+  - ✅ **Hecho:** `create` y `updateCollection_` responden desde
+    `writtenEntry_(data.headers, row)` (`22-assemble.js:145`) en vez de
+    `readDetail_`; `writeSingletonBlock_` ahora **devuelve** el flat escrito
+    y `singletonDetail_` (`24-crud.js:91`) lo ensambla. `readDetail_` y
+    `readSingletonDetail_` siguen atendiendo el GET.
+  - **Spec:** `api/__tests__/write-response.spec.js` (5 tests), con
+    `expect(out).toEqual(reread)` y los computados no vacíos.
+  - ⚠️ **Nota:** la referencia «test R6.2 (abajo)» de este enunciado es
+    colgante — R6.2 es «Agregaciones (B6)», no un test de esta tarea.
 
-- [ ] **R1.4** — `ensureColumns_` bajo flag explícito (opcional)
+- [x] **R1.4** — `ensureColumns_` bajo flag explícito (opcional)
   - **Pasos:** crea columnas faltantes **nunca por defecto**; sólo con flag
     explícito. Si no, se omite y se documenta por qué.
   - **Hecho cuando:** decidido y registrado.
+  - ✅ **Decisión: SE OMITE.** No existe `ensureColumns_` en la ruta de
+    escritura — `21-repo`/`24-crud` no crean columnas en ningún punto, así
+    que no hay nada que puertear. El único sitio que crea columnas es
+    `setupDrift()` (`api/setup/03-setup-drift.js:40`), que **ya es** el flag
+    explícito: función aparte, invocada a mano desde el editor y jamás desde
+    un request (`PLAN-MEJORAS.md:692` — `clasp run`/Execution API devuelven
+    `NOT_FOUND`). Meter creación automática en la ruta de escritura sería
+    exactamente el auto-migrado silencioso que B4 prohíbe.
+  - **Evidencia:** `grep -rn "insertColumn" api/` → sólo
+    `setup/03-setup-drift.js:40` (más el stub del test). `setupDrift` no
+    aparece en `primitives/`, `core/` ni `engine/` salvo en mensajes de
+    error que mandan a correrlo.
 
 ### 1.2 Meta-schema (B12)
 
-- [ ] **R1.5** — `validateRegistry_()` al cargar
+- [x] **R1.5** — `validateRegistry_()` al cargar ✅
   - **Archivo nuevo:** `api/schema/validate-registry.js`
   - **Checks:**
-    1. claves desconocidas en un recurso → **error** (detecta typos)
-    2. referencias rotas: `titleField`, `listProjection`, `dependents`,
-       `relation`
-    3. tipos/validadores/computed/hooks inexistentes
-    4. `listProjection` ⊇ lo que `listColumns` del front necesita (cierra R6)
-  - **Verificación:** un typo de clave en un resource rompe `api:check`.
-  - **Hecho cuando:** los 4 checks corren.
+    1. claves desconocidas en recurso / policies / operation / campo →
+       **error** (detecta typos)
+    2. referencias rotas: `titleField`, `activeField`, `keyField`,
+       `listProjection`, `dependents`, `relation` (recursivo dentro de
+       `group`/`list`, no sólo a nivel raíz)
+    3. identificadores inexistentes: `kind`, `type` de campo, `transform`,
+       `check`, `hook`
+    4. ~~`listProjection` ⊇ `listColumns` del front~~ → **no va acá**: exige
+       el front. Vive en **R1.6, check 3**; este fichero sólo contiene
+       verdad de back.
+  - **Un solo código, dos sitios:** el `assert` va al final del fichero y
+    dispara **al cargar**, tanto en GAS como en Node. En Node lo hace correr
+    `scripts/contract-check.mjs`, cuyo `loadBackend()` ahora delega en
+    `api/__tests__/_harness.js` — el cargador que ya usan los tests — para
+    que las tres rutas (GAS, `test:api`, `api:check`) evalúen el mismo árbol
+    en el mismo orden y ejecuten el mismo assert.
+  - **Semántica que hizo falta descubrir** (no eran bugs, eran reglas mal
+    puestas): `kind` tiene tres valores (`collection` · `singleton` ·
+    `dashboard`); en un **singleton** `keyField` apunta a la columna `key`
+    de la hoja KV (`24-crud.js:116` lo resuelve contra el flat escrito), no
+    a un campo del schema; y un **descriptor** (`sheet: null`, el dashboard)
+    no tiene filas, así que `keyField`/`titleField` son etiquetas del front.
+  - **Verificación:** 9 mutaciones sobre recursos reales, todas en rojo con
+    su mensaje exacto — clave, `kind`, `titleField`, `listProjection`,
+    `dependents`, `type`, `transform`, `check`, `hook`.
+  - **Spec:** `api/__tests__/validate-registry.spec.js` (15 tests): el
+    registro real en verde + cada familia de fallo detectada. Verificado
+    además que el propio spec se rompe si se rompe el validador.
+  - **Hecho cuando:** los checks corren.
 
-- [ ] **R1.6** — `contract-check` ampliado _(absorbe T2.4)_
+- [x] **R1.6** — `contract-check` ampliado _(absorbe T2.4)_ ✅
   - **Archivo:** `scripts/contract-check.mjs`
   - **Comparar además de `kind`/`endpoint`/`required`/`validators`:**
     1. `enum` (back) ↔ `options[].value` (front)
@@ -237,38 +323,158 @@ terminado**:
     4. `postCreate.summaryFields` y `detail.headerFields` ⊆ campos declarados
   - **Verificación:** `npm run api:check` en verde con los 7 recursos.
   - **Hecho cuando:** si alguna diverge, se **documenta** en §6, no se parchea.
+  - ✅ **Hecho** como checks 6–9 de `compareResource`. Tres precisiones que
+    hizo falta descubrir sobre la forma real:
+    - **`enum` en el back tiene DOS formas**: array literal
+      (`orders.status: ['PENDIENTE', …]`) o el **nombre** de una lista en
+      `REGISTRY.enums.sheetEnums` (`products.availability: 'availability'`,
+      `site.days: 'days'`). Hay que resolver antes de comparar; un nombre
+      colgado también es rojo.
+    - **`postCreate` y `detail` sólo existen en el front**, no en el back —
+      se validan contra los campos que declara el front.
+    - **Lo que el back SIRVE en el listado es
+      `operations.list.shape.pick` si está declarado, y si no,
+      `listProjection`** (F5-2: «sin declaraciones ⇒ fallback»). Comparar
+      contra `listProjection` a secas mentiría en `products`, que declara
+      `pick` con `brand`, que no está en `listProjection`.
+  - `loadBackend()` devuelve ahora el **REGISTRY completo** (no sólo
+    `resources`) para poder resolver los enums con nombre.
+  - **Ninguna divergencia real** entre los 7 recursos ⇒ §6 queda intacta.
+  - **Verificación por mutación (5):** enum con array, enum con nombre,
+    `default`, `listProjection` y `summaryFields` — las cinco en rojo con su
+    mensaje exacto, y control en verde tras restaurar.
 
-- [ ] **R1.7** — Test de contrato del front (F9)
-  - **Archivo nuevo:** `src/app/core/registry/contract.spec.ts`
+- [x] **R1.7** — Test de contrato del front (F9) ✅ — _ruta y alcance corregidos (D17)_
+  - **Archivo nuevo:** `src/app/schemas/contract.spec.ts`
+    (el plan decía `src/app/core/registry/contract.spec.ts`; **esa ruta no
+    existe** — el registro real es `src/app/schemas/registry.ts`)
   - **Pasos:** recorrer `registry.ts` entero y verificar que cada
     `type`/`format`/`action` existe en su registro, que cada `*Field` apunta a
     un campo real y que cada `config` valida contra su `configSchema`.
   - **Hecho cuando:** un `type` inventado en cualquier schema **falla el
     test**.
+  - ✅ **Hecho**, con tres precisiones que cambiaron el diseño:
+    - **«un `type` inventado falla» ya lo garantiza `tsc`.** `FieldSchema`,
+      `ListColumnFormat` y `ResourceAction` son uniones: meter
+      `type: 'txt'` en un schema reviente con **TS2820** en `npm test` (el
+      plugin `angular-compiler` type-chequea los specs) — verificado.
+    - **El hueco real es el contrario**: un tipo **válido en TS y ausente
+      del registro de runtime**. Ahí `tsc` pasa y la UI no pinta nada,
+      porque el `@switch` de `field-host` **no tiene `@default`** y el gate
+      `isSupportedFieldType()` se lo salta. Se cierra con un **tripwire de
+      tipos en `field-host.ts`** (`as const satisfies readonly FieldType[]`
+      - `Exclude<FieldType, …>`), que falla el build en ambas direcciones —
+        verificado: quitar `'image'` ⇒ **TS2322**.
+    - **La cláusula `configSchema` se descarta**: `grep -rn "configSchema"
+src/` → 0 resultados. No existe nada que validar.
+  - **Corrección sobre `format`:** el `@switch` de `list-view.ts` **SÍ tiene
+    `@default`** (línea 301, `{{ cellText(...) }}`) — un formato sin `@case`
+    degrada a texto, no se pierde. **No hay hueco que cerrar ahí.**
+  - **Sí se cierra el de acciones:** `runAction` sólo ejecuta `copy-share`
+    (y lo que tenga `urlTemplate`); `trigger-endpoint` está declarado en
+    `ResourceAction` pero **no está implementado** y ningún schema lo usa.
+    `ACCIONES_EJECUTADAS = ['copy-share']` convierte eso en rojo si alguien
+    lo declara.
+  - **Tests (4, en `contract.spec.ts`):** recorrido de tipos por todos los
+    schemas (anidados incluidos) + acciones. Front: **151** (era 147).
 
 ### 1.3 Pruebas de regresión de los hallazgos
 
-- [ ] **R1.8** — Test e2e del mensaje compartido _(absorbe T6.1, cierra R4)_
-  - **Archivo:** `src/app/schemas/orders.schema.spec.ts` (o spec nuevo)
+- [x] **R1.8** — Test e2e del mensaje compartido _(absorbe T6.1, cierra R4)_ ✅
+  - **Archivo:** `src/app/schemas/orders.schema.spec.ts`
   - **Pasos:** partir de la **respuesta del back simulada** (con `pin`
     presente) y afirmar que el texto copiado termina con el PIN.
     **No** inyectar el PIN en la plantilla.
   - **Hecho cuando:** si el back deja de enviar `pin`, este test falla.
+  - ✅ **Hecho**, con una precisión que cambió el test: se usaron las
+    **firmas reales de los dos call sites**, no un objeto a mano.
+    - **alta:** `interpolateTemplate(tpl, record, configValues)` —
+      `post-create-modal.ts:129`
+    - **lista:** `interpolateTemplate(tpl, buildInterpolationContext(row))` —
+      `list-view.ts:717` (config + fila mezcladas)
+    - La versión previa metía `public_base_url` dentro del mismo objeto, así
+      que **no podía** fallar por culpa del back ni del call site.
+  - **Mutación verificada:** sacar `pin` de la respuesta simulada →
+    **1 failed** (`esperado` en línea 139/140). Restaurado → verde.
+  - ✅ **Destapó D18 y ya está resuelta**: el test fiel a la firma del
+    `alta` mostró que `public_base_url` nunca llegaba al modal de alta
+    (enlace copiado sin dominio). Ver §4, D18 — decisión del usuario,
+    `ConfigService` inyectado en el componente.
+  - Front: **152** (era 147: 4 de R1.7 + 1 de D18).
 
-- [ ] **R1.9** — Test back: `create` → respuesta con `pin` _(absorbe T6.2, cierra R1)_
-  - **Archivo:** `api/__tests__/pin-generate.spec.js`
+- [x] **R1.9** — Test back: `create` → respuesta con `pin` _(absorbe T6.2, cierra R1)_ ✅
+  - **Archivo:** `api/__tests__/pin-generate.spec.js` (**ya existía** con el
+    transform, el hook, el circuito y `listProjection` — faltaba sólo la
+    respuesta)
   - **Pasos:** además del transform y del hook, afirmar que la **respuesta**
     incluye `pin` no vacío.
   - **Hecho cuando:** R1 cubierto por test, no por inspección.
+  - ✅ **Hecho** — sección 4 nueva, 3 tests:
+    1. **La respuesta incluye `pin` no vacío** con un payload que NO lo
+       trae (`{key, name}`) ⇒ sólo puede venir del computed.
+    2. **`out.pin` == fila escrita == hash de `_pin`**: fija el invariante
+       que necesita `pin-verify` — si la respuesta y `_pin` divergieran, se
+       verificaría contra otro valor.
+    3. **Columna `pin` ausente ⇒ FALLA RUIDOSAMENTE**: el escenario exacto
+       de R1 (headers menos `pin`) ahora lanza en vez de descartar en
+       silencio. `setHeaderCell_` ya no se traga el valor.
+  - **Mutación verificada:** `operations.create.computed: []` → **6 failed**,
+    incluidas las dos de R1.9. Restaurado → verde.
+  - api: **176** (era 173).
 
-- [ ] **R1.10** — Degradación controlada de tipo desconocido (F9)
+- [x] **R1.10** — Degradación controlada de tipo desconocido (F9) ✅
   - **Front:** en dev, componente `UnknownRender` con aviso visible; en prod,
     se omite y se loguea. **Nunca pantalla rota.**
   - **Hecho cuando:** hay test para tipo desconocido.
+  - ✅ **Hecho:**
+    - `src/app/fields/unknown-render/unknown-render.ts` — aviso ámbar con el
+      `type` y la etiqueta, y la aclaración de que **el valor existe en el
+      schema y se conserva** (sólo no se dibuja). Sin `<label for>`: no hay
+      `id` al que apuntar (mismo criterio que el bloque `composite()`).
+    - `field-host.ts` — rama `@else if (showUnknown())` después del
+      `@if (supported())`, `private readonly dev = isDevMode()` y un
+      `effect()` que sólo en producción deja `console.warn`.
+    - Spec nuevo `field-host.spec.ts` (**3 tests**): tipo desconocido pinta
+      el aviso y NO pinta control · tipo del catálogo no lo pinta · campo
+      **oculto** de tipo soportado cae en el mismo `@else` y no avisa.
+  - **Mutación verificada:** `showUnknown = dev` (sin comprobar catálogo) →
+    **1 failed** (el test del campo oculto). Restaurado → verde.
+  - ⚠️ **Hallazgo que obligó a diseñar distinto:** `seedValue`
+    (`shared/utils/seed.ts`) **no tiene `@default`** ⇒ un tipo desconocido se
+    siembra `undefined` y Signal Forms **no le crea nodo**, así que
+    `childTree` lanza «El formulario no contiene el campo». `showUnknown`
+    por eso **no puede leer `state()`** — y sobrevive el mismo motivo por el
+    que `supported()` no explota: el `&&` corta antes. El alcance de
+    «nunca pantalla rota» es el **render**; `buildPayload` sí llamaría
+    `childTree` de todos los fields y fallaría, pero ese estado no es
+    alcanzable con `tsc` (el tripwire de R1.7 lo impide) y queda acá
+    documentado en vez de parcheado.
+  - Front: **155** (era 152).
 
-- [ ] **R1.11** — Gates de la fase
+- [x] **R1.11** — Gates de la fase ✅ **cerrada 2026-10-08**
   - **Comandos:** 5 gates + `sheet-check`.
   - **Hecho cuando:** todo verde.
+  - **Estado: 6/6 verdes** ✅ — front **196** · api **390** · `api:check`
+    VERDE (7 recursos, 84 campos) · build ✔ · prettier **17** (baseline) ·
+    **`api:drift` VERDE** — «sin faltantes ni sobrantes».
+  - **Diagnóstico del bloqueo (D23 — tres causas apiladas, ninguna era el
+    token):**
+    1. `GAS_URL` apuntaba al deployment **fijado a la versión 29**, no al
+       `@HEAD` (el `@HEAD` devuelve HTML, no JSON) — por eso todo devolvía
+       `401`.
+    2. Ese despliegue era **anterior a Fase 2** ⇒ `401` **sin `code`** (hoy se
+       emite siempre: «401 con `code`» prueba que ya trae Fase 2).
+    3. **La hoja `_users` no existía** en el spreadsheet real ⇒
+       `500 "El sistema de usuarios no está configurado"`.
+  - **Cómo se resolvió:** `clasp push -f` + `version` + `redeploy` → **v32** ·
+    D23 auto-login del humo · D24 `setupAll()` (una sola corrida en el editor) ·
+    D25 reconciliación del admin (`contraseña ACTUALIZADA`) ·
+    `npm run smoke:login` → **caché activa** (el token no cambia entre
+    corridas) → `npm run api:drift` **VERDE**.
+  - **Sin rotar credenciales** (que era lo que D22 dejó pendiente de
+    autorización) y **sin `clasp push` en el chequeo** — `api:drift` no muta.
+  - Queda R1.2 (verificación end-to-end) como pendiente de Fase 1, ajeno a
+    los gates.
 
 ---
 
@@ -281,109 +487,621 @@ terminado**:
 
 ### 2.1 Núcleo (auth §7.1)
 
-- [ ] **R2.1** — Hoja `_users`
+- [x] **R2.1** — Hoja `_users` ✅
   - **Columnas:** `id`, `email` (único), `name`, `role`, `active`,
     `token_version`, `pass_hash`, `pass_salt` (sólo opción B),
     `last_login_at`, `created_at`.
   - ⚠️ **Nunca expuesta** ni en admin ni en público.
+  - ✅ **Hecho:**
+    - `api/schema/05-aux-sheets.js` — `_users` añadido a `AUX_SHEETS` y al
+      final de `AUX_SHEET_ORDER` (se crea en `setupSheets`, se compara en
+      `setupDrift` vía `aux: AUX_SHEETS`).
+    - Spec nuevo `api/__tests__/aux-users.spec.js` (**7 tests**).
+  - **Alcance deliberado:** sólo la **hoja**. El recurso `users` y el tipo
+    `secret` son **R7.6 (Fase 7)** — declarar el recurso hoy mandaría
+    `pass_hash` a `/admin/schema`. `auth.md §4.2` ya trae el snippet pero
+    es de Fase 7.
+  - **Mutación verificada:** `REGISTRY.resources.users = {…}` válido →
+    **3 failed** (NO-es-recurso · ningún-recurso-apunta · kind≠aux).
+    Restaurado → 7/7.
+  - ⚠️ **Hallazgo:** `assertRegistryValid_()` se ejecuta **al cargar**
+    (`validate-registry.js:325`), así que una mutación malformada la atrapa
+    el validador **antes** que cualquier test — la primera pasada de la
+    mutación dio `7 skipped`, no `3 failed`. Si un día un spec da
+    `skipped` masivo, revisar `beforeAll` y no el test.
+  - Gates: api **176 → 183** · `api:check` VERDE · prettier **17**.
 
-- [ ] **R2.2** — `setupAuth_()` y `bootstrapAdmin_()`
+- [x] **R2.1b** — KDF de contraseña (D19; **va ANTES de R2.2**) ✅
+  - **Por qué acá:** `bootstrapAdmin_` (R2.2) escribe `pass_hash` y
+    `/auth/login` (R2.5) lo verifica; el KDF es el que calcula los dos.
+    Mandado por `auth.md §9.1` («SHA-256 iterado con salt, **nunca SHA-256
+    plano**») y `§4.6` («iteraciones ajustadas a lo que tolere el tiempo de
+    ejecución»).
+  - **Formato:** `pass_hash` guarda `s256$<iteraciones>$<hex>` ⇒
+    **autocontenido**; subir el coste no rompe hashes viejos.
+  - **Sal:** en la columna `pass_salt`, separada del hash (rotar sal no toca
+    el coste ni el hash). Comparación **en tiempo constante** — ya existe
+    `constantTimeEqual_` (`11-auth.js`).
+  - **Coste:** `KDF_ITERATIONS` es una **propiedad generada por
+    `setupAuth_()`** tras medir en el despliegue real. **No se fija en el
+    código.** Sin ella ⇒ `Props.require` falla ⇒ imposible emitir o validar
+    un hash sin haber medido.
+  - **Hecho cuando:** hash y verificación funcionan, la verificación usa el
+    recuento del propio hash (no el global), y falta `KDF_ITERATIONS` ⇒
+    error claro.
+  - ✅ **Hecho:**
+    - `core/11-auth.js` — `KDF_ALGO`, `kdfIterations_`, `kdfNewSalt_`,
+      `kdfHash_`, `kdfParse_`, `kdfVerify_`.
+    - `00-config.js` — `KDF_BUDGET_MS: 400`, `KDF_ITERATIONS_MIN: 1000`,
+      `KDF_ITERATIONS_MAX: 100000` + entrada `KDF_ITERATIONS` en
+      `PROP_MANIFEST`.
+    - `setup/05-setup-auth.js` — `medirKdf_` (calibra con un puñado de
+      iteraciones, **ejecuta el candidato de verdad** y baja hasta entrar;
+      4 pasadas máx.) + `cronometrarKdf_`.
+  - **Regla de diseño:** sin reloj medible ⇒ **techo**, nunca suelo — un
+    hash débil por prisa es peor que un login lento. Coste desbocado ⇒ se
+    detiene en `MIN`, el suelo de seguridad gana al presupuesto.
+  - **Hallazgo:** `parseInt('3.5')` devuelve `3` **sin quejarse** — una
+    propiedad mal editada se tragaba en silencio. `kdfIterations_` ahora
+    valida con `/^[0-9]+$/` antes de parsear (fail-closed, como todo el
+    resto).
+  - **Mutaciones verificadas:** recuento global en vez del del propio hash →
+    **2 failed** (incluido el test que afirma el invariante). Restaurado →
+    29/29.
+
+- [x] **R2.2** — `setupAuth_()` y `bootstrapAdmin_()` ✅
   - **Pasos:** funciones **sólo ejecutables desde el editor de Apps Script**:
     generan `AUTH_SECRET` (+ `GOOGLE_CLIENT_ID`) en Script Properties y la
     fila inicial de admin.
   - ⚠️ **Nunca por endpoint.**
+  - ✅ **Hecho:**
+    - **Nuevo** `setup/05-setup-auth.js` — `setupAuth_()` (idempotente: si
+      `AUTH_SECRET` y `KDF_ITERATIONS` ya existen **no los toca**; nunca
+      loguea el secreto) y `bootstrapAdmin_()` (email del dueño por defecto,
+      contraseña **generada y mostrada una sola vez**, `409` por duplicado,
+      escribe la fila **por nombre de cabecera** no por posición).
+    - **Nuevo guard** `EDITOR_ONLY_FNS = ['setupAuth_', 'bootstrapAdmin_']`
+      en `core/10-router.js`, **lo primero** en `dispatchRoute_` ⇒ `403`.
+    - **Validación al cargar** en `schema/validate-registry.js` —
+      `validateRegistry_()` ahora también itera `REGISTRY.endpoints` y
+      denuncia cualquier `handler` editor-only.
+    - `00-config.js` — `AUTH_SECRET` (secret, generated) en `PROP_MANIFEST`.
+    - `api/.clasp.json` — `filePushOrder` += `setup/05-setup-auth.js`.
+  - **Hallazgo de fondo:** `REGISTRY.handlers` está **vacío y nadie lo
+    puebla**, así que todo endpoint con `handler` dependía del fallback
+    `globalThis[route.handler]`. «Nunca por endpoint» **sólo era cierto por
+    suerte** — si alguien pusiera `setupAuth_` en un endpoint, el guard de
+    `EDITOR_ONLY_FNS` es lo que lo bloquea. El chequeo al cargar añade la
+    segunda barrera.
+  - **Mutaciones verificadas:** guard desactivado → **1 failed**; chequeo al
+    cargar desactivado → **1 failed**. Restaurados → 29/29.
+  - **Hallazgo de tests:** el `beforeAll` de `validate-registry.js` corre al
+    cargar, así que una mutación malformada da `7 skipped` (falla el
+    `beforeAll`), no `failed`. Un spec con `skipped` masivo ⇒ mirar
+    `beforeAll`, no el test.
 
-- [ ] **R2.3** — `issueToken_` / `verifyToken_`
+- [x] **R2.3** — `issueToken_` / `verifyToken_` ✅
   - **Formato:** `base64url(payload) + '.' + base64url(HMAC-SHA256(AUTH_SECRET, …))`
   - **Payload:** `sub, sid, v, iat, exp, aud`.
   - **Requisitos:** HMAC con `Utilities.computeHmacSha256Signature` ·
     comparación en **tiempo constante** (no `===`) · `aud: 'admin'` ·
     TTL ≤ 6 h · **renovación deslizante** (< 25 % de vida ⇒ `meta.renewedToken`).
   - **Rol no viaja en el token** — se lee del snapshot.
+  - ✅ **Hecho en `core/11-auth.js`** — `issueToken_`, `verifyToken_`,
+    `renewMeta_` + helpers (`authSecret_`, `hmac_`, `bytesToB64Url_`…).
+    Constantes en `00-config.js`: `TOKEN_TTL_HOURS: 6`,
+    `SESSION_MAX_DAYS: 7`, `TOKEN_RENEW_RATIO: 0.25`.
+  - **«El rol no viaja» es estructural, no una convención:** `issueToken_`
+    recorta `claims` a una **whitelist** (`sub, sid, v, iat, exp, aud,
+orig`). Un `role` pasado de más simplemente no aparece — no hace falta
+    que nadie se acuerde de no meterlo.
+  - **El payload lleva `orig`** — instante de nacimiento de la **sesión**
+    (no del token), que arrastra cada token renovado. Así el **tope
+    absoluto de 7 días (D10-2)** se cumple **sin estado en el servidor**: el
+    token sigue autocontenido, como pide el título del §3.2. `issueToken_`
+    además **recorta `exp`** a `orig + 7d`, de modo que nunca sale un token
+    que sobreviva a la sesión aunque `renewMeta_` se salte el chequeo.
+  - **La firma se comprueba ANTES de parsear** — nunca se interpreta JSON
+    que todavía no está autenticado. `verifyToken_` devuelve un motivo
+    estructurado (`malformed` · `bad_signature` · `bad_aud` · `expired`)
+    para que R2.5 lo traduzca a `AUTH_INVALID`/`AUTH_EXPIRED` sin adivinar.
+  - **Nuevo** `__tests__/token.spec.js` — **30 tests** (whitelist · firma ·
+    audiencia · vigencia · renovación · tope). `Utilities` se reemplaza por
+    un **doble fiel de Node** (mismo `base64url` y mismo HMAC-SHA256): el
+    token que genera el código real lo valida una implementación ajena.
+  - **Mutaciones verificadas — 4/4 detectadas:**
+    | Mutación                                       | Test que la atrapa                       |
+    | ---------------------------------------------- | ---------------------------------------- |
+    | Firma movida **después** de parsear            | «la firma manda primero»                 |
+    | Sin whitelist (`Object.assign({}, claims, …)`) | «un rol pasado no aparece»               |
+    | Sin el tope de 7 días en `renewMeta_`          | «pasados los 7 días ⇒ no renueva»        |
+    | Sin el recorte de `exp`                        | «un token con `orig` viejo NO sobrevive» |
 
-- [ ] **R2.4** — Niveles de `access` en `11-auth` (aditivo)
+- [x] **R2.4** — Niveles de `access` en `11-auth` (aditivo) ✅
   - **Valores:** `public` · `session` · `role:staff` · `role:admin` (alias
     `admin`) · **sin declarar ⇒ `role:admin`** (fail-closed).
   - **Hecho cuando:** los niveles actuales siguen valiendo.
+  - ✅ **Hecho en `core/11-auth.js`** — `normalizeAccessLevel_`,
+    `roleAllowed_`, `ACCESS_ROLE_RANK` + `requireAccess_` reescrito.
+    Router: sólo cambia el comentario `// 401` → `// 401/403`.
+  - **Aditivo de verdad:** el schema sólo declara `admin` y `public`, y
+    ambos se resuelven **exactamente igual que antes**, con la misma forma
+    de identidad (el token plano del envelope). Los niveles nuevos existen
+    y resuelven, pero hoy nadie los declara.
+  - **`requireAccess_` acepta DOS formas de identidad:**
+    - `string` → el token actual: se verifica igual que siempre (**401** si
+      no pasa) y se asume rol `admin`. Contrato intacto.
+    - `{ role, active }` → identidad ya resuelta. **Es la forma que pasará
+      R2.6** cuando la cadena de verificación lea el snapshot; se fija acá
+      para que R2.6 tenga el contrato cerrado.
+  - **Los niveles `role:*` son un MÍNIMO** (`admin ≥ staff`). De ahí que el
+    token admin antiguo pase también por `role:staff` y que ningún nivel
+    actual cambie de comportamiento.
+  - **403 ≠ 401 (§4.5):** rol insuficiente ⇒ `403 FORBIDDEN` (el front
+    muestra «sin permiso» **sin** cerrar sesión); usuario inactivo o
+    identidad no establecida ⇒ `401 AUTH_INVALID` (limpiar sesión). Mezclar
+    los dos rompería R2.9.
+  - **Coincidencia exacta del vocabulario, sin ignorar mayúsculas** — ante
+    ruido se cae al nivel más restrictivo, no se adivina. (De paso: la rama
+    del alias `admin` es redundante con el default `role:admin`; se queda
+    por documentar la intención de §4.4.)
+  - **Nuevo** `__tests__/access.spec.js` — **28 tests**.
+    _(En R2.6 pasó a **30**: la rama `string` de `requireAccess_` y
+    `requireAdmin_` se retiraron, así que los tests que usaban el token
+    admin plano ahora prueban identidad `{ role, active }` y hay un test
+    nuevo que comprueba que esa forma ya no existe.)_
+  - **Mutaciones verificadas — 4/4 detectadas:**
+    | Mutación                                          | Test que la atrapa                      |
+    | ------------------------------------------------- | --------------------------------------- |
+    | Default vuelve `public` (deja de ser restrictivo) | «un nivel desconocido cae a role:admin» |
+    | Roles con igualdad exacta en vez de mínimo        | «los niveles `role:*` son un MÍNIMO»    |
+    | Rol insuficiente devuelve 401                     | «403 y NO 401»                          |
+    | `active` distinto de `true` deja de ser 401       | «activo en falso ⇒ 401, no 403»         |
 
-- [ ] **R2.5** — Handlers `/auth/login`, `/auth/me`, `/auth/logout`
+- [x] **R2.5** — Handlers `/auth/login`, `/auth/me`, `/auth/logout` ✅
   - **Declarativos** (B2): `input`/`access`/`limits` en `REGISTRY.endpoints`.
   - **Sobre de respuesta:** conservar el formato existente y **añadir**
     códigos `AUTH_REQUIRED`, `AUTH_INVALID`, `AUTH_EXPIRED`, `FORBIDDEN`,
     `RATE_LIMITED`.
+  - **Cambio 1 — el `code` es aditivo (§4.5 / D10-5).**
+    `respondError_`/`apiError_`/`errorResponse_` ganan un 4º parámetro
+    opcional `code` → `error.code` en el envelope. **Sólo** los cinco
+    códigos de sesión lo usan: 400/404/409/422/500 salen **idénticos** a
+    como salían, y `{ ok: false }` sigue sin existir.
+  - **Cambio 2 — dónde se pone cada código:**
+    | Código                                                                | Sitio                                                                           |
+    | --------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+    | `AUTH_REQUIRED`                                                       | `requireAdmin_` sin token · `requireAccess_` sin identidad                      |
+    | `AUTH_INVALID`                                                        | `requireAdmin_` con token erróneo · identidad `active !== true` · login fallido |
+    | `AUTH_EXPIRED`                                                        | `throwTokenError_` ← `authCodeFor_('expired')`                                  |
+    | `FORBIDDEN`                                                           | `requireAccess_` con rol insuficiente (403)                                     |
+    | `RATE_LIMITED`                                                        | `enforceRateLimit_` (429)                                                       |
+    | El mapeo motivo→código de `verifyToken_` vive en `TOKEN_REASON_CODES` |
+    - `authCodeFor_` + `throwTokenError_`, **ya probado acá** aunque lo
+      consuma la cadena de R2.6: así `AUTH_EXPIRED` no queda definido «en
+      algún sitio» hasta la tarea siguiente.
+  - **Cambio 3 — cuatro convenciones del código ganan sobre el snippet de
+    §4.3** (documentadas en el propio fichero, no improvisadas):
+    1. id camelCase + `route`/`method` explícitos, no clave de path.
+    2. `limits: '10/min'`, **no** `{ perMinute: 10 }` — esta última forma
+       la normaliza `normalizeLimits_` a `null` y **el límite no existiría**.
+    3. sin `idToken`: §9.1 eligió la opción B y descartó Google.
+    4. `handler: 'handleAuthLogin'`, no `authLogin`: los 7 endpoints del
+       repo usan `handle` + endpointId.
+  - **`authMe`/`authLogout` no verifican nada por su cuenta.** Su contrato
+    es «devolver lo que la cadena ya validó» (`request.user`) o **401** si
+    no hay identidad resuelta. Esa verificación es la cadena de §3.4
+    (**R2.6**) y duplicarla acá sería una segunda regla que se le
+    contradice en cuanto cambie una de las siete etapas. Consecuencia
+    explícita: **hasta R2.6, `/auth/me` y `/auth/logout` responden 401
+    para cualquier token**, incluido el admin antiguo (que no tiene fila en
+    `_users`). Ver **D21**.
+  - **`publicUser_` es una WHITELIST, no un `delete`** — `id, email, name,
+role, active, last_login_at, created_at`. Si mañana se añade una
+    columna a `_users`, no sale sola. Deja `pass_hash`, `pass_salt` y
+    `token_version` fuera (R2.17) **antes** de que R2.17 exista.
+  - **Nuevo** `primitives/handlers/auth.js` (auto-registra los 3 en
+    `REGISTRY.handlers`), `schema/endpoints/auth.js` y
+    `__tests__/auth-endpoints.spec.js` — **30 tests**.
+    _(En R2.6 pasó a **31**: los dos tests que llamaban a
+    `requireAdmin_` ahora llaman a `verifySession_` con el mismo código
+    esperado, y se añadió el que verifica que `requireAdmin_`,
+    `Props.hashToken`, `rotarToken` y `ADMIN_TOKEN_HASH` ya no existen.)_
+  - **Mutaciones verificadas — 7/7 detectadas:**
+    | Mutación                                 | Test que la atrapa                       |
+    | ---------------------------------------- | ---------------------------------------- |
+    | `respondError_` deja de proyectar `code` | «errorResponse_ proyecta el code»        |
+    | Login sin comprobar `kdfVerify_`         | «contraseña errónea → mismo estado»      |
+    | `requireAdmin_` no distingue 401         | «token erróneo → AUTH_INVALID»           |
+    | `authCodeFor_` pierde `AUTH_EXPIRED`     | «mapea cada motivo» + «throwTokenError_» |
+    | `publicUser_` con `delete` (filtra mal)  | «NUNCA lleva pass_hash…»                 |
+    | Login sin chequear `active`              | «cuenta desactivada → mismo estado»      |
+    | Mensaje de login filtrando el email      | «mismo estado, código y mensaje» (×3)    |
+  - **Gates:** front **155** · api **300** · `api:check` VERDE · build ✔ ·
+    prettier **17**.
 
-- [ ] **R2.6** — Cadena de verificación por request (auth §3.4)
+- [x] **R2.6** — Cadena de verificación por request (auth §3.4) ✅
   - **Pasos, en orden:** firma HMAC → `exp` + `aud` → `sid` no revocado →
     snapshot (`active`, `v == token_version`) → resolver `access` → ejecutar
     → renovación si la vida es corta.
-  - **Hecho cuando:** coste típico 0 lecturas de hoja por request.
+  - **Implementado en `core/11-auth.js`** (bloque «Cadena de verificación
+    por request»): `verifySession_(token)` devuelve `{ payload, user }` o
+    lanza 401 con el código de §4.5 — **el mensaje es SIEMPRE el mismo** y el
+    motivo exacto vive sólo en el código, para no regalar información a
+    quien pruebe tokens ajenos. Componen el paso: `sidRevoked_` (lee
+    `CacheService.revoked:<sid>`), `readUsers_`, `snapshotUser_`,
+    `findUserByEmail_` (movido acá desde `primitives/handlers/auth.js`) y
+    `throwTokenError_` (R2.5) para los pasos 1–2.
+  - **Cableado en `core/10-router.js`**: `doPost` calcula
+    `accessLevel = normalizeAccessLevel_(policyAccess_(policy, group))` y
+    sólo llama `verifySession_` cuando no es `public`; `requireAccess_(…)`
+    queda **en la misma posición que antes** ⇒ el 401 sigue por delante de
+    cualquier 400/404 (hay tests de orden). `dispatchRoute_(route, envelope,
+session)` pone `request.user` / `request.sid` y arranca con
+    `session = session || null`, así que las llamadas de 2 argumentos que
+    usan el editor y los tests de R2.5 significan «sin identidad», no
+    «excepción». `withRenewal_(result, session)` añade
+    `result.meta = { renewedToken }` sólo si `renewMeta_` lo devuelve:
+    **añade una clave, jamás cambia la forma** de la respuesta.
+  - **D21-C — retiro completo del token admin (D21.1, orden 2).** Se borró
+    **en el mismo cambio que la cadena**, de modo que el sistema nunca
+    convivió con dos credenciales en paralelo:
+
+        | Qué se borró                                                | Dónde                                    |
+        | ----------------------------------------------------------- | ---------------------------------------- |
+        | `requireAdmin_` (la rama `string` de `requireAccess_` ya no existe) | `core/11-auth.js`                  |
+        | `ADMIN_TOKEN_HASH` del `PROP_MANIFEST`                        | `00-config.js`                           |
+        | rama `entry.generator === 'token'` y `rotarToken()`           | `setup/00-check-properties.js`           |
+        | `Props.hashToken`                                             | `core/13-props.js`                       |
+        | `findUserByEmail_` (se mudó, no se borró)                     | `primitives/handlers/auth.js` → `core/11-auth.js` |
+
+    **Sigue declarado pero inerte** `ADMIN_TOKEN` en el front
+    (`app.config.ts`, `api.service.spec.ts`): **R2.12** lo retira del lado
+    cliente. Hasta entonces **no hay sesión en el navegador**, que es
+    exactamente lo que autorizó D21.1 (orden 2). El admin recupera acceso
+    con `/auth/login` + contraseña desde el commit de R2.6.
+
+  - **Coste hoy: 1 lectura de `_users` por request protegido.** El
+    «coste típico 0 lecturas» del apartado _Hecho cuando_ es **R2.15**
+    (cache de 60 s) y todavía no se cumple. La **escritura** de
+    `revoked:<sid>` es **R2.16**: aquí sólo se lee.
+  - **Spec nuevo:** `api/__tests__/auth-session.spec.js` (**23 tests**) —
+    cadena de punta a punta por `doPost`, código exacto por paso, orden
+    401→404, y renovación deslizante con/sin `meta`.
+  - **Mutaciones 7/7** (script temporal, fuera del repo): `sidRevoked_`
+    deja de leer · `verifySession_` sin `active` · sin `token_version` ·
+    `withRenewal_` sin `meta` · `dispatchRoute_` sin `request.user` ·
+    `requireAccess_` con `null` fall-open · router que resuelve antes del
+    auth. **La primera tanda detectó 6/7**: `verifySession_` sin `active`
+    se colaba porque `requireAccess_` repite el chequeo y sólo se había
+    probado por `doPost`. Se añadió el test que aísla el paso 4 — evidencia
+    por paso, no por resultado.
+  - **Gates:** front **155** · api **326** · `api:check` VERDE · build ✔ ·
+    prettier **17**.
 
 ### 2.2 Front (auth §7.2)
 
-- [ ] **R2.7** — `AuthService` (signals)
+- [x] **R2.7** — `AuthService` (signals)
   - **Estado:** `user`, `token`, `isAuthenticated`, `login()`, `logout()`,
     `applyRenewedToken()`.
+  - **Hecho:** `src/app/core/services/auth.service.ts` (nuevo, `@Service()`)
+    con señales `user` / `token` / `isAuthenticated` / `role` / `returnUrl`,
+    `login()` / `logout()` / `restore()` / `applyRenewedToken()` y
+    `applyAuthCode()`. **NO inyecta `ApiService`**: el `ApiService` inyecta a
+    éste para leer el token, y el ciclo de DI de Angular revienta en el
+    arranque, no avisa. Inyecta sólo `HttpClient` + `API_URL` + `Router`.
+    `logout()` cierra la sesión en `next` **y** en `error` (best-effort §9.7).
+    `restore()` corre desde `provideAppInitializer` en `app.config.ts`, tras
+    el `load` de `ConfigService`: revalida contra `/auth/me` antes del primer
+    render. Spec `auth.service.spec.ts`.
 
-- [ ] **R2.8** — Interceptor de transporte
+- [x] **R2.8** — Interceptor de transporte
   - **Pasos:** envolver cada petición en
     `{ route, op, token, payload }` con `Content-Type: text/plain` y **sin
     cabeceras personalizadas** (evita preflight CORS); leer
     `meta.renewedToken`.
   - ⚠️ **Todo autenticado por POST** — nada de tokens en URL/GET.
+  - **Hecho:** `api.service.ts` envuelve en
+    `{ token, method, path, payload }` — **las claves del código ganan sobre
+    las de `auth.md §5.2`**, el mismo precedente que fijó R2.5 para §4.3
+    (nota en la cabecera del fichero). `Content-Type: text/plain` ⇒ simple
+    request, sin preflight; el token sólo viaja en el cuerpo de un POST.
+    `meta.renewedToken` se aplica con `renewedTokenOf()` de `api.model.ts`
+    (helper ahí y no en el servicio para no crear un ciclo de imports).
+    `AuthService` comparte el mismo transporte por `post()` — tres endpoints
+    de sesión, idéntico contrato.
 
-- [ ] **R2.9** — Manejo centralizado de `AUTH_*`
+- [x] **R2.9** — Manejo centralizado de `AUTH_*`
   - **Archivo:** interceptor/manejador de errores — **un solo lugar** interpreta
     la tabla de códigos (login / limpiar sesión / «sin permiso» sin cerrar
     sesión / espera).
+  - **Hecho:** `api-error.interceptor.ts` extrae `body.error.code` y hace
+    **una sola llamada** a `auth.applyAuthCode(code)`; `ApiError` lleva el
+    `code` como 4º parámetro. `applyAuthCode` es el ÚNICO intérprete de la
+    tabla de §4.5: `AUTH_REQUIRED` / `AUTH_INVALID` limpian sesión,`
+`AUTH_EXPIRED`guarda`returnUrl`y limpia,`FORBIDDEN`y`RATE_LIMITED`no tocan la sesión. Las cinco filas están probadas una a una en`auth.service.spec.ts`; el puente interceptor → servicio, en
+`api-error.interceptor.spec.ts`.
 
-- [ ] **R2.10** — Guards
+- [x] **R2.10** — Guards
   - **`authGuard`, `roleGuard`** sobre las rutas generadas desde
     `registry.ts` (`shell.routes.ts`).
   - Menú filtrado por rol (**sólo UX** — la seguridad real es del back).
+  - **Hecho:** `src/app/core/guards/auth.guard.ts`. `authGuard` va en
+    `app.routes.ts` sobre el shell lazy (todo lo autenticado);
+    `roleGuard` en las **4** rutas con `:id` de `shell.routes.ts`. El
+    criterio es `AuthService.canAccess(access)`, que acepta las dos formas de
+    §4.4/§5.3 (`requires: 'role:admin'` y `roles: ['admin']`) — mismo dato
+    visto desde el nivel de acceso y desde el recurso. `roleGuard` ante un
+    `:id` desconocido devuelve `true`: decidir «acceso» sobre un recurso que
+    el registry no conoce sería inventar política que ningún schema declaró.
+    `ResourceSchema.access?: ResourceAccess` es opcional y **ningún schema
+    lo declara todavía** (sólo existe `admin`, §9.4) — el filtro queda cableado
+    y probado, declarativamente inerte. Menú filtrado en `sidebar.ts`.
+    Specs: `auth.guard.spec.ts`, `sidebar.spec.ts`, `canAccess` en
+    `auth.service.spec.ts`.
 
-- [ ] **R2.11** — Pantalla de login declarada (`authSchema`)
+- [x] **R2.11** — Pantalla de login declarada (`authSchema`)
   - **Pieza nueva** en el schema del front: `providers`, `loginFields`,
     `redirectAfterLogin`, `rememberMe`.
   - **Requisito (F1):** `contract-check` verifica que las claves de
     `loginFields` existan en el `input` de `/auth/login`.
+  - **Hecho:** `src/app/schemas/auth.schema.ts` + tipos `AuthSchema` /
+    `AuthFieldDeclaration` en `schema.model.ts`, re-export en `registry.ts`.
+    **Check 10** en `scripts/contract-check.mjs`, bidireccional (clave del
+    front que el back no espera y al revés) + `rememberMe === false` +
+    `providers` no vacío. `loadFrontend()` salta `auth` por nombre: es un
+    schema del front que **no es recurso** (sin `id` ni `fields`). Ruta
+    `/login` en `app.routes.ts` **fuera** del shell — si viviera dentro,
+    `authGuard` bloquearía el propio login. `pages/login/login.ts` pinta los
+    campos desde el schema con `@switch`; no usa `FieldHost` porque el tipo
+    `password` es pieza nueva de **Fase 3 (R3.3)** y hoy no existe en
+    `FieldSchema`. **Mutaciones 4/4** (`rememberMe:true`, rename `email`,
+    `providers: []`, borrar `password` del loginFields).
+    _Diferido:_ §5.1 pide campos del registro de render — se resuelve en
+    R3.x, cuando exista el descriptor `password`.
 
-- [ ] **R2.12** — Almacenamiento del token
+- [x] **R2.12** — Almacenamiento del token
   - **Default:** `sessionStorage` (muere con la pestaña). Con «recordarme»:
     `localStorage` — **sólo si D10-3 lo aprueba**.
   - Nunca en la URL ni en `GET`.
   - Al recibir `AUTH_INVALID`/`AUTH_EXPIRED`: borrar token **y** usuario antes
     de redirigir.
+  - **Hecho:** **`sessionStorage` siempre** — D10-3 negó `localStorage`, así
+    que no hay «recordarme»: ni casilla en el login, ni `true` en
+    `authSchema` (el check 10 lo vuelve rojo). `clear()` borra token **y**
+    usuario; `goLogin()` sólo corre después de `clear()`. **`ADMIN_TOKEN`
+    retirado** de `core/tokens.ts`, `app.config.ts`,
+    `environment.ts`, `environment.local.ts` y
+    `environment.local.example.ts` (queda una mención comentada en
+    `api.service.ts` que explica el retiro). **D22 sigue abierta:** el token
+    está en el árbol de commits `d715be6`/`946669b` y rotarlo exige
+    autorización.
 
 ### 2.3 Robustez (auth §7.3)
 
-- [ ] **R2.13** — Rate-limit del login
+- [x] **R2.13** — Rate-limit del login
   - **Declarado** en `limits` del endpoint, **ejecutado** por `26-lock-cache`.
   - Por **cuenta + global** (no por IP — Apps Script no da IP), bajo
     `LockService` (el incremento no es atómico).
   - Mensaje de fallo **siempre genérico**; igual de rápido exista o no el email.
+  - **Hecho:**
+    - **Declaración** — `limits` pasó de string a objeto para caber las dos
+      ventanas en un solo sitio: `{ read: '10/min', write: '10/min',
+account: '5/15min' }`. `read`/`write` queda **explícito**: con el
+      string, un POST que declare `method: 'GET'` en el cuerpo saldría del
+      paso de límite, y al pasar a objeto eso se habría convertido en una
+      vía de escape. `auth.md §4.3` ya dibuja `limits` como objeto, así que
+      la forma no es nueva — lo era la única ventana.
+    - **Gramática** — `parseLimitSpec_` acepta `'<n>/<m><unidad>'`
+      (`5/15min` = 5 en 900 s). El multiplicador abre la **ventana**, no el
+      contador; sin multiplicador `'10/min'` significa exactamente lo mismo
+      que antes ⇒ **cero cambios** en los límites de cualquier otro recurso.
+    - **Dos ventanas, un solo mecanismo** — `enforceAccountLimit_` (sólo
+      **lee**, sin lock) y `registerAccountFailure_` (incrementa **bajo
+      `withLock_`**) en `26-lock-cache.js`. El global de `enforceRateLimit_`
+      no se toca: sigue siendo control de uso sin lock, como decidió F6-3.
+    - **El router** — `normalizeLimits_` conserva `account` y
+      `dispatchRoute_` lo entrega en `request.limits`, así el handler no
+      tiene que saber qué endpoint es ni qué id tiene (Regla 1 intacta).
+    - **Coste parejado** — `kdfBurn_` (`core/11-auth.js`) quema las mismas
+      iteraciones que `kdfVerify_` de un usuario real cuando el email no
+      existe. Antes esa rama saltaba el KDF y contestaba en microsegundos:
+      era un comprobador de direcciones de correo **con cronómetro**. Si
+      falta `KDF_ITERATIONS`, se quema `CONFIG.KDF_ITERATIONS_MIN` — el
+      suelo que de todos modos no se baja — en vez de romper el 401.
+    - **El 429 tampoco delata** — el contador sube **también** para emails
+      inexistentes; si no, el propio corte diría «esta dirección está dada
+      de alta».
+  - **Números** — `5/15min` sale de §4.6 («5 fallos / 15 min por email») y
+    el **límite 5** lo fija §8 («6.º intento fallido → RATE_LIMITED»): la
+    ventana es el ejemplo del líder, el conteo es su prueba. Ambos caben en
+    una clave de `limits` y se cambian sin tocar código.
+  - **Pruebas** — 12 en `auth-endpoints.spec.js` (gramática, corte en el
+    6.º, mensaje idéntico con/sin usuario, cuentas aisladas, éxito sin
+    consumo, sin declaración ⇒ nunca corta, coste por `Props.hashText`,
+    lock en el incremento y **sin** lock en la lectura).
+    **Mutaciones 9/9.**
+  - **Pendiente de fase:** el mensaje genérico ya lo era («Credenciales
+    inválidas») y `RATE_LIMITED` se traduce en el front a «espera» — eso ya
+    lo hace la tabla de §4.5 (R2.9).
 
-- [ ] **R2.14** — Auditoría de auth
+- [x] **R2.14** — Auditoría de auth
   - **En `_audit`:** `login_ok`, `login_fail`, `logout`, `forbidden`.
     **Nunca** tokens ni contraseñas.
+  - **Hecho:**
+    - **Una sola implementación** — `authAudit_` vive en `50-audit.js`,
+      sobre la MISMA hoja (`_audit_log`) y el MISMO formato de fila que
+      `appendAuditRow_`. `entity` siempre es `'auth'`; la acción nombra el
+      evento. `appendAuditRow_` gana un `optActor` opcional porque en una
+      web app `Session.getActiveUser()` devuelve **al que despliega**, no a
+      quien hizo login — el resto de llamadas se resuelve igual que antes.
+    - **Columnas** — `actor` = id del usuario (o `anon`); `entity_key` =
+      **email**, que es el único identificador que existe en los CUATRO
+      casos (un login fallido no tiene id); `summary` = descripción corta
+      en español, siempre sin credenciales.
+    - **Los cuatro puntos de enganche** — `handleAuthLogin` (ramas de
+      éxito y de fallo), `handleAuthLogout` y `requireAccess_` justo antes
+      de tirar el 403: ése es el único desfiladero por el que pasa todo
+      `FORBIDDEN` del sistema.
+    - **Nunca tira el flujo abajo** — `authAudit_` envuelve todo en
+      try/catch y devuelve `false`. Fallo silencioso no es fallo silencioso
+      de verdad: se manda a `console.error`. Si convirtiera una traza caída
+      en 500, cualquiera cortaría el login a distancia.
+    - **Los intentos recortados por rate-limit no llegan a auditar**:
+      `enforceAccountLimit_` corta antes de mirar credenciales, así que
+      `login_fail` cuenta los intentos 1..5 de cada ventana, no el 6.º.
+  - **Convención > `auth.md`** — el plan y el líder dicen `_audit`; la hoja
+    real se llama `_audit_log` (`schema/05`, `AUX_SHEET_ORDER`). Precedente
+    R2.5/R2.8/R2.13: en identificadores gana el código.
+  - **Refactor de test** — `fakeSha` y `realUtilities` pasaron a
+    `api/__tests__/_auth-fixtures.js` compartido (R2.15/R2.16 van a
+    necesitarlo) y `fakeSheet_` gana `appendRow`. Lo antes sólo se podía
+    probar parcheando `readSheetData_` a mano; con `fakeSheet_` el spec de
+    auditoría deja `readSheetData_` **sin parchear**.
+  - **Pruebas** — 11 en `auth-audit.spec.js` (4 eventos, token/contraseña/
+    `pass_hash`/`pass_salt` fuera de la traza, hoja ausente, traza que
+    revienta, 401 que no se vuelve 500). **Mutaciones 9/9.**
+  - **Gates** — front 196 · api **349** · `api:check` VERDE · build ✔ ·
+    prettier 17.
 
-- [ ] **R2.15** — Snapshot cacheado + `token_version`
+- [x] **R2.15** — Snapshot cacheado + `token_version`
   - **TTL 60 s** con `CacheService` → hoja `_users` si falta.
   - Subir `token_version` invalida **todas** las sesiones del usuario
     (firme, efectiva en ≤ 60 s).
+  - **Hecho:**
+    - **`sessionSnapshot_(sub)`** en `core/11-auth.js`; `verifySession_`
+      deja de leer la hoja en cada request. Clave `usnap:<sub>`,
+      `SESSION_SNAPSHOT_TTL_S = 60`.
+    - **Cumple el «coste típico 0 lecturas» de §3.4** — segunda llamada
+      ⇒ ni una hoja abierta.
+    - **No cachea `pass_hash`/`pass_salt`.** `CacheService` sólo tiene que
+      ser fiable para lo que se pueda perder (§2) y una credencial no lo
+      es. Tampoco hace falta: `verifySession_` no los mira y `publicUser_`
+      es una whitelist. Todo lo demás (`id`, `email`, `name`, `role`,
+      `active`, `token_version`, `last_login_at`, `created_at`) sí va, así
+      que `/auth/me` sigue devolviendo lo mismo.
+    - **La caché acelera, nunca decide.** Sólo se fía de `typeof raw ===
+'string'` + un `JSON.parse` que dé objeto no nulo. Todo lo demás —
+      proxy inerte, JSON roto, `'null'`, caché caída — cae a la hoja y se
+      reescribe. **Caché negativa: no.** Una cuenta borrada se rechaza sin
+      caché para que una baja se note sin esperar al TTL.
+    - **`token_version` y `active` con ventana de 60 s**: mientras dure la
+      caché la fila nueva no rige; vencido el TTL manda la hoja. Ése es
+      exactamente el «firme, efectiva en ≤ 60 s» de §4.6 — la caché ES el
+      semáforo, no una invalidación que haya que disparar a mano.
+    - **Test corregido** — `auth-session.spec.js` afirmaba
+      `cache.size === 0` tras leer revocación (guardia de R2.16). Ahora
+      filtra por prefijo `revoked:` y además comprueba que el snapshot SÍ
+      quedó: el paso 3 sigue sin escribir nada.
+  - **Pruebas** — 7 nuevas en `auth-session.spec.js` (0 hojas en el 2.º
+    request, snapshot sin credenciales, JSON roto y `'null'`, valor no
+    string, `token_version` y `active` con ventana, sin caché negativa).
+    **Mutaciones 6/6.**
+  - **Gotcha** — el test «valor no string» falla si se stubbea
+    `CacheService` a ciegas: `sidRevoked_` trata cualquier no-nulo como
+    revocado. El doble tiene que distinguir por prefijo (`usnap:` vs
+    `revoked:`).
+  - **Gates** — front 196 · api **356** · `api:check` VERDE · build ✔ ·
+    prettier 17.
 
-- [ ] **R2.16** — `/auth/logout` con revocación
+- [x] **R2.16** — `/auth/logout` con revocación
   - `sid` a la lista de revocados en cache (TTL 6 h) — **best-effort**,
     documentado como tal (D10-7).
+  - **Hecho:**
+    - **`revokeSid_(sid)`** en `core/11-auth.js`, junto a `sidRevoked_`
+      (que ya leía desde R2.6). `handleAuthLogout` lo llama **ANTES** de
+      auditar: si la traza falla, la sesión ya quedó cortada.
+    - **Clave `revoked:<sid>`, valor `'1'`, TTL 21600 s.** El valor no es
+      un booleano por capricho: `sidRevoked_` sólo mira que haya _algo_
+      distinto de vacío, así que cualquier string sirve.
+    - **Letra chica escrita en el código, no en la wiki**: `CacheService`
+      puede perder entradas **y** su tope son 6 h = la vida de un token
+      emitido (`TOKEN_TTL_HOURS`). Un logout cubre UN token; una sesión ya
+      renovada en deslizante puede llegar a `SESSION_MAX_DAYS`. Por eso
+      «cerrar todas las sesiones» **no** es esto — eso es `token_version`
+      (R2.15), que persiste en la hoja y por eso sí es firme (§4.3).
+    - **No puede fallar**: si la caché está caída, `revokeSid_` devuelve
+      `false` y el logout sigue contestando `loggedOut: true` (D10-7).
+    - **Orden**: revocar → auditar. Al revés, una traza caída habría
+      dejado la sesión viva.
+  - **Pruebas** — 6 en `auth-session.spec.js` (escribe la clave, el MISMO
+    token deja de servir, otras sesiones siguen, caché caída ⇒ logout
+    igual, una entrada exacta por logout, logout sin sid). **Mutaciones
+    4/4.**
+  - **Gates** — front 196 · api **362** · `api:check` VERDE · build ✔ ·
+    prettier 17.
 
-- [ ] **R2.17** — Pruebas mínimas (auth §8)
+- [x] **R2.17** — Pruebas mínimas (auth §8)
   - Cada caso de la lista de §8 tiene su test: sin token → `AUTH_REQUIRED`;
     token alterado → `AUTH_INVALID`; vencido → `AUTH_EXPIRED`; `aud` distinto
     → rechazado; `active=false` → ≤ 60 s; subir `token_version` → cae todo;
     `staff` en `role:admin` → `FORBIDDEN` sin cerrar sesión; logout → `sid`
     rechazado; 6.º fallo → `RATE_LIMITED`; `/public/*` sin campos internos;
     ninguna respuesta con `pass_hash`/`pass_salt`/`token_version`.
+  - **Mapa de cobertura** (una línea por viñeta de §8):
+    | §8                                                            | Prueba                                                                                                     |
+    | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+    | sin token → `AUTH_REQUIRED`                                   | `auth-session.spec` §2 «código exacto por paso» + §3 «ruta admin SIN token»                                |
+    | token alterado → `AUTH_INVALID`                               | `auth-session.spec` §2 · `token.spec`                                                                      |
+    | vencido → `AUTH_EXPIRED`                                      | `auth-session.spec` §2 · `token.spec`                                                                      |
+    | `aud` distinto → rechazado                                    | `auth-session.spec` (`aud: 'otra-app'`) · `token.spec`                                                     |
+    | `active=false` → ≤ 60 s                                       | R2.15 «active=false rige en ≤ 60 s» + fail-closed de R2.6                                                  |
+    | subir `token_version` → cae todo                              | R2.15 «subir token_version invalida lo emitido»                                                            |
+    | `staff` en `role:admin` → `FORBIDDEN` sin cerrar sesión       | `auth-session.spec` «rol insuficiente → 403» (+ aserción nueva) · `access.spec`                            |
+    | logout → ese `sid` rechazado                                  | R2.16 «después del logout el MISMO token ya no sirve»                                                      |
+    | 6.º fallo → `RATE_LIMITED`, mensaje idéntico                  | R2.13 (2 tests) + «mensaje de corte idéntico»                                                              |
+    | `/public/*` sin campos de la audiencia                        | ⛔ **Fase 4** — no existen rutas `/public/*` ni `audiences`                                                |
+    | ninguna respuesta con `pass_hash`/`pass_salt`/`token_version` | `auth-endpoints.spec` «la respuesta NUNCA lleva…» + «proyección pública» + **nuevo** «_users inalcanzable» |
+    | `contract-check`: login ⊆ input                               | ✅ R2.11 (check 10)                                                                                        |
+    | `contract-check`: rutas ⊥ audiencia                           | ⛔ **Fase 4** — depende de `audiences`                                                                     |
+  - **Huecos cerrados en esta tarea:**
+    - **«y no se cierra la sesión»** — el test de `FORBIDDEN` sólo comprobaba
+      el 403; ahora además verifica que un `/auth/me` posterior sigue
+      devolviendo el usuario. Un 403 que limpiara el token mandaría a login
+      a cualquiera que tocara una pantalla de admin sin permiso.
+    - **`_users` es inalcanzable por el motor de recursos** — si `_users`
+      no está en `REGISTRY.resources` ni como `sheet` de otro recurso,
+      ninguna respuesta del CRUD puede leer `pass_hash`/`pass_salt`/
+      `token_version`. Ése es el otro camino además del blanqueo de
+      `publicUser_`.
+  - **Diferido a Fase 4 (no es una deuda nueva):** las dos viñetas de
+    audiencias — `refactormotor.md` ya las sitúa en «4 · Audiencias».
+  - **Mutaciones 3/3** — `publicUser_` cuela `pass_hash` · `_users`
+    registrada como recurso · el 403 vuelve a ser 401.
+  - **Gates** — front 196 · api **363** · `api:check` VERDE · build ✔ ·
+    prettier 17.
 
-- [ ] **R2.18** — Gates de la fase
+- [x] **R2.18** — Gates de la fase ✅ **cerrada 2026-10-08**
+  - **Comandos:** 5 gates + `sheet-check`.
+  - **Hecho cuando:** todo verde.
+  - **Estado: 6/6 verdes** ✅ — front **196** · api **390** · `api:check`
+    VERDE (7 recursos, 84 campos) · build ✔ · prettier **17** (baseline) ·
+    **`api:drift` VERDE** — «sin faltantes ni sobrantes».
+    - **Diagnóstico del bloqueo (D23): tres causas apiladas, ninguna era el
+      token.**
+      1. `GAS_URL` apuntaba al deployment **fijado a la versión 29**, no al
+         `@HEAD` (el `@HEAD` devuelve HTML, no JSON).
+      2. El despliegue anterior a Fase 2 devolvía `401` **sin `code`**; hoy
+         SIEMPRE se emite `code` en 401 ⇒ **«401 con `code`» prueba que el
+         despliegue ya trae Fase 2**.
+      3. **La hoja `_users` no existía** en el spreadsheet real ⇒
+         `POST /auth/login` → `500 "El sistema de usuarios no está
+configurado"`.
+    - **Por qué no se automatiza del todo:** `clasp run` no funciona («GCP
+      project ID is not set») y `auth.md` §4.7 manda que el arranque inicial
+      sea **editor-only, «nunca por endpoint»**.
+    - **Cómo se resolvió:** `clasp push -f` + `version` + `redeploy` → **v32**
+      (mismo URL) · D23 auto-login del humo · D24 `setupAll()` — **una sola
+      corrida en el editor** · D25 reconciliación del admin
+      (`contraseña ACTUALIZADA`) · `npm run smoke:login` con **caché activa**
+      · `npm run api:drift` **VERDE**.
+      **Sin rotar credenciales** y **sin `clasp push` en el chequeo**.
+  - **Conteo de la fase** — R2.1→R2.18 **18/18 cerradas**:
+    front **196** · api **390** · `api:check` VERDE (7 recursos, 84 campos)
+    · build ✔ · prettier **17** (baseline) · `api:drift` VERDE. Mutaciones
+    acumuladas de la fase: **R2.6 7/7 · R2.11 4/4 · R2.13 9/9 · R2.14 9/9 ·
+    R2.15 6/6 · R2.16 4/4 · R2.17 3/3 = 42/42** · **D24 5/5 · D25 5/5**. api:
+    363 en el cierre de R2.17, **390** con D23/D24/D25 (+27 tests).
 
 ---
 
@@ -895,17 +1613,465 @@ reorder, bulk }` con cada una encendible/apagable.
 
 ## §4. Decisiones pendientes
 
-| ID      | Decisión                                         | Bloquea | Estado                     |
-| ------- | ------------------------------------------------ | ------- | -------------------------- |
-| **D9**  | `refactormotor` §9 — 6 decisiones                | R0.3    | abierta                    |
-| **D10** | `auth` §9 — 7 decisiones                         | R0.4    | abierta                    |
-| **D8**  | Absorber `plan-motor-de-renderizado.md`          | R0.5    | ✅ **absorbido y borrado** |
-| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)       | R8.1    | abierta                    |
-| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos? | R8.2    | abierta                    |
-| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?     | R8.3    | abierta                    |
-| **D14** | R10: recrear pedidos o regenerar PIN             | R8.8    | abierta                    |
-| **D15** | `confirm-dialog`: usar o retirar                 | R10.1   | abierta                    |
-| **D16** | `POST /admin/events`: retirar o justificar       | R10.2   | abierta                    |
+| ID      | Decisión                                                                                                        | Bloquea                 | Estado                                                                                                          |
+| ------- | --------------------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **D9**  | `refactormotor` §9 — 6 decisiones                                                                               | R0.3                    | ✅ **resueltas** → §6                                                                                           |
+| **D10** | `auth` §9 — 7 decisiones                                                                                        | R0.4                    | ✅ **resueltas** → §6                                                                                           |
+| **D8**  | Absorber `plan-motor-de-renderizado.md`                                                                         | R0.5                    | ✅ **absorbido y borrado**                                                                                      |
+| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)                                                                      | R8.1                    | abierta                                                                                                         |
+| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                | R8.2                    | abierta                                                                                                         |
+| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                    | R8.3                    | abierta                                                                                                         |
+| **D14** | R10: recrear pedidos o regenerar PIN                                                                            | R8.8                    | abierta                                                                                                         |
+| **D15** | `confirm-dialog`: usar o retirar                                                                                | R10.1                   | abierta                                                                                                         |
+| **D16** | `POST /admin/events`: retirar o justificar                                                                      | R10.2                   | abierta                                                                                                         |
+| **D17** | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                         | R1.7                    | ✅ **resuelta** → R1.7                                                                                          |
+| **D18** | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                               | R1.8                    | ✅ **resuelta** → R1.8                                                                                          |
+| **D19** | KDF de contraseña: costo, formato y tarea que lo implementa                                                     | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                         |
+| **D20** | Ruta de verificación de PIN: `/p/pin/:ref` o `/p/orders/:ref/pin`                                               | R2.5 (contrato público) | ✅ **resuelta** → A                                                                                             |
+| **D21** | El token admin antiguo no tiene fila en `_users`: ¿qué identidad es?                                            | R2.6                    | ✅ **resuelta** → C                                                                                             |
+| **D22** | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                           | R2.12 · Fase 10         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización             |
+| **D23** | `GAS_TOKEN` caducaba cada 6 h y nada lo renovaba: los scripts de humo pierden la sesión                         | R1.11 · R2.18           | ✅ **resuelta** → auto-login en `scripts/smoke-auth.mjs`                                                        |
+| **D24** | El setup pedía clave **y** valor a mano; `bootstrapAdmin_` sólo aceptaba argumentos                             | R1.11 · R2.18           | ✅ **resuelta** → `setupAll()` único + props creadas por el setup                                               |
+| **D25** | `ADMIN_PASSWORD` no alcanza la fila de `_users`: el admin se creó con la contraseña **generada** del primer run | R1.11 · R2.18           | ✅ **resuelta** → `bootstrapAdmin_` **reconcilia** la fila si hay contraseña explícita (auth.md §4.7 enmendado) |
+
+### D17 · R1.7 «Test de contrato del front» — tres premisas
+
+Registrada al llegar a R1.7, porque la tarea obliga a decidir algo que el plan
+no previó:
+
+1. **La ruta del plan no existe.** `src/app/core/registry/contract.spec.ts` —
+   `src/app/core/registry/` no existe. El registro real es
+   **`src/app/schemas/registry.ts`**. _Esto no es una decisión: es un typo,
+   se corrige._
+2. **`configSchema` no existe en ningún sitio.** `grep -rn "configSchema" src/`
+   → 0 resultados. El paso «cada `config` valida contra su `configSchema`» es
+   **inimplementable tal cual** — habría que crear el sistema desde cero.
+3. **Lo que R1.7 pide ya lo garantiza `npm run build`.** Los tres registros
+   son uniones de TypeScript: `FieldSchema` (`schema.model.ts:367`),
+   `ListColumnFormat` (`:395`) y el `type` de acción (`:434`). Un `type`
+   inventado **ya rompe `tsc`**, que es gate 4.
+
+**El hueco real que SÍ cubre un test** y que `tsc` no cubre: que un tipo esté
+en la unión de TS y **a la vez** fuera del registro de runtime —
+`isSupportedFieldType()` (`field-host.ts:78`). Ahí `tsc` pasa y la UI no pinta
+nada, porque el `@switch` de `field-host` no tiene `@default`.
+
+> **Corregido al implementar:** el `@switch` de **`list-view.ts:259` sí tiene
+> `@default`** (línea 301, `{{ cellText(...) }}`). Un `format` sin `@case`
+> degrada a texto, no se pierde — **no hay hueco en `format`**. Y
+> `runAction` degrada a «estará disponible próximamente» para lo que no
+> implementa.
+
+**✅ Resuelta (decisión del usuario): «test de drift runtime».**
+Ruta corregida a `src/app/schemas/contract.spec.ts`; cláusula `configSchema`
+descartada; tripwire de tipos en `field-host.ts` (cierra el hueco real en
+ambas direcciones, verificado con TS2322) + tests de recorrido de tipos y de
+acciones. Las divergencias `format`/`action` se documentan acá en vez de
+parchearse: `format` ya degrada por `@default`, y `trigger-endpoint` queda
+registrado como declaración sin implementar (véase también D16).
+
+### D18 · R1.8 «Mensaje compartido» — `public_base_url` no llega al modal de alta
+
+Registrada al implementar R1.8, porque el test fiel a la firma real del call
+site destapó un bug que R1.8 no pedía arreglar.
+
+**Evidencia (reproducida, no inferida):**
+
+```
+AssertionError: el enlace quedó sin dominio
+Expected: "https://pickpass.app/p/ORD-999"
+Received: "/p/ORD-999"
+```
+
+**Causa:** `PostCreateModal.configValues` es `input<Record<string, unknown>>({})`
+(`post-create-modal.ts:85`) y **no tiene ningún `[configValues]` en todo
+`src/`** — `form-view.ts:420-425` sólo bindea `schema`, `config`, `record` y
+`closed`. Con el default `{}`, `interpolateTemplate` devuelve `''` para
+claves inexistentes (`template-interpolator.ts:15-19`), así que
+`{public_base_url}` se resuelve vacío y **el mensaje de alta se copia con la
+URL rota**: `Hola Ana Pérez, puede retirar su pedido ORD-999 aquí: /p/ORD-999. …`
+
+**Por qué ningún test lo había visto:** `post-create-modal.spec.ts` setea
+`configValues` a mano en los tests 1 y 3. Los tests que no lo setean no lo
+usan. **Ninguno replica el binding real de producción.**
+
+**Alcance:** sólo el contexto de **alta**. El de lista/detalle sí funciona,
+porque `list-view.ts:711` usa
+`configService.buildInterpolationContext(row)`, que inyecta
+`public_base_url` él mismo (`config.service.ts:64-73`). El PIN **no** está
+afectado: llega por `record()`.
+
+**La bifurcación a decidir:**
+
+| Opción | Cómo                                                                                                      | A favor                                                                   | En contra                                                                                 |
+| ------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **A**  | `form-view.ts` inyecta `ConfigService` y bindea `[configValues]="config.globalConfig()"`                  | Deja el componente puro y testeable                                       | El input sigue siendo un pie que cada call site nuevo puede no pisar — exactamente el bug |
+| **B**  | `PostCreateModal` inyecta `ConfigService` y usa `buildInterpolationContext(record)` como hace `list-view` | Un solo sitio sabe cómo armar el contexto; **desaparece la clase de bug** | El componente deja de ser puro: hay que proveer `ConfigService` en los specs              |
+| **C**  | Borrás el input `configValues` y lo resuelven todos por `B`                                               | Imposible volver a caer                                                   | Mismo costo que B + rompe los specs existentes que lo setean                              |
+
+**Recomendación: B** — es la que ya usa el otro call site, así que además
+iguala los dos caminos de interpolación.
+
+**✅ Resuelta (decisión del usuario): inyectar `ConfigService` en el modal.**
+
+`PostCreateModal` hace `inject(ConfigService)` — **sin `{ optional: true }`**,
+a diferencia de `list-view.ts:414`, para que un provider ausente sea un
+error ruidoso y no un fallback silencioso de la misma clase. Los cuatro
+sitios de interpolación (título, descripción, URL y mensaje) pasan por un
+único `context = computed(() => ({ ...buildInterpolationContext(record()),
+...configValues() }))`: la config global es la fuente y el input `configValues`
+queda como **override**.
+
+- Fix: `post-create-modal.ts` (imports + `configService` + `context`).
+- Test 5 de `post-create-modal.spec.ts` replica el binding de producción
+  (sin `configValues`) y además fija el contrato del override.
+- **Verificado:** 152/152 en el front. Antes del fix, el mismo test daba
+  `expected '/p/ORD-999' to be 'https://…/p/ORD-999'`.
+
+### D19 · R2.2/R2.5 «KDF de contraseña» — el plan no tiene tarea para esto
+
+Registrada al llegar a R2.2, porque la tarea obliga a decidir algo que el plan
+no previó: `bootstrapAdmin_()` tiene que **escribir** `pass_hash` y
+`/auth/login` (R2.5) tiene que **verificarlo**, pero ninguna tarea R2.x
+implementa el KDF.
+
+**Evidencia:**
+
+```
+$ grep -n -i "kdf\|iteraciones\|sha-256 iterado" doc/plan-refactor-motor.md
+1322: | 1 | Proveedor B — contraseña (…). KDF SHA-256 iterado con salt … |
+```
+
+Una sola línea, y está en la **tabla resumen de fases**, no en una tarea.
+Dentro de Fase 2 (R2.1–R2.18) la única mención es la lista de columnas de
+R2.1: aparece `pass_hash`, `pass_salt`, pero **nadie los calcula**.
+
+Sí está mandado por `auth.md`:
+
+- **§9.1** — «**KDF real obligatorio**: GAS no tiene bcrypt → SHA-256
+  iterado con salt, **nunca SHA-256 plano**.»
+- **§4.6** — «hash con sal por usuario, **comparación en tiempo constante**,
+  **iteraciones ajustadas a lo que tolere el tiempo de ejecución**.»
+- **§8** — «Ninguna respuesta contiene `pass_hash`, `pass_salt` ni
+  `token_version`.»
+
+**Lo que hay que decidir (3 sub-decisiones):**
+
+1. **Coste (iteraciones).** `auth.md` sólo dice «ajustadas a lo que tolere
+   el tiempo de ejecución» — es una decisión **empírica**, y no se puede
+   medir acá: el hash usa `Utilities.computeDigest`, que en los specs está
+   stubbeado. En producción cada iteración es una llamada a la interop
+   Java de GAS. Demasiadas ⇒ el login se come cuota y tiempo; demasiadas
+   pocas ⇒ un hash débil, justo lo que §9.1 prohíbe.
+2. **Dónde vive el recuento de iteraciones.** Para **verificar** un hash
+   iterado hace falta el mismo número. Opciones: dentro de `pass_hash`
+   (autocontenido ⇒ se puede subir el coste sin romper hashes viejos),
+   en una columna nueva (exige migrar `_users`), o dentro de `pass_salt`.
+3. **Tarea o sub-paso.** Si es sub-paso de R2.2 y R2.5, nada lo trackea y
+   puede quedarse a medias; si es tarea propia, entra al plan.
+
+**Recomendación:** tarea propia + recuento dentro de `pass_hash`
+(`s256$<iteraciones>$<hex>`), con el coste medido en el despliegue real antes
+de fijarlo.
+
+**✅ Resuelta (decisión del usuario): tarea nueva + coste medido.**
+
+- Nueva tarea **R2.1b** (insertada ANTES de R2.2, porque `bootstrapAdmin_` ya
+  necesita escribir un hash). Sin renumerar R2.2–R2.18: nada queda huérfano.
+- Recuento **autocontenido en `pass_hash`** como `s256$<iteraciones>$<hex>`.
+  Por eso un cambio de coste **no rompe** los hashes ya emitidos: la
+  verificación reutiliza el recuento guardado en el propio hash.
+- **El coste NO se fija en el código**: `setupAuth_()` lo **mide** en el
+  despliegue real y lo guarda como la propiedad `KDF_ITERATIONS`. El KDF
+  rechaza con `Props.require` si falta ⇒ es imposible arrancar sin haber
+  medido. La sal sigue en su columna `pass_salt` (autocontenido = el hash;
+  separada = la sal, para poder rotar sal sin tocar el hash).
+
+---
+
+### D20 · Ruta de verificación de PIN — un cambio en el árbol de trabajo que nadie decidió aquí
+
+Registrada al correr los gates de R2.1b: `pin-verify.spec.js` empezó a fallar
+(`expected '/p/pin/:ref' to be '/p/orders/:ref/pin'`) y el culpable **no** fue
+nada de Fase 2.
+
+**Línea de tiempo (mtime, no inferencia):**
+
+| fichero                              | mtime                                  |
+| ------------------------------------ | -------------------------------------- |
+| `__tests__/pin-verify.spec.js`       | 10-05 20:30                            |
+| `doc/plan-refactor-motor.md`         | 10-07 02:17 (ediciones de esta sesión) |
+| **`schema/endpoints/pin-verify.js`** | **10-07 13:27** ← entre sesiones       |
+
+El diff de las 13:27 cambió la ruta **y** añadió este comentario:
+
+> `// NOTA: La ruta es /p/pin/:ref (no /p/orders/:ref/pin) porque el router de
+// GAS solo soporta un nivel de parámetro al final de la ruta.`
+
+**La afirmación es CIERTA** — verificada contra el código, no asumida:
+
+```js
+// 10-router.js:55  routeTable_()
+var paramMatch = /^(.+)\/:([A-Za-z0-9_]+)$/.exec(route); // el :param debe ser el ÚLTIMO segmento
+// 10-router.js:281 resolveRoute_()
+var cut = path.lastIndexOf('/'); // SÓLO un segmento clave tras la base
+var owner = table.keyed[path.slice(0, cut)];
+```
+
+- `/p/orders/:ref` → cae en `keyed['/p/orders']` ⇒ **funciona** (así vive
+  `public-order`).
+- `/p/orders/:ref/pin` → no cumple el regex (no termina en `/:name`) ⇒ se
+  registra en `exact` **con el `:ref` literal**. Una petición real
+  `/p/orders/ORD-1/pin` resuelve `keyed['/p/orders/ORD-1']` → `undefined` →
+  **`null` → 404**.
+
+**Conclusión: la ruta antigua nunca funcionó por HTTP.** El cambio de las
+13:27 no rompe a nadie que hoy tenga algo funcionando — incluido el front,
+que no construye esa ruta en ningún sitio (`grep "'/p/" src/` sólo encuentra
+un comentario).
+
+**Lo que sí hay que decidir:**
+
+| Opción | Ruta                 | A favor                                                                           | En contra                                                                                                                                                    |
+| ------ | -------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A**  | `/p/pin/:ref`        | Funciona con el router actual; es una ruta «lógica» al estilo B2; ya está escrita | Contrato menos REST que `/p/orders/:ref/pin`; hay que tocar el test                                                                                          |
+| **B**  | `/p/orders/:ref/pin` | REST convencional; coherente con `public-order`                                   | Exige **ampliar el router** para `:param` intermedio (`routeTable_`, `resolveRoute_` y el scope de política) — es una pieza compartida, y ahora devuelve 404 |
+
+**Recomendación: A.** Corrige el test, no el router. Si algún día se quiere
+B, se hace en la **Fase 4 (Unificación de ramas)**, donde ya se tocan las
+rutas, y no de paso en Fase 2.
+
+**✅ Resuelta (confirmación del usuario): A — `/p/pin/:ref`.** El usuario
+confirmó que el cambio fue deliberado: la ruta larga «no funciona por algo de
+AppScript», que es exactamente lo que muestra el código (`routeTable_` exige
+`:param` como último segmento y `resolveRoute_` sólo recorta un segmento).
+
+- `api/__tests__/pin-verify.spec.js` — aserción y título del `describe`
+  pasan a `/p/pin/:ref`.
+- `api/primitives/handlers/pin-verify.js` — comentario de cabecera al día.
+- `api/schema/endpoints/pin-verify.js` — **no se toca**: ya documenta el
+  motivo con la NOTA de las 13:27.
+- Ampliar el router para `:param` intermedio queda como posibilidad en
+  **Fase 4**.
+
+---
+
+### D21 · El token admin antiguo no tiene fila en `_users` — abierta al llegar a R2.6
+
+Registrada al cerrar **R2.5**, porque R2.6 (la cadena de §3.4) no puede
+empezar sin resolverla.
+
+**El hecho.** Hoy conviven DOS credenciales y ninguna es la otra:
+
+|                       | Token admin antiguo                                    | Token de sesión (R2.3)                     |
+| --------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| Cómo se emite         | `rotarToken` → `ADMIN_TOKEN_HASH` en Script Properties | `issueToken_` desde `authLogin`            |
+| Cómo se verifica      | `requireAdmin_`: hash plano, constante                 | `verifyToken_`: firma HMAC + `exp` + `aud` |
+| ¿Tiene `sub`?         | **No** — es un string suelto                           | Sí → fila de `_users`                      |
+| ¿Tiene `sid`?         | **No** ⇒ no se le puede revocar (R2.16)                | Sí                                         |
+| ¿Aparece en `_users`? | **No** — puede no haber ninguna fila                   | Sí                                         |
+
+**Por qué importa ahora.** `verifyToken_` devolvería `malformed` para el
+token admin antiguo, y `requireAccess_` con `access: 'session'` tampoco
+tiene identidad que resolver para él. Es decir: **la cadena de R2.6 se
+topa con una credencial válida que sus siete etapas no pueden describir.**
+Y el contrato actual (cabecera de `core/11-auth.js`) dice que esa forma
+«se verifica igual que siempre **y se asume rol admin**» — es decir, ya
+hay una decisión tomada a medias, que acá no estaba escrita.
+
+**Efecto en:** R2.6 (el ramificado), y después R2.16 (revocación —
+un token sin `sid` no se puede revocar) y la Fase 10.
+
+**Tres salidas:**
+
+|       | Opción                                                                                                       | Qué implica                                                                                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** | **Identidad de sistema**: el token admin antiguo → `{ role: 'admin', active: true }` sin fila ni `sub`/`sid` | Cero rotura: es exactamente lo que hace hoy. `/auth/me` responde un admin sintético. No se le aplica `token_version` ni revocación (no tiene de qué)                                     |
+| **B** | El token admin antiguo sólo vale para `role:*`; `session` le devuelve 401                                    | Rompe el contrato documentado en la cabecera de `11-auth.js`                                                                                                                             |
+| **C** | **Retirarlo**: desde R2.6 todo pasa por sesión                                                               | Limpio y sin dos sistemas, pero es un **cambio destructivo**: todo lo que hoy usa `ADMIN_TOKEN_HASH` deja de funcionar. Requiere que exista `authLogin` (✅ R2.5) y un plan de migración |
+
+**✅ Resuelta → C (retirarlo).** Decisión del usuario al llegar a R2.6: un
+solo sistema de credenciales, nada sin `sid` que no se pueda revocar.
+
+**Pero C es destructivo y la orden importa.** Verificado contra el código:
+
+- `src/app/app.config.ts:41` → `{ provide: ADMIN_TOKEN, useValue: environment.adminToken }`
+- `src/app/core/services/api.service.ts:28` → lo inyecta y lo manda en **cada** petición
+
+Es decir: **el front de hoy autentica con el token admin antiguo** y la UI
+de login es **R2.10–R2.12**, todavía `[ ]`. Retirar la credencial en R2.6
+dejaría toda `/admin/*` respondiendo 401 en el navegador desde R2.6 hasta
+R2.12 — varias tareas con la app inutilizable.
+
+`requireAdmin_` sólo lo consume `requireAccess_` (rama `string`), así que
+el retiro se reduce a: quitar esa rama, borrar `requireAdmin_`, quitar
+`ADMIN_TOKEN` del front y borrar `ADMIN_TOKEN_HASH` de `PROP_MANIFEST` y
+de `setup/00-check-properties.js`. **Es un cambio corto — su problema no
+es el tamaño, es cuándo.** Ver **D21.1**.
+
+**✅ Ejecutada en R2.6** (orden 2, ver D21.1). Se borró **en el mismo
+cambio que la cadena**, así que nunca convivieron los dos sistemas:
+
+- `requireAdmin_` y la rama `string` de `requireAccess_` → `core/11-auth.js`
+- `ADMIN_TOKEN_HASH` del `PROP_MANIFEST` → `00-config.js`
+- rama `entry.generator === 'token'` y `rotarToken()` → `setup/00-check-properties.js`
+- `Props.hashToken` → `core/13-props.js`
+- `findUserByEmail_` se **mudó** a `core/11-auth.js`, no se borró
+
+El front **sigue declarando** `ADMIN_TOKEN` (`app.config.ts:41`,
+`api.service.spec.ts`): lo retira **R2.12**. Mientras tanto **no hay sesión
+en el navegador** — ventana asumida en D21.1. El admin recupera acceso con
+`/auth/login` + contraseña desde el commit de R2.6.
+
+> La tabla de arriba, leída hoy, es **histórica**: la columna izquierda ya
+> no existe en el código.
+
+### D21.1 · Orden del retiro (derivada de D21-C)
+
+Tres formas de encajarlo; ninguna cambia el «qué», sólo el «cuándo»:
+
+|       | Orden                                                                                                                                                  | Consecuencia                                                                            |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| **1** | Cadena en **R2.6** (`session` rechaza el token antiguo desde ya); `role:admin` sigue aceptándolo hasta **R2.12**; retiro completo en el paso siguiente | Cero ventana rota. Deja dos sistemas vivos unas cuantas tareas                          |
+| **2** | Retiro completo **en R2.6**                                                                                                                            | Limpio desde el principio; la app queda **sin auth en el navegador** hasta R2.12        |
+| **3** | Reordenar: **R2.10–R2.12** (login del front) antes de R2.6                                                                                             | El retiro llega con el reemplazo funcionando; mezcla front y back en medio de la Fase 2 |
+
+**✅ Orden elegido: 2 — retiro completo en R2.6.** Decisión del usuario al
+abrir D21.1. Consecuencia asumida: `/admin/*` responde 401 en el navegador
+**desde R2.6 hasta R2.12**. Es una ventana corta y **visible** (no un fallo
+silencioso) y evita mantener dos sistemas de credenciales vivos «unas
+cuantas tareas». El contrato que R2.9 debe interpretar ya no puede
+encontrar nunca más un token admin antiguo.
+
+---
+
+### D23 · El token de los scripts de humo caduca cada 6 h — R1.11 · R2.18
+
+**Problema.** `api/.gas-smoke.env` guardaba un `GAS_TOKEN` fijo, con
+`TOKEN_TTL_HOURS: 6` (auth.md §9). Cualquier cosa que lo usara
+(`api-regression.sh`, `sheet-drift-check.mjs`) caía a `401` cuando vencía y
+nadie podía decir por qué.
+
+**Diagnóstico — tres causas apiladas, y ninguna era el token:**
+
+1. `GAS_URL` apuntaba al deployment **fijado a la versión 29**, no al `@HEAD`
+   (el `@HEAD` devuelve HTML, no JSON). → `clasp push -f` + `clasp version` +
+   `clasp redeploy -V 30` ⇒ **mismo URL, deployment @30**.
+2. El despliegue anterior a Fase 2 devolvía `{"status":401,"message":"No
+autorizado"}` **sin `code`**; el código actual SIEMPRE emite `code` en 401.
+   → **«401 con `code`» es el detector de «este despliegue ya trae Fase 2»**.
+3. La hoja `_users` no existía en el spreadsheet real ⇒
+   `500 "El sistema de usuarios no está configurado"`.
+
+**✅ Decisión: auto-login, no rotación.** `scripts/smoke-auth.mjs` obtiene el
+JWT con `GAS_EMAIL`/`GAS_PASSWORD` (en `api/.gas-smoke.env`, gitignored, 0600),
+lo cachea hasta 5 min antes de vencer y lo reutiliza; si faltan credenciales,
+las pide por prompt **sin eco, una sola vez**, y las escribe en el env.
+`sheet-drift-check.mjs` reintenta una vez con `force: true` si el endpoint
+responde `401`.
+
+**Consecuencias.** `GAS_TOKEN` deja de ser un valor que alguien tenga que
+recordar refrescar, y **no hace falta rotar credenciales** — que era justo lo
+que D22 dejó pendiente de autorización.
+
+**Corrección sobre la marcha — el formato del token.** `decodeExp` asumía un
+JWT de 3 partes con `exp` en segundos. El back emite
+`base64url(JSON) + '.' + firma` (**2 partes**) con `exp` en
+**milisegundos** (es lo que firma `issueToken_`). Resultado: `isFresh`
+devolvía **siempre `false`**, o sea que la caché de D23 no existía en la
+práctica y el humo se relogueaba en cada corrida — **sin ningún síntoma
+visible**, porque el login funcionaba igual.
+
+- **Fix:** `decodeExp` acepta ambos formatos y normaliza a segundos (2 partes
+  ⇒ ms ÷ 1000; 3 partes ⇒ ya son segundos).
+- **Red de regresión:** `api/__tests__/smoke-auth.spec.js` (+7 tests) — vive
+  en `api/__tests__/` porque el runner sólo incluye `api/**/*.spec.js`
+  (ver `vitest.config.ts`); no se cambió la composición de ningún gate.
+- **Verificado con el token real:** `decodeExp → 1791500138`,
+  `isFresh → true`, 356 min de margen, y **el token NO cambia entre dos
+  corridas** (prueba de reutilización).
+
+---
+
+### D24 · El setup eran seis funciones sueltas en un orden que hay que recordar — R1.11 · R2.18
+
+**Problema.** `doc/guia.md` listaba 00 → 01 → 02 → 04 → 03 → 05, a correr
+**desde el editor** (auth.md §4.7: arranque inicial «nunca por endpoint»;
+además `clasp run` no funciona acá — «GCP project ID is not set»). Quien
+olvidara una se encontraba un error sin relación aparente con lo que faltaba
+(`No existe la hoja _users` viniendo de `bootstrapAdmin_`, `Falta la
+configuración de auth` viniendo de `setupAuth_`).
+
+**✅ Decisiones — todas al servicio de «que lo único que cambie sea el valor»:**
+
+1. **`checkProperties()` crea lo que falta.** Antes: «poné la clave y el valor
+   a mano». Ahora: crea las claves manuales con `""` (una sola escritura) y
+   devuelve `pendientes`; el viejo `missing` ya no aplica.
+2. **`""` no vale como configurado.** `Props.require` trata `""`/blanco como
+   ausente (`Falta configurar la propiedad: X`, 500). Si no, el placeholder
+   que crea el propio setup degradaría el error de runtime a un vacío
+   silencioso.
+3. **`ADMIN_EMAIL` y `ADMIN_PASSWORD` son props** (`manual`, en
+   `PROP_MANIFEST`) ⇒ el setup las garantiza presentes.
+4. **`bootstrapAdmin_()` con tres fuentes, en orden:** argumentos →
+   `ADMIN_EMAIL`/`ADMIN_PASSWORD` → **dueño del proyecto + contraseña
+   generada** (una sola vez, impresa en el log del editor).
+5. **`setupAll({seed, email, password})` es el único punto de entrada.**
+   Encadena en orden y devuelve `pasos[]`; si un paso **lanza** se detiene ahí
+   (nada corre a ciegas tras el fallo); un `ok:false` de `checkProperties`
+   **no** detiene nada; el `409` de `bootstrapAdmin_` cuenta como «ya
+   existía».
+6. **Editor-only.** `setupAll` entra en `EDITOR_ONLY_FNS`; ninguna ruta lo
+   declara.
+
+**Consecuencias.** El arranque inicial pasa de «seis funciones y un orden» a
+`setupAll()` una vez. Un detalle de reporte malformado **no** puede tumbar el
+paso (`detalleSeguro_`): informar ≠ ejecutar.
+
+**Verificación:** api **363 → 380** (+17: 3 de capa props, 13 de
+`setup-all.spec.js`, 1 de `EDITOR_ONLY_FNS`) · mutaciones **5/5** (crear
+claves · aceptar `""` · detenerse ante un lanzamiento · capa props · detalle
+que no tumble el paso) · 5 gates verdes.
+
+---
+
+### D25 · La contraseña explícita no alcanzaba la fila del admin — R1.11 · R2.18
+
+**Problema.** El primer `bootstrapAdmin_()` creó la fila con la **contraseña
+generada** (impresa UNA sola vez: _«cópiala ahora, NO se volverá a mostrar»_).
+Después el operador seteó `ADMIN_PASSWORD` en Script Properties, pero
+`setupAll()` contestaba **409 «Ya existe un usuario con ese email»** — auth.md
+§4.7 sólo decía _«crea la fila **inicial**»_. Resultado: `401 AUTH_INVALID` y
+ninguna forma de entrar.
+
+**Por qué no se veía desde afuera:** `/auth/login` devuelve el **mismo**
+`AUTH_INVALID` para «no existe ese usuario» y «contraseña mala», a propósito
+(auth.md §4.5: no puede ser un comprobador de correos con cronómetro). Sólo el
+log del editor lo revelaba.
+
+**✅ Decisión (elegida por el usuario): que `setupAll()` reconcilie.**
+
+1. `explicita` = hay contraseña por argumento **o** `ADMIN_PASSWORD` no vacía.
+2. Fila existente **sin** contraseña explícita ⇒ **409**, la fila no se toca.
+3. Fila existente **con** contraseña explícita ⇒ se re-hashea y se escribe en
+   `pass_salt`/`pass_hash` de **esa** fila física (`row.at`), por índice
+   derivado de la cabecera.
+4. Si ya era esa contraseña ⇒ **no se re-hashea** (idempotente: re-correr
+   `setupAll()` no cambia lo que ya está bien).
+5. `active` **no se toca**: una cuenta desactivada no se reactiva desde setup.
+   Reactivar es acción de admin, nunca de setup.
+
+**Consecuencias.** `ADMIN_PASSWORD` pasa a ser de verdad la fuente de verdad:
+cambiarla en Script Properties y correr `setupAll()` la aplica. Sigue siendo
+editor-only — ninguna ruta HTTP llega a `bootstrapAdmin_`.
+
+**`auth.md` §4.7 enmendado** (aditivo): documenta la reconciliación y agrega
+`setupAll()` a la lista de funciones de solo-editor.
+
+**Verificación:** api **380 → 383** (+3: 409 sin explícita · actualiza sin
+duplicar · props reconcilian · idempotente) · mutaciones **5/5** (siempre
+explícita · idempotencia rota · fila equivocada · salt/hash desparejados · no
+detecta la fila) · 5 gates verdes.
 
 ---
 
@@ -918,15 +2084,15 @@ reorder, bulk }` con cada una encendible/apagable.
 
 ### Identificadores
 
-| Elemento                        | Convención                                          |
-| ------------------------------- | --------------------------------------------------- |
-| Valor de `type`/`format`/`kind` | `kebab-case`, singular: `string-list`, `copy-share` |
-| Claves de schema                | `camelCase`: `listProjection`, `visibleWhen`        |
-| Id de recurso                   | **D9-2** (`snake_case` o `kebab-case`), plural      |
-| Hojas / columnas                | `snake_case`: `customer_name`                       |
-| Columnas de grupo               | `<grupo>_<campo>`: `address_street`                 |
-| Hojas hijas                     | `<recurso>_<campo>`: `orders_items`                 |
-| Namespaces custom               | prefijo `x-`                                        |
+| Elemento                        | Convención                                                 |
+| ------------------------------- | ---------------------------------------------------------- |
+| Valor de `type`/`format`/`kind` | `kebab-case`, singular: `string-list`, `copy-share`        |
+| Claves de schema                | `camelCase`: `listProjection`, `visibleWhen`               |
+| Id de recurso                   | **`kebab-case`**, plural: `pickup-slots` (**D9-2 fijada**) |
+| Hojas / columnas                | `snake_case`: `customer_name`                              |
+| Columnas de grupo               | `<grupo>_<campo>`: `address_street`                        |
+| Hojas hijas                     | `<recurso>_<campo>`: `orders_items`                        |
+| Namespaces custom               | prefijo `x-`                                               |
 
 ### Sufijos con significado fijo
 
@@ -973,10 +2139,12 @@ reorder, bulk }` con cada una encendible/apagable.
 | Handlers de auth   | `authLogin`, `authLogout`, `authMe`                            |
 | Claims del token   | `sub`, `sid`, `v`, `iat`, `exp`, `aud` (estándar JWT)          |
 
-> ⚠️ **Colisión pendiente D9-2:** `refactormotor` §2.1 deja el id de recurso
-> sin elegir (`snake_case` **o** `kebab-case`). El ejemplo de `auth.md` §4.2
-> usa `users` (singular, que no es ni uno ni otro) — hay que fijarlo en el
-> meta-schema y aplicarlo **también** a `_users`/`users`.
+> ✅ **D9-2 fijada → `kebab-case`, plural.** `refactormotor` §2.1 decía
+> «`snake_case` **o** `kebab-case`» sin elegir; `auth.md` §4.2 usaba `users`
+> (plural, sin separador) — **compatible con las dos**, así que no empuja. El
+> «plural» se aplica **a partir de ahora**: hoy ya existen singulares
+> (`dashboard`, `site`, `pickpass`); renombrarlos rompería `contract-check` y
+> no aporta (§7.1: nada cambia el significado de lo existente).
 
 ---
 
@@ -999,6 +2167,33 @@ deja el sistema funcionando y es **reversible por separado**.
 | **9** Expansión             | F4/F5 vistas y layouts · B5 · B7 · B14                                      | Según necesidad | Variable   | Bajo   |
 | **10** Cierre               | criterio §0 · anti-patrones · CI bloqueante                                 | —               | Bajo       | Bajo   |
 
+### Decisiones de arranque — ✅ **13/13 cerradas**
+
+Evidencia completa en **`doc/plan-limpieza.md` §5.1 (D10)** y **§5.2 (D9)**.
+
+**D10 — `auth.md` §9 (7)** · _manda sobre D9_
+
+| #   | Decisión                                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Proveedor **B — contraseña** (`pass_hash`/`pass_salt`, tipo `secret`). KDF **SHA-256 iterado con salt** — GAS no tiene bcrypt. |
+| 2   | Sesión **6 h con renovación deslizante + tope absoluto de 7 días**                                                             |
+| 3   | «Recordarme» → **`sessionStorage`**, nunca `localStorage`                                                                      |
+| 4   | Roles → **sólo `admin` asignado**; `staff` queda como valor reservado del vocabulario (**D12**)                                |
+| 5   | Formato de respuesta → **conservado** (**O7**): `{ error: { status, message, errors? } }`                                      |
+| 6   | Cuentas de cliente → **no** (audiencia `customer` declarada pero sin usar)                                                     |
+| 7   | Logout individual → **«best-effort» aceptado** (`token_version` invalida todas las sesiones del usuario)                       |
+
+**D9 — `refactormotor.md` §9 (6)**
+
+| #   | Decisión                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------- |
+| 1   | **Autodescubrimiento + `api:check`** — sin manifiesto central (GAS carga todos los `.js`)         |
+| 2   | Id de recurso → **`kebab-case`**, plural. `snake_case` sólo en hojas, columnas y Properties       |
+| 3   | Codegen DATA→front → **ya resuelto por O1**: dos schemas independientes + contrato por consumidor |
+| 4   | Lenguaje de condiciones → **spec compartida + test de equivalencia**                              |
+| 5   | `aggregates` → **cap declarativo + fail-loud**; B5 (adaptador SQL) se pospone hasta **medir**     |
+| 6   | Deprecación → **1 versión, retiro por uso** (`contract-check` sin consumidores)                   |
+
 **Regla final:** si añadir X obliga a editar `engine/`, `FieldHost`,
 `WidgetHost` o una vista existente, **el motor todavía no está terminado**.
 
@@ -1008,13 +2203,13 @@ deja el sistema funcionando y es **reversible por separado**.
 
 _Cargar en R0.2._
 
-| Gate                                | Resultado                            | Fecha                          |
-| ----------------------------------- | ------------------------------------ | ------------------------------ |
-| `npm test`                          | ✅ **147/147** (29 ficheros)         | 2026-10-06                     |
-| `npm run test:api`                  | ✅ **144/144** (15 ficheros)         | 2026-10-06                     |
-| `npm run api:check`                 | ✅ **VERDE** — 7 recursos, 84 campos | 2026-10-06                     |
-| `npm run build`                     | ✅ verde (2.1 s)                     | 2026-10-06                     |
-| `npx prettier --check . 2>&1`       | ⚠️ **18**                            | → 16 tras `plan-limpieza` L4.5 |
-| Tareas absorbidas del plan anterior | 24                                   | 2026-10-06                     |
-| Decisiones a cerrar en Fase 0       | 13 (6 + 7)                           | 2026-10-06                     |
-| Overrides de `auth.md`              | 6 (O1–O6)                            | 2026-10-06                     |
+| Gate                                | Resultado                            | Fecha                                                                 |
+| ----------------------------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| `npm test`                          | ✅ **147/147** (29 ficheros)         | 2026-10-06                                                            |
+| `npm run test:api`                  | ✅ **144/144** (15 ficheros)         | 2026-10-06                                                            |
+| `npm run api:check`                 | ✅ **VERDE** — 7 recursos, 84 campos | 2026-10-06                                                            |
+| `npm run build`                     | ✅ verde (2.1 s)                     | 2026-10-06                                                            |
+| `npx prettier --check . 2>&1`       | ✅ **17**                            | 2026-10-06 — deuda preexistente (19 → **17** en `plan-limpieza` L4.5) |
+| Tareas absorbidas del plan anterior | 24                                   | 2026-10-06                                                            |
+| Decisiones de arranque (Fase 0)     | ✅ **13 / 13 cerradas** (6 + 7)      | 2026-10-06                                                            |
+| Overrides de `auth.md`              | 6 (O1–O6)                            | 2026-10-06                                                            |
