@@ -5,7 +5,8 @@
 # semánticamente (JSON normalizado) contra los fixtures de línea base.
 # Se usa tras CADA push de fase (PLAN-MEJORAS, nivel "contrato").
 #
-# Credenciales: api/.gas-smoke.env (GAS_URL=... GAS_TOKEN=...) — GITIGNORED.
+# Credenciales: api/.gas-smoke.env (GAS_URL, GAS_EMAIL, GAS_PASSWORD) —
+# GITIGNORED. El JWT se obtiene y renueva solo (D23, smoke-auth.mjs).
 #
 # Receta de curl (F0-2): NUNCA usar -X POST — fuerza el método en la
 # segunda salta del 302 de GAS y devuelve 405.
@@ -15,7 +16,13 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source api/.gas-smoke.env
 : "${GAS_URL:?falta GAS_URL en api/.gas-smoke.env}"
-: "${GAS_TOKEN:?falta GAS_TOKEN en api/.gas-smoke.env}"
+
+# D23: el token ya no es fijo (TOKEN_TTL_HOURS: 6) — lo renueva
+# scripts/smoke-auth.mjs por la misma puerta que el frontend.
+GAS_TOKEN=$(node scripts/smoke-auth.mjs token) || {
+  echo "✗ no se pudo obtener sesión (ver mensaje anterior)" >&2
+  exit 1
+}
 
 J=$(mktemp)
 RAW=$(mktemp -d)

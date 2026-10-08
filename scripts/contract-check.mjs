@@ -19,6 +19,16 @@
 //      validators (minLength, maxLength, pattern, min, max, unique) coinciden.
 //   5. Campos required del back ausentes en el front = rojo (el form no
 //      podría crear el registro); los opcionales ausentes = aviso.
+//   6. (R1.6) `enum` del back ↔ `options[].value` del front, resolviendo
+//      tanto el array literal como la referencia con nombre a SHEET_ENUMS.
+//   7. (R1.6) `default` ↔ `default`.
+//   8. (R1.6) listProjection/pick (back) ⊇ listColumns (front).
+//   9. (R1.6) postCreate.summaryFields y detail.headerFields apuntan a
+//      campos que el front declara.
+//  10. (R2.11) auth.md §5.1: las claves de `authSchema.loginFields` son
+//      exactamente el `input` de `/auth/login` (y al revés), y
+//      `rememberMe` es `false` — D10-3 negó `localStorage` (§9.3), así que
+//      un `true` prometería un storage que nadie usa.
 // Los campos system del back (p. ej. position) no se exigen en el front y
 // las extraColumns (string-list) quedan fuera de alcance: el modelo front
 // de string-list no las representa.
@@ -41,6 +51,15 @@ process.on('warning', (w) => {
   if (w.code !== 'MODULE_TYPELESS_PACKAGE_JSON') console.warn(w);
 });
 
+// Un SOLO cargador para los dos consumidores de Node (R1.5): el mismo que
+// usan los tests y que, en GAS, reproduce el filePushOrder de clasp. Al
+// evaluar el árbol `api/` completo incluye `schema/validate-registry.js`,
+// cuyo assert corre al cargar igual que en producción.
+// Import DINÁMICO y posterior al filtro: un import estático se liga antes
+// de que corra una sola línea de este fichero, y el aviso de tipo de módulo
+// saldría igualmente.
+const { loadBackend: loadFullBackend } = await import('../api/__tests__/_harness.js');
+
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 /** Validators comparables en ambos lados (D2). El resto (minWords…) es solo UX front. */
 const VALIDATORS = ['minLength', 'maxLength', 'pattern', 'min', 'max', 'unique'];
@@ -50,17 +69,30 @@ const avisos = [];
 const rojo = (m) => rojos.push(m);
 const aviso = (m) => avisos.push(m);
 
-/** Back: resources con auto-registro (REGISTRY.resources.<id> = {…}). */
+/**
+ * Back: resources con auto-registro (REGISTRY.resources.<id> = {…}).
+ *
+ * Devuelve el REGISTRY COMPLETO (no sólo resources): los checks de R1.6
+ * necesitan `enums.sheetEnums` para resolver un `enum: 'availability'`.
+ *
+ * Delega en `_harness` (R1.5): el mismo cargador que los tests de Node.
+ * Evaluar el árbol completo es lo que hace correr el assert de
+ * `schema/validate-registry.js` acá, con idéntico código que en GAS.
+ */
 function loadBackend() {
-  const REGISTRY = { resources: {}, endpoints: {} };
-  const dir = path.join(ROOT, 'api', 'schema', 'resources');
-  for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith('.js')) continue;
-    const code = readFileSync(path.join(dir, file), 'utf8');
-    new Function('REGISTRY', `${code}\n//# sourceURL=${file}`)(REGISTRY);
+  try {
+    return loadFullBackend();
+  } catch (err) {
+    // El meta-schema falló al cargar: es el rojo más grave y no tiene
+    // sentido seguir comparando contra un registro que no existe.
+    console.log(`✗ ROJO: meta-schema — ${err.message}`);
+    console.log('✗ ROJO: contract check — el registro de recursos no cargó');
+    process.exit(1);
   }
-  return REGISTRY.resources;
 }
+
+/** Schemas del front que no son recursos (R2.11). */
+const NO_ES_RECURSO = new Set(['auth']);
 
 /** Front: importa los *.schema.ts con el type stripping nativo de Node. */
 async function loadFrontend() {
@@ -68,6 +100,11 @@ async function loadFrontend() {
   const schemas = [];
   for (const file of readdirSync(dir).sort()) {
     if (!file.endsWith('.schema.ts')) continue;
+    // Excepción deliberada (R2.11): `auth.schema.ts` es la pantalla de
+    // login — un schema del front, pero NO un recurso: no tiene `id` ni
+    // `fields` y no existe en api/schema/resources/. Su contrato se valida
+    // en el check 10, con reglas distintas.
+    if (NO_ES_RECURSO.has(file.slice(0, -'.schema.ts'.length))) continue;
     const mod = await import(pathToFileURL(path.join(dir, file)).href);
     const schema = Object.values(mod).find(
       (v) => v && typeof v === 'object' && typeof v.id === 'string' && Array.isArray(v.fields),
@@ -172,6 +209,81 @@ function compareResource(front, back) {
       aviso(`${id}.${p}: opcional en el back, ausente en el front`);
     }
   }
+
+  // ── R1.6 · contrato ampliado ─────────────────────────────────────────────
+
+  // 6. enum (back) ↔ options[].value (front).
+  //    `enum` en el back tiene DOS formas: array literal, o el NOMBRE de una
+  //    lista en REGISTRY.enums.sheetEnums (SHEET_ENUMS). El front siempre
+  //    los pone inline, así que hay que resolver antes de comparar.
+  for (const [p, bf] of backFields) {
+    if (bf.enum === undefined) continue;
+    let valores;
+    if (Array.isArray(bf.enum)) {
+      valores = bf.enum;
+    } else {
+      valores = REGISTRY.enums?.sheetEnums?.[bf.enum];
+      if (valores === undefined) {
+        rojo(`${id}.${p}: enum con nombre '${bf.enum}' no existe en REGISTRY.enums.sheetEnums`);
+        continue;
+      }
+    }
+    const ff = frontFields.get(p);
+    if (ff === undefined) continue; // ya lo cubre el check 4 de existencia
+    const opciones = (ff.options ?? []).map((o) => o.value);
+    if (opciones.length === 0) continue; // sin opciones el control no es un select
+    const faltaEnFront = valores.filter((v) => !opciones.includes(v));
+    const sobraEnFront = opciones.filter((v) => !valores.includes(v));
+    if (faltaEnFront.length > 0) {
+      rojo(`${id}.${p}: enum del back ausente en options del front → ${faltaEnFront.join(', ')}`);
+    }
+    if (sobraEnFront.length > 0) {
+      rojo(
+        `${id}.${p}: options del front ausente en el enum del back → ${sobraEnFront.join(', ')}`,
+      );
+    }
+  }
+
+  // 7. default ↔ default.
+  for (const [p, bf] of backFields) {
+    const ff = frontFields.get(p);
+    if (ff === undefined) continue;
+    if (bf.default !== ff.default) {
+      rojo(
+        `${id}.${p}: default back=${JSON.stringify(bf.default)} ` +
+          `front=${JSON.stringify(ff.default)}`,
+      );
+    }
+  }
+
+  // 8. listProjection (back) ⊇ listColumns (front) — cierra R6.
+  //    Lo que el back SIRVE en el listado es `operations.list.shape.pick`
+  //    si está declarado, y si no, `listProjection` (F5-2: sin pick ⇒
+  //    fallback). Comparar contra listProjection a secas sería mentir.
+  const servidoEnListado =
+    back.operations?.list?.shape?.pick ??
+    (Array.isArray(back.listProjection) ? back.listProjection : []);
+  for (const col of front.listColumns ?? []) {
+    if (!servidoEnListado.includes(col.key)) {
+      rojo(
+        `${id}: listColumns '${col.key}' no lo sirve el back ` +
+          '(ni en operations.list.shape.pick ni en listProjection)',
+      );
+    }
+  }
+
+  // 9. postCreate.summaryFields y detail.headerFields ⊇ campos declarados.
+  //    Son declaraciones SOLO del front, pero apuntan a campos del propio
+  //    front: un nombre colgado cae en runtime al pintar el resumen.
+  const referencias = [
+    ...(front.detail?.headerFields ?? []).map((k) => ['detail.headerFields', k]),
+    ...(front.postCreate?.summaryFields ?? []).map((k) => ['postCreate.summaryFields', k]),
+  ];
+  for (const [donde, k] of referencias) {
+    if (!frontFields.has(k)) {
+      rojo(`${id}: ${donde} referencia '${k}', que no es un campo del front`);
+    }
+  }
 }
 
 /**
@@ -210,7 +322,8 @@ function checkRegistry() {
 }
 
 checkRegistry();
-const backend = loadBackend();
+const REGISTRY = loadBackend();
+const backend = REGISTRY.resources;
 const fronts = await loadFrontend();
 const frontIds = new Set(fronts.map((f) => f.id));
 
@@ -220,6 +333,51 @@ for (const id of Object.keys(backend)) {
       `recurso '${id}': existe en el back pero no tiene src/app/schemas/${id}.schema.ts ` +
         '(alta de módulo = 1 archivo por lado)',
     );
+  }
+}
+
+// ── Check 10: auth.md §5.1 ↔ input de /auth/login (R2.11) ────────────────
+{
+  const mod = await import(
+    pathToFileURL(path.join(ROOT, 'src', 'app', 'schemas', 'auth.schema.ts')).href
+  );
+  const auth = mod.authSchema;
+  if (auth === undefined) {
+    rojo('auth.schema.ts: no exporta `authSchema` (login declarado que nadie puede leer)');
+  } else {
+    if (auth.rememberMe !== false) {
+      rojo(
+        'authSchema.rememberMe debe ser false — D10-3 negó localStorage (§9.3) y el ' +
+          'token vive en sessionStorage: un true promete una sesión que no se sostiene',
+      );
+    }
+    if (!Array.isArray(auth.providers) || auth.providers.length === 0) {
+      rojo('authSchema.providers vacío — §9.1 eligió autenticación por contraseña');
+    }
+
+    const endpoint = REGISTRY.endpoints?.authLogin;
+    const backKeys = new Set(Object.keys(endpoint?.input ?? {}));
+    const frontKeys = new Set((auth.loginFields ?? []).map((f) => f.key));
+
+    if (backKeys.size === 0) {
+      rojo('el back no declara `input` en /auth/login — el login no tiene qué pedir');
+    }
+    for (const key of frontKeys) {
+      if (!backKeys.has(key)) {
+        rojo(
+          `authSchema.loginFields: '${key}' no existe en el input de /auth/login — ` +
+            'el formulario manda un campo que el back no espera',
+        );
+      }
+    }
+    for (const key of backKeys) {
+      if (!frontKeys.has(key)) {
+        rojo(
+          `input de /auth/login: '${key}' no está en authSchema.loginFields — ` +
+            'el back pide un campo que la pantalla no pinta',
+        );
+      }
+    }
   }
 }
 

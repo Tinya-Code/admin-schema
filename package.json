@@ -8,7 +8,9 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:api": "vitest run",
-    "api:check": "bash scripts/api-check.sh"
+    "api:check": "bash scripts/api-check.sh",
+    "api:drift": "node scripts/sheet-drift-check.mjs",
+    "smoke:login": "node scripts/smoke-auth.mjs login"
   },
   "private": true,
   "packageManager": "npm@11.13.0",

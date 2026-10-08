@@ -5,6 +5,28 @@
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.0.4.
 
+## Gates
+
+Run these before committing. All must be green.
+
+| Gate                    | Command                       |
+| ----------------------- | ----------------------------- |
+| Front unit tests        | `npm test`                    |
+| Backend unit tests      | `npm run test:api`            |
+| Schema / contract check | `npm run api:check`           |
+| Production build        | `npm run build`               |
+| Formatting              | `npx prettier --check . 2>&1` |
+
+> ⚠️ Prettier writes its file list to **stderr** — without `2>&1` you lose the
+> output in some shells.
+
+**Baseline (2026-10-06):** 147/147 · 144/144 · `api:check` green (7 resources,
+84 fields) · build green · prettier **17**.
+
+> ⚠️ Those 17 are **pre-existing debt** (`.postcssrc.json`,
+> `api/fixtures/*.json`, `api/PLAN*.md`, `doc/ui-ux.md`, `tsconfig.*`,
+> `src/environments/*`). **Do not reformat them** — it pollutes diffs.
+
 ## Development server
 
 To start a local development server, run:
