@@ -5,7 +5,7 @@ import { of } from 'rxjs';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
-import { type RootTree, childTree } from '../../fields/field-node';
+import { type RootTree, childTree, groupTree } from '../../fields/field-node';
 import { ordersSchema } from '../../schemas/orders.schema';
 import { buildFormSchema } from './form-schema';
 import { seedModel } from './form-model';
@@ -90,5 +90,142 @@ describe('buildFormSchema — ciclo de vida por modo', () => {
     expect(childTree<unknown>(tree(porModo), 'hijo')().hidden()).toBe(true);
     // Edición: el padre está vacío y aun así el hijo se ve (no hay visibleWhen).
     expect(childTree<unknown>(tree(porModo, 'X'), 'hijo')().hidden()).toBe(false);
+  });
+});
+
+/**
+ * Validadores del REGISTRO (R4.6 · F7 + B11).
+ *
+ * `buildFormSchema` ya no decide reglas: recorre `FIELD_VALIDATORS` y cada
+ * entrada ata su regla a la ruta del campo. Lo que se prueba acá es el
+ * CABLEADO: que las reglas llegan al árbol con el mensaje de siempre, en la
+ * ruta correcta (incluida la recursión de `group` y `list`) y que `unique`
+ * hoy alcanza a un campo `text` (`products.sku` lo declaraba y se quedaba sin
+ * regla).
+ */
+describe('buildFormSchema — validadores del registro', () => {
+  /** Mensajes de un campo, en el orden en que los pinta la UI. */
+  function mensajes(delArbol: RootTree, key: string): string[] {
+    return childTree<unknown>(delArbol, key)()
+      .errors()
+      .map((error) => error.message ?? error.kind);
+  }
+
+  /** Árbol con el modelo sembrado con `valores` encima de los defaults. */
+  function conValores(
+    campos: ResourceSchema['fields'],
+    valores: Record<string, unknown>,
+    api?: ApiService,
+  ): RootTree {
+    const schema: ResourceSchema = { ...ordersSchema, fields: campos };
+    const model = signal({ ...seedModel(schema), ...valores });
+    return form(
+      model,
+      buildFormSchema(schema, api ?? ({ list: () => of([]) } as unknown as ApiService)),
+      {
+        injector: TestBed.inject(EnvironmentInjector),
+      },
+    ) as unknown as RootTree;
+  }
+
+  it('longitud, patrón y rango llegan con su mensaje', () => {
+    const campos: ResourceSchema['fields'] = [
+      { type: 'text', key: 'nombre', label: 'Nombre', validators: { minLength: 5, maxLength: 8 } },
+      { type: 'number', key: 'cantidad', label: 'Cantidad', min: 1, max: 10 },
+      { type: 'date', key: 'fecha', label: 'Fecha', min: '2026-01-01', max: '2026-12-31' },
+    ];
+    const raiz = conValores(campos, { nombre: 'ab', cantidad: 0, fecha: '2025-06-01' });
+    expect(mensajes(raiz, 'nombre')).toEqual(['Debe tener al menos 5 caracteres.']);
+    expect(mensajes(raiz, 'cantidad')).toEqual(['Debe ser como mínimo 1.']);
+    expect(mensajes(raiz, 'fecha')).toEqual(['La fecha no puede ser anterior a 2026-01-01.']);
+  });
+
+  it('límites superiores, patrón y fecha máxima llegan con su mensaje', () => {
+    const campos: ResourceSchema['fields'] = [
+      { type: 'text', key: 'nombre', label: 'Nombre', validators: { maxLength: 8 } },
+      {
+        type: 'text',
+        key: 'codigo',
+        label: 'Código',
+        validators: { pattern: '^[A-Z]{3}$' },
+        help: '3 mayúsculas',
+      },
+      { type: 'number', key: 'cantidad', label: 'Cantidad', max: 10 },
+      { type: 'date', key: 'fecha', label: 'Fecha', max: '2026-12-31' },
+    ];
+    const raiz = conValores(campos, {
+      nombre: 'abcdefghij',
+      codigo: 'abc',
+      cantidad: 11,
+      fecha: '2027-03-01',
+    });
+    expect(mensajes(raiz, 'nombre')).toEqual(['Como máximo 8 caracteres.']);
+    // El patrón repite la ayuda: el error reemplaza el texto de abajo.
+    expect(mensajes(raiz, 'codigo')).toEqual(['Formato esperado: 3 mayúsculas.']);
+    expect(mensajes(raiz, 'cantidad')).toEqual(['Debe ser como máximo 10.']);
+    expect(mensajes(raiz, 'fecha')).toEqual(['La fecha no puede ser posterior a 2026-12-31.']);
+  });
+
+  it('palabras, correo, URL y tope de ítems llegan con su mensaje', () => {
+    const campos: ResourceSchema['fields'] = [
+      { type: 'textarea', key: 'resumen', label: 'Resumen', minWords: 3, maxWords: 5 },
+      { type: 'email', key: 'correo', label: 'Correo' },
+      { type: 'url', key: 'web', label: 'Web' },
+      { type: 'list', key: 'items', label: 'Items', itemFields: [], max: 2 },
+    ];
+    const raiz = conValores(campos, {
+      resumen: 'uno dos tres cuatro cinco seis',
+      correo: 'no-es-correo',
+      web: 'ftp://x',
+      items: ['a', 'b', 'c'],
+    });
+    expect(mensajes(raiz, 'resumen')).toEqual(['Como máximo 5 palabras.']);
+    expect(mensajes(raiz, 'correo')).toEqual(['Debe ser un correo electrónico válido.']);
+    expect(mensajes(raiz, 'web')).toEqual(['Debe ser una URL válida (http o https).']);
+    expect(mensajes(raiz, 'items')).toEqual(['Como máximo 2 elementos.']);
+  });
+
+  it('required: vacío en un escalar, ítem mínimo en una lista', () => {
+    const campos: ResourceSchema['fields'] = [
+      { type: 'text', key: 'nombre', label: 'Nombre', required: true },
+      { type: 'list', key: 'items', label: 'Items', required: true, itemFields: [] },
+    ];
+    const raiz = conValores(campos, { items: [] });
+    expect(mensajes(raiz, 'nombre')).toEqual(['Campo obligatorio.']);
+    // Un `[]` no está «vacío» para el usuario: obligatorio exige un ítem.
+    expect(mensajes(raiz, 'items')).toEqual(['Debe tener al menos 1 elemento.']);
+  });
+
+  it('un group registra las reglas de sus hijos bajo la ruta del hijo', () => {
+    const campos: ResourceSchema['fields'] = [
+      {
+        type: 'group',
+        key: 'datos',
+        label: 'Datos',
+        fields: [{ type: 'text', key: 'codigo', label: 'Código', required: true }],
+      },
+    ];
+    const raiz = conValores(campos, {});
+    const grupo = groupTree(raiz, 'datos');
+    expect(
+      childTree<unknown>(grupo, 'codigo')()
+        .errors()
+        .map((e) => e.message),
+    ).toEqual(['Campo obligatorio.']);
+  });
+
+  it('unique aplica a un campo text y consulta el listado del recurso', async () => {
+    const campos: ResourceSchema['fields'] = [
+      { type: 'text', key: 'sku', label: 'SKU', validators: { unique: true } },
+    ];
+    const api = { list: () => of([{ key: 'p1', sku: 'ABC-1' }]) } as unknown as ApiService;
+    const raiz = conValores(campos, {}, api);
+
+    const campo = childTree<string>(raiz, 'sku');
+    campo().value.set('ABC-1');
+    // validateAsync: debounce de 300 ms + el resource del listado.
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    expect(mensajes(raiz, 'sku')).toContain('Este valor ya existe en el registro.');
   });
 });

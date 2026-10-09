@@ -8,5 +8,5 @@ export const descriptor: RenderDescriptor = {
   load: () => import('./number').then((module) => module.FieldNumber),
   // Nace como `null`: no puede ser `0`, que sería un valor ya cargado.
   seed: 'number',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
 };

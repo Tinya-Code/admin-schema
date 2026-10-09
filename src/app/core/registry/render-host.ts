@@ -26,6 +26,7 @@ import {
 } from '../../fields/field-node';
 import { FieldImage } from '../../fields/image/image';
 import { FieldMultiselect } from '../../fields/multiselect/multiselect';
+import { displayLoader } from '../../fields/display/display-defaults';
 import { UnknownRender } from '../../fields/unknown-render/unknown-render';
 import type {
   FieldSchema,
@@ -43,6 +44,7 @@ import {
   isSupported,
   RENDER_CONTEXT_VACIO,
   resolve,
+  type RenderConfig,
   type RenderContext,
   type RenderExtras,
   type RenderKind,
@@ -73,6 +75,13 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
  * **Sin imports de los 20 controles**: sólo llegan por `load()` perezoso del
  * descriptor. Mientras el `import()` resuelve se pinta `Skeleton`, y un tipo
  * fuera del catálogo degrada a `UnknownRender` en dev (nunca pantalla rota).
+ *
+ * **Modo `display` (R4.1 · R4.2).** El mismo host pinta la ficha de detalle:
+ * con `mode="display"` no hay árbol, ni etiqueta, ni error — sólo el valor
+ * crudo que llega por `[value]` y el componente que elige la tabla
+ * `fields/display/display-defaults.ts`. El descriptor declara la superficie
+ * (`surfaces: ['form', 'display']`) y, si no la declara o el tipo no está en
+ * la tabla, corre la misma degradación controlada de R1.10.
  */
 @Component({
   selector: 'app-render-host',
@@ -120,7 +129,25 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
       }
     </ng-template>
 
-    @if (supported()) {
+    @if (esDisplay()) {
+      <!-- Rama de display (R4.1 · R4.2): sólo el valor crudo. El host no
+           lee el árbol, no dibuja etiqueta ni error y no conoce la
+           sección: detail-view agrupa y este bloque pinta. -->
+      @if (vacio()) {
+        <span aria-hidden="true">—</span>
+      } @else if (soportaDisplay()) {
+        @if (control()) {
+          <ng-container
+            [ngComponentOutlet]="control()"
+            [ngComponentOutletInputs]="displayInputs()"
+          />
+        } @else {
+          <app-skeleton [lines]="1" [height]="20" />
+        }
+      } @else if (showUnknown()) {
+        <app-unknown-render [type]="type()" [label]="config().label" />
+      }
+    } @else if (supported()) {
       @if (esCampo()) {
         <div class="mb-4" [class.field-enter]="cfgCampo().visibleWhen" [attr.data-field]="name()">
           @if (type() !== 'group') {
@@ -191,7 +218,7 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
               <svg lucideCircleAlert size="14" class="shrink-0" />
               {{ message }}
             </p>
-          } @else if (config().help; as help) {
+          } @else if (cfgCampo().help; as help) {
             <p [id]="helpId()" class="mt-1 text-help text-neutral">{{ help }}</p>
           }
         </div>
@@ -221,8 +248,11 @@ export class RenderHost implements FieldAriaContext, RenderContext {
   readonly kind = input<RenderKind>('field');
   /** Identificador del tipo dentro de su `kind`. */
   readonly type = input.required<string>();
-  /** Configuración del descriptor: el `FieldSchema` del campo o el `WidgetSchema`. */
-  readonly config = input.required<FieldSchema | WidgetSchema>();
+  /**
+   * Configuración del descriptor: el `FieldSchema` del campo, el
+   * `WidgetSchema` del widget o la `ListColumn` de la columna (R4.3).
+   */
+  readonly config = input.required<RenderConfig>();
   /**
    * Contexto de render del nivel de este campo.
    *
@@ -234,6 +264,34 @@ export class RenderHost implements FieldAriaContext, RenderContext {
   readonly ctx = input<RenderContext>(RENDER_CONTEXT_VACIO);
   /** Payload del widget (`app-widget-host [data]`). `null` en campos. */
   readonly data = input<unknown>(null);
+  /**
+   * Superficie de render (R4.1).
+   *
+   * `'form'` (por defecto) es el formulario de siempre: árbol, etiqueta,
+   * marca required, error y ayuda. `'display'` es la ficha de detalle:
+   * valor crudo, sin envoltorio — es el `mode="display"` con el que
+   * `detail-view` deja de dibujar sus propias celdas (R4.2).
+   */
+  readonly mode = input<'form' | 'display'>('form');
+  /**
+   * Valor crudo del registro, **sólo para el modo `display`**.
+   *
+   * En el formulario el valor vive en el árbol de Signal Forms y este
+   * input se ignora: un campo de detalle no tiene árbol que consultar.
+   */
+  readonly value = input<unknown>(null);
+  /**
+   * Presentación en chip, **sólo para el modo `display`** (R4.2).
+   *
+   * La cabecera de la ficha siempre mostró `headerFields` como etiquetas
+   * compactas, aunque el valor fuera texto plano. Sin este matiz el host
+   * pintaría «ORD-42» como texto suelto y la cabecera cambiaría de cara en
+   * los 7 detalles. El aviso va en el contrato de entrada de los display —
+   * uniforme para los 6 — y sólo lo aprovechan los que dibujan texto: los
+   * que ya son chip (`badge`) o no son un valor escalar (`image`, `list`)
+   * lo ignoran a propósito.
+   */
+  readonly chip = input(false);
 
   private readonly dev = isDevMode();
 
@@ -242,6 +300,45 @@ export class RenderHost implements FieldAriaContext, RenderContext {
 
   /** `true` cuando se dibuja un campo, `false` para cualquier otro `kind`. */
   protected readonly esCampo = computed(() => this.kind() === 'field');
+
+  /** `true` en la rama de detalle (R4.1): sin árbol, etiqueta ni error. */
+  protected readonly esDisplay = computed(() => this.mode() === 'display');
+
+  /**
+   * ¿El descriptor declara la superficie `display`? (R4.1)
+   *
+   * Es la respuesta a «cada descriptor de campo declara si sabe pintarse en
+   * `display`»: sin esa declaración el host no pinta el valor en la ficha,
+   * y `contract.spec.ts` vigila que los 20 la traigan.
+   */
+  private readonly declaraDisplay = computed(
+    () => get(this.kind(), this.type())?.surfaces?.includes('display') ?? false,
+  );
+
+  /**
+   * Componente que pinta este tipo en `display`.
+   *
+   * El descriptor sólo dice **si** sabe pintarse; **qué** componente usa lo
+   * decide la tabla por tipo (`fields/display/display-defaults.ts`), que es
+   * la que garantiza que el mismo `field.type` se pinte igual en todas las
+   * fichas.
+   */
+  private readonly loaderDisplay = computed(() =>
+    this.declaraDisplay() ? displayLoader(this.type()) : undefined,
+  );
+
+  /** El modo display tiene componente para este tipo. */
+  protected readonly soportaDisplay = computed(() => this.loaderDisplay() !== undefined);
+
+  /**
+   * Valor vacío, con el mismo criterio que `formatValue` de `detail-view`
+   * antes de R4.2 (`null`, `undefined` o `''`): se pinta un `—` y el
+   * componente ni se monta. `false`, `0` y `[]` **no** están vacíos.
+   */
+  protected readonly vacio = computed(() => {
+    const valor = this.value();
+    return valor === null || valor === undefined || valor === '';
+  });
 
   /** Configuración leída como campo. Sólo válida en la rama de campo. */
   private readonly cfgCampo = computed(() => this.config() as FieldSchema);
@@ -271,14 +368,25 @@ export class RenderHost implements FieldAriaContext, RenderContext {
     return this.esCampo() ? !this.state().hidden() : true;
   });
 
-  /** Tipo fuera del catálogo, con independencia de si está oculto. */
-  private readonly unsupported = computed(() => !isSupported(this.kind(), this.type()));
+  /**
+   * Sin renderizador para este tipo **en la superficie actual**.
+   *
+   * En `display`: el descriptor no declara la superficie o el tipo no está
+   * en la tabla de display. En `form`: sigue siendo «fuera del catálogo».
+   * Ninguna de las dos ramas toca `state()`, que en display no existe.
+   */
+  private readonly unsupported = computed(() =>
+    this.esDisplay() ? !this.soportaDisplay() : !isSupported(this.kind(), this.type()),
+  );
 
   protected readonly showUnknown = computed(() => this.unsupported() && this.dev);
 
   private readonly _trazaTipoDesconocido = effect(() => {
     if (!this.unsupported() || this.dev) return;
-    console.warn(`[render-host] tipo sin renderizador: "${this.type()}" — se omite el control.`);
+    const superficie = this.esDisplay() ? 'display' : 'form';
+    console.warn(
+      `[render-host] tipo sin renderizador (${superficie}): "${this.type()}" — se omite el control.`,
+    );
   });
 
   // ── Resolución del componente ────────────────────────────────────────────
@@ -290,21 +398,49 @@ export class RenderHost implements FieldAriaContext, RenderContext {
   private carga = 0;
 
   private readonly _cargar = effect(() => {
-    const kind = this.kind();
     const type = this.type();
     const carga = ++this.carga;
     this.control.set(null);
-    if (!isSupported(kind, type)) return;
+
+    // Modo display (R4.1): el componente sale de la tabla por tipo, no del
+    // `load()` del descriptor — la tabla es la que garantiza que un mismo
+    // `field.type` se pinte igual en todas las fichas.
+    if (this.esDisplay()) {
+      const loader = this.loaderDisplay();
+      if (!loader) return;
+      this.pendientes.run(async () => {
+        const componente = await loader();
+        if (this.carga === carga) this.control.set(componente);
+      });
+      return;
+    }
+
+    if (!isSupported(this.kind(), type)) return;
     // El `load()` del descriptor es un `import()` de chunk, que `whenStable()`
     // NO espera por sí solo (queda fuera del ciclo de estabilidad y el control
     // llegaría tarde a un `detectChanges()` posterior). Registrándolo como
     // tarea pendiente la estabilidad cubre la carga: el skeleton se pinta
     // mientras baja y el control aparece en el siguiente ciclo ya montado.
     this.pendientes.run(async () => {
-      const componente = await resolve(kind, type, UnknownRender);
+      const componente = await resolve(this.kind(), type, UnknownRender);
       if (this.carga === carga) this.control.set(componente);
     });
   });
+
+  /**
+   * Inputs del componente de display.
+   *
+   * Forma fija y uniforme para los 6 componentes de
+   * `fields/display/`: `field` (el `FieldSchema` completo, para los que
+   * necesitan `options`), `value` (el valor crudo) y `chip` (la
+   * presentación de la cabecera). El descriptor no interviene acá — en
+   * display no hay ni control ni árbol que cablear.
+   */
+  private readonly displayInputs = computed<Record<string, unknown>>(() => ({
+    field: this.config() as FieldSchema,
+    value: this.value(),
+    chip: this.chip(),
+  }));
 
   /**
    * Inputs del componente montado.
@@ -407,7 +543,7 @@ export class RenderHost implements FieldAriaContext, RenderContext {
    * campo padre (los hijos tienen los suyos propios).
    */
   protected readonly composite = computed(() =>
-    new Set(['list', 'key-value', 'string-list', 'multiselect']).has(this.config().type),
+    new Set(['list', 'key-value', 'string-list', 'multiselect']).has(this.cfgCampo().type),
   );
 
   // Contexto de accesibilidad consumido por `FieldAria` en los controles.
@@ -418,7 +554,7 @@ export class RenderHost implements FieldAriaContext, RenderContext {
    * que ya no está en el DOM.
    */
   readonly helpId = computed(() =>
-    this.config().help && !this.errorMessage() ? `${this.name()}-help` : null,
+    this.cfgCampo().help && !this.errorMessage() ? `${this.name()}-help` : null,
   );
 
   readonly errorId = computed(() => (this.errorMessage() ? `${this.name()}-error` : null));

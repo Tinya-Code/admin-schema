@@ -8,7 +8,7 @@ export const descriptor: RenderDescriptor = {
   load: () => import('./group').then((module) => module.FieldGroup),
   // Contenedor: siembra un nodo por cada hijo declarado.
   seed: 'recursive',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
   // Compuesto: además de su árbol dibuja el template de sus hijos, que sólo
   // existe en la plantilla del host. Él es quien decide recibirlo (R3.6).
   inputs: (config, extras) => ({

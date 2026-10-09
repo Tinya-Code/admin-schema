@@ -7,7 +7,7 @@ export const descriptor: RenderDescriptor = {
   since: '1.0',
   load: () => import('./list').then((module) => module.FieldList),
   seed: 'array',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
   // Compuesto: además de su árbol dibuja el template de cada hijo y hereda
   // el `exists` del nivel para no reactivar el borrado de filas (R3.6).
   inputs: (config, extras) => ({

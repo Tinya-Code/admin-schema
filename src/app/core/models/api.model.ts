@@ -6,6 +6,19 @@
  * El interceptor (Fase 3) los convierte en `ApiError`.
  */
 
+/**
+ * Un error con ruta del422 (auth.md §6): `path` para pintarlo en el campo y
+ * `code` MAYUS_SNAKE (`VALIDATION_MIN_LENGTH`) para mapearlo sin leer texto.
+ */
+export interface ApiIssue {
+  /** Ruta del campo afectado (`faq[2].answer`, `sku`). */
+  path: string;
+  /** Mensaje en español, listo para pintar. */
+  message: string;
+  /** Código estable del validador (B11); el mensaje puede cambiar, el código no. */
+  code?: string;
+}
+
 /** Shape del body de error (doc/baseapi.md §8 «Errores»). */
 export interface ApiErrorBody {
   error: {
@@ -19,6 +32,12 @@ export interface ApiErrorBody {
      * cinco respuestas — el sobre de error es aditivo (O7 / D10-5).
      */
     code?: string;
+    /**
+     * Errores de validación con ruta (base.md §5, guía §10): el 422 los manda
+     * ACÁ (`error.errors[]`), no en `path`. Sin modelarlos el form veía
+     * «Errores de validación» genérico y ningún campo se pintaba (D42).
+     */
+    errors?: ApiIssue[];
   };
 }
 
@@ -29,13 +48,22 @@ export class ApiError extends Error {
   readonly fieldPath?: string;
   /** Código de sesión de §4.5 si el backend lo envió; `undefined` en el resto. */
   readonly code?: string;
+  /** Issues con ruta (422); vacío cuando el error no trae `errors[]`. */
+  readonly issues: readonly ApiIssue[];
 
-  constructor(status: number, message: string, fieldPath?: string, code?: string) {
+  constructor(
+    status: number,
+    message: string,
+    fieldPath?: string,
+    code?: string,
+    issues: readonly ApiIssue[] = [],
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.fieldPath = fieldPath;
     this.code = code;
+    this.issues = issues;
   }
 }
 

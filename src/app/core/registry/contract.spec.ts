@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { COLUMN_FORMAT_TYPES, columnFormatDescriptors } from '../../columns/descriptors';
 import { SUPPORTED_FIELD_TYPE_LIST } from '../../fields/descriptors';
-import type { FieldSchema, ResourceSchema, WidgetType } from '../models/schema.model';
+import type {
+  FieldSchema,
+  ListColumnFormat,
+  ResourceSchema,
+  WidgetType,
+} from '../models/schema.model';
 import { fieldDescriptors } from '../../fields/descriptors';
 import { schemas } from '../../schemas/registry';
 import { isSupported, renderKinds, type RenderKind } from './render-registry';
@@ -23,11 +29,11 @@ import { isSupported, renderKinds, type RenderKind } from './render-registry';
  *     arriba no ve. Sin esto, dar de baja un descriptor de un widget que
  *     ningún schema usa (`chart-line`, por ejemplo) pasaría en verde.
  *
- * **Qué NO cubre, y por qué.** `column.format` aún no tiene registro: los
- * formatos se dibujan con un `@switch` con `@default` en `list-view`, con
- * degradación (D17), y crearles descriptor ahora exigiría un `load()` que
- * devuelve un componente — **un formato de columna no es un componente**.
- * Eso es R4.3, no una prueba. Mientras tanto su exhaustividad la pone `tsc`.
+ * **Los formatos de columna entran en R4.3.** Mientras `column.format` se
+ * dibujaba con un `@switch` con `@default` en `list-view` no había registro
+ * que recorrer (D17). Con `kind: 'column-format'` sí: este archivo vigila
+ * que cada `format` declarado en un schema —y cada nombre de la unión— tenga
+ * descriptor, en paralelo a lo que ya hacía con campos y widgets.
  *
  * **Las acciones quedaron fuera a propósito.** R3.9 les dio registro propio
  * (`actions/action-registry.ts`) y R3.10 su recorrido
@@ -47,7 +53,21 @@ import { isSupported, renderKinds, type RenderKind } from './render-registry';
  */
 
 /** `kind`s que este archivo recorre de punta a punta. */
-const RECORRIDOS: readonly RenderKind[] = ['field', 'widget'];
+const RECORRIDOS: readonly RenderKind[] = ['field', 'column-format', 'widget'];
+
+/**
+ * Unión `ListColumnFormat` ↔ manifiesto de formatos, en el mismo molde que
+ * `TIPOS_WIDGET`. El `satisfies` + `Exclude` resuelven exhaustividad en
+ * compilación (un formato nuevo obliga a nombrarlo acá y en el manifiesto)
+ * y el `it` de abajo añade lo que TS no puede mirar: que cada nombre tenga
+ * descriptor registrado en runtime.
+ */
+const FORMATOS = COLUMN_FORMAT_TYPES satisfies readonly ListColumnFormat[];
+
+type FormatoSinLista = Exclude<ListColumnFormat, (typeof FORMATOS)[number]>;
+const _formatosExhaustivos: FormatoSinLista extends never
+  ? true
+  : ['Falta en COLUMN_FORMAT_TYPES', FormatoSinLista] = true;
 
 /**
  * Unión `WidgetType` ↔ registro, en el mismo molde que
@@ -168,11 +188,54 @@ describe('R3.7 — exhaustividad del registro de render', () => {
     expect(sinSiembra).toEqual([]);
   });
 
+  it('todo descriptor de campo declara la superficie display', () => {
+    // R4.1 · F3 («cada descriptor declara si sabe pintarse en display»).
+    // La ficha de detalle sólo pinta un tipo cuyo descriptor trae
+    // `surfaces: ['display']`; sin la declaración el host degrada y la
+    // celda sale vacía en producción. `tsc` no puede velar por esto porque
+    // `surfaces` es opcional en `RenderDescriptor`.
+    const sinDisplay = fieldDescriptors
+      .filter(
+        (descriptor) => descriptor.kind === 'field' && !descriptor.surfaces?.includes('display'),
+      )
+      .map((descriptor) => descriptor.type);
+    expect(sinDisplay).toEqual([]);
+  });
+
+  it('todo format declarado en un schema tiene descriptor de formato', () => {
+    const infractores: string[] = [];
+    for (const schema of schemas) {
+      for (const column of schema.listColumns ?? []) {
+        if (column.format && !isSupported('column-format', column.format)) {
+          infractores.push(`${schema.id}.${column.key}: format '${column.format}'`);
+        }
+      }
+    }
+    // Un format sin descriptor se pintaría como `unknown-render` en la celda:
+    // la tabla dejaría de mostrar lo que siempre mostró.
+    expect(infractores).toEqual([]);
+  });
+
+  it('hay columnas con format declarado (el recorrido no es vacío)', () => {
+    const declarados = schemas.flatMap((schema) =>
+      (schema.listColumns ?? []).filter((column) => column.format),
+    );
+    expect(declarados.length).toBeGreaterThan(0);
+  });
+
+  it('los 7 formatos de la unión tienen descriptor', () => {
+    const infractores = FORMATOS.filter((type) => !isSupported('column-format', type));
+    // Cubre `text` y `number`, que hoy ningún schema declara y que sólo se
+    // ven por el `?? 'text'` de `formatOf`.
+    expect(infractores).toEqual([]);
+    expect(columnFormatDescriptors.length).toBe(FORMATOS.length);
+  });
+
   it('los kind con descriptor son exactamente los que este test recorre', () => {
-    // Tripwire de ambos sentidos: el día que existan descriptores de
-    // `column-format` (R4.3) o de `action` (R3.9) esto se pone rojo y
-    // obliga a añadir su recorrido — un kind registrado y sin recorrer es
-    // exactamente el agujero que R3.7 vino a cerrar.
+    // Tripwire de ambos sentidos: un `kind` registrado y sin recorrer es
+    // exactamente el agujero que R3.7 vino a cerrar. `action` no cuenta:
+    // R3.9 le dio registro y recorrido propios (`actions/contract.spec.ts`)
+    // porque no pinta nada y no es un `kind` de render.
     expect([...renderKinds()].sort()).toEqual([...RECORRIDOS].sort());
   });
 });

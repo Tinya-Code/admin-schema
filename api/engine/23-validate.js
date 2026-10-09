@@ -8,9 +8,98 @@
 // lista; quien llama concatena las reglas nombradas y lanza un SOLO 422.
 // Top-level: sólo declaraciones.
 
-// Issues de validación con ruta (usa validationError_ de core/12-http).
-function validationIssue_(path, message) {
-  return { path: path, message: message };
+// Issues con ruta (usa validationError_ de core/12-http).
+//   · `validationIssue_(path, message, code)`: mensaje propio — lo usan los
+//     checks declarados (capabilities/checks), que traen el suyo.
+//   · `validatorIssue_(path, name, params)`: el VOCABULARIO de abajo — el
+//     mensaje y el código salen de UNA sola entrada.
+//
+// El sobre es siempre {path, message, code} (auth.md §6); el código es
+// estable aunque cambie el texto (B11), MAYUS_SNAKE con prefijo de dominio.
+function validationIssue_(path, message, code) {
+  var issue = { path: path, message: message };
+  if (code) issue.code = code;
+  return issue;
+}
+
+// Vocabulario compartido con el front (F7 «los validadores y reglas del
+// formulario viven en un registro; mismos nombres que el back»).
+//
+// Cada entrada ES un validador: nombre (idéntico al del registro del front,
+// src/app/core/registry/field-validators.ts) + mensaje. El código se deriva
+// — VALIDATION_ + NOMBRE_EN_MAYÚSCULAS — así que AÑADIR UN VALIDADOR ES UNA
+// ENTRADA ACÁ y una en el registro del front; nada más. Los mensajes son
+// textualmente los de siempre: cambia el sobre, no el texto.
+var VALIDATORS_ = {
+  required: 'Este campo es obligatorio',
+  unique: 'Ya existe un registro con este valor',
+  immutable: 'Este valor es inmutable',
+  pattern: 'No coincide con el formato que pide este campo',
+  'min-length': function (p) {
+    return 'Debe tener al menos ' + p.min + ' caracteres (' + p.actual + ')';
+  },
+  'max-length': function (p) {
+    return 'Debe tener como máximo ' + p.max + ' caracteres (' + p.actual + ')';
+  },
+  'min-words': function (p) {
+    return 'Debe tener al menos ' + p.min + ' palabras (' + p.actual + ')';
+  },
+  'max-words': function (p) {
+    return 'Debe tener como máximo ' + p.max + ' palabras (' + p.actual + ')';
+  },
+  min: function (p) {
+    return 'Debe ser ≥ ' + p.min;
+  },
+  max: function (p) {
+    return 'Debe ser ≤ ' + p.max;
+  },
+  'min-items': function (p) {
+    return 'Agrega al menos ' + p.min + (p.min === 1 ? ' elemento' : ' elementos');
+  },
+  'max-items': function (p) {
+    return 'Máximo ' + p.max + ' elementos';
+  },
+  number: 'Debe ser un número',
+  boolean: 'Debe ser verdadero o falso',
+  enum: function (p) {
+    return p && p.value !== undefined ? 'Valor no permitido: ' + p.value : 'Valor no permitido';
+  },
+  multiselect: 'Debe ser una lista de valores',
+  list: 'Debe ser una lista',
+  email: 'Correo inválido',
+  url: 'Debe ser una URL http(s)://',
+  image: 'Debe ser una imagen subida a Cloudinary (https)',
+  slug: 'Slug inválido: minúsculas, números y guiones',
+  date: 'Fecha inválida (YYYY-MM-DD)',
+  'date-min': function (p) {
+    return 'La fecha no puede ser anterior a ' + p.min + '.';
+  },
+  'date-max': function (p) {
+    return 'La fecha no puede ser posterior a ' + p.max + '.';
+  },
+  time: 'Hora inválida (HH:mm)',
+  phone: function (p) {
+    return p.digits ? 'Sólo dígitos, sin signos' : 'Teléfono inválido: formato +51…';
+  },
+  relation: 'La referencia no existe',
+  'relation-active': 'La referencia debe estar activa',
+};
+
+// Código MAYUS_SNAKE del validador (auth.md §6 «VALIDATION_*»). Lo comparten
+// los checks declarados: el mensaje puede ser libre, el código no.
+function validationCode_(name) {
+  return 'VALIDATION_' + String(name).toUpperCase().replace(/-/g, '_');
+}
+
+// Issue del vocabulario: mensaje resuelto en VALIDATORS_ + código derivado.
+// Un nombre fuera de la tabla es error de configuración → 500 (§16).
+function validatorIssue_(path, name, params) {
+  if (!Object.prototype.hasOwnProperty.call(VALIDATORS_, name)) {
+    throw apiError_(500, 'Validador no registrado: ' + name);
+  }
+  var message = VALIDATORS_[name];
+  if (typeof message === 'function') message = message(params || {});
+  return { path: path, message: message, code: validationCode_(name) };
 }
 
 // ¿El valor está vacío para efectos de `required`?
@@ -54,7 +143,7 @@ function validatePayload_(ss, resource, map, opts) {
     var value = pickPath_(scalars, col);
 
     if (field.required && isEmptyValue_(value)) {
-      errors.push(validationIssue_(path, 'Este campo es obligatorio'));
+      errors.push(validatorIssue_(path, 'required'));
       return;
     }
     if (isEmptyValue_(value)) return; // opcional vacío ⇒ nada más
@@ -70,7 +159,7 @@ function validatePayload_(ss, resource, map, opts) {
         return String(entry.flat[map.keyField]) !== String(opts.key);
       });
       if (duplicated) {
-        errors.push(validationIssue_(path, 'Ya existe un registro con este valor'));
+        errors.push(validatorIssue_(path, 'unique'));
       }
     }
 
@@ -78,7 +167,7 @@ function validatePayload_(ss, resource, map, opts) {
     if (!opts.isNew && field.immutable && current) {
       var raw = pickPath_(incoming, col);
       if (raw !== undefined && String(raw) !== String(pickPath_(current, col))) {
-        errors.push(validationIssue_(path, 'Este valor es inmutable'));
+        errors.push(validatorIssue_(path, 'immutable'));
       }
     }
   });
@@ -134,20 +223,20 @@ function validateScalar_(ss, field, value, path, errors) {
     case 'currency':
       n = Number(value);
       if (typeof value === 'boolean' || !isFinite(n)) {
-        errors.push(validationIssue_(path, 'Debe ser un número'));
+        errors.push(validatorIssue_(path, 'number'));
         return;
       }
       if (field.min !== undefined && n < field.min) {
-        errors.push(validationIssue_(path, 'Debe ser ≥ ' + field.min));
+        errors.push(validatorIssue_(path, 'min', { min: field.min }));
       }
       if (field.max !== undefined && n > field.max) {
-        errors.push(validationIssue_(path, 'Debe ser ≤ ' + field.max));
+        errors.push(validatorIssue_(path, 'max', { max: field.max }));
       }
       return;
 
     case 'boolean':
       if (typeof value !== 'boolean') {
-        errors.push(validationIssue_(path, 'Debe ser verdadero o falso'));
+        errors.push(validatorIssue_(path, 'boolean'));
       }
       return;
 
@@ -157,13 +246,13 @@ function validateScalar_(ss, field, value, path, errors) {
           return opt === String(value);
         })
       ) {
-        errors.push(validationIssue_(path, 'Valor no permitido'));
+        errors.push(validatorIssue_(path, 'enum'));
       }
       return;
 
     case 'multiselect':
       if (!Array.isArray(value)) {
-        errors.push(validationIssue_(path, 'Debe ser una lista de valores'));
+        errors.push(validatorIssue_(path, 'multiselect'));
         return;
       }
       var allowed = enumList_(field);
@@ -173,20 +262,20 @@ function validateScalar_(ss, field, value, path, errors) {
             return opt === String(v);
           })
         ) {
-          errors.push(validationIssue_(path + '[' + i + ']', 'Valor no permitido: ' + v));
+          errors.push(validatorIssue_(path + '[' + i + ']', 'enum', { value: v }));
         }
       });
       return;
 
     case 'email':
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value))) {
-        errors.push(validationIssue_(path, 'Correo inválido'));
+        errors.push(validatorIssue_(path, 'email'));
       }
       return;
 
     case 'url':
       if (!/^https?:\/\/\S+$/.test(String(value))) {
-        errors.push(validationIssue_(path, 'Debe ser una URL http(s)://'));
+        errors.push(validatorIssue_(path, 'url'));
       }
       return;
 
@@ -194,33 +283,43 @@ function validateScalar_(ss, field, value, path, errors) {
       // Sólo https y del cloud configurado (baseapi §11.4).
       var prefix = 'https://res.cloudinary.com/' + Props.require('CLOUDINARY_CLOUD_NAME') + '/';
       if (typeof value !== 'string' || value.indexOf(prefix) !== 0) {
-        errors.push(validationIssue_(path, 'Debe ser una imagen subida a Cloudinary (https)'));
+        errors.push(validatorIssue_(path, 'image'));
       }
       return;
 
     case 'slug':
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(value))) {
-        errors.push(validationIssue_(path, 'Slug inválido: minúsculas, números y guiones'));
+        errors.push(validatorIssue_(path, 'slug'));
       }
       return;
 
     case 'date':
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value)) || isNaN(Date.parse(String(value)))) {
-        errors.push(validationIssue_(path, 'Fecha inválida (YYYY-MM-DD)'));
+        errors.push(validatorIssue_(path, 'date'));
+        return;
+      }
+      // Rango declarado: YYYY-MM-DD se compara lexicográficamente. El form ya
+      // lo rechazaba (form-schema dateError); ahora el back también, para que
+      // la autoridad no acepte lo que el formulario no pintó.
+      if (field.min !== undefined && String(value) < String(field.min)) {
+        errors.push(validatorIssue_(path, 'date-min', { min: field.min }));
+      }
+      if (field.max !== undefined && String(value) > String(field.max)) {
+        errors.push(validatorIssue_(path, 'date-max', { max: field.max }));
       }
       return;
 
     case 'time':
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value))) {
-        errors.push(validationIssue_(path, 'Hora inválida (HH:mm)'));
+        errors.push(validatorIssue_(path, 'time'));
       }
       return;
 
     case 'phone':
       if (field.format === 'e164' && !/^\+[1-9]\d{6,14}$/.test(String(value))) {
-        errors.push(validationIssue_(path, 'Teléfono inválido: formato +51…'));
+        errors.push(validatorIssue_(path, 'phone', { digits: false }));
       } else if (field.format === 'digits' && !/^\d{3,20}$/.test(String(value))) {
-        errors.push(validationIssue_(path, 'Sólo dígitos, sin signos'));
+        errors.push(validatorIssue_(path, 'phone', { digits: true }));
       }
       return;
 
@@ -240,37 +339,20 @@ function validateScalar_(ss, field, value, path, errors) {
   // Comunes a todo texto: patrón, longitud y conteo de palabras.
   var text = String(value);
   if (field.pattern && !new RegExp(field.pattern).test(text)) {
-    errors.push(validationIssue_(path, 'No coincide con el formato que pide este campo'));
+    errors.push(validatorIssue_(path, 'pattern'));
   }
   if (field.minLength !== undefined && text.length < field.minLength) {
-    errors.push(
-      validationIssue_(
-        path,
-        'Debe tener al menos ' + field.minLength + ' caracteres (' + text.length + ')',
-      ),
-    );
+    errors.push(validatorIssue_(path, 'min-length', { min: field.minLength, actual: text.length }));
   }
   if (field.maxLength !== undefined && text.length > field.maxLength) {
-    errors.push(
-      validationIssue_(
-        path,
-        'Debe tener como máximo ' + field.maxLength + ' caracteres (' + text.length + ')',
-      ),
-    );
+    errors.push(validatorIssue_(path, 'max-length', { max: field.maxLength, actual: text.length }));
   }
   var words = wordCount_(text);
   if (field.minWords !== undefined && words < field.minWords) {
-    errors.push(
-      validationIssue_(path, 'Debe tener al menos ' + field.minWords + ' palabras (' + words + ')'),
-    );
+    errors.push(validatorIssue_(path, 'min-words', { min: field.minWords, actual: words }));
   }
   if (field.maxWords !== undefined && words > field.maxWords) {
-    errors.push(
-      validationIssue_(
-        path,
-        'Debe tener como máximo ' + field.maxWords + ' palabras (' + words + ')',
-      ),
-    );
+    errors.push(validatorIssue_(path, 'max-words', { max: field.maxWords, actual: words }));
   }
 }
 
@@ -298,13 +380,13 @@ function validateRelation_(ss, field, value, path, errors) {
     if (found === null && String(row.values[idx]) === wanted) found = row.values;
   });
   if (found === null) {
-    errors.push(validationIssue_(path, 'La referencia no existe'));
+    errors.push(validatorIssue_(path, 'relation'));
     return;
   }
   if (field.onlyActive && target.activeField) {
     var activeIdx = data.headers.indexOf(target.activeField);
     if (activeIdx === -1 || !truthyCell_(found[activeIdx])) {
-      errors.push(validationIssue_(path, 'La referencia debe estar activa'));
+      errors.push(validatorIssue_(path, 'relation-active'));
     }
   }
 }
@@ -314,39 +396,34 @@ function validateRelation_(ss, field, value, path, errors) {
 function validateChild_(ss, child, items, errors) {
   if (items === undefined || items === null) items = [];
   if (!Array.isArray(items)) {
-    errors.push(validationIssue_(child.key, 'Debe ser una lista'));
+    errors.push(validatorIssue_(child.key, 'list'));
     return;
   }
   var need = child.min !== undefined ? child.min : child.required ? 1 : 0;
   if (items.length < need) {
-    errors.push(
-      validationIssue_(
-        child.key,
-        'Agrega al menos ' + need + (need === 1 ? ' elemento' : ' elementos'),
-      ),
-    );
+    errors.push(validatorIssue_(child.key, 'min-items', { min: need }));
     return;
   }
   if (child.max !== undefined && items.length > child.max) {
-    errors.push(validationIssue_(child.key, 'Máximo ' + child.max + ' elementos'));
+    errors.push(validatorIssue_(child.key, 'max-items', { max: child.max }));
     return;
   }
 
   items.forEach(function (item, i) {
     if (child.type === 'string-list') {
       if (child.itemType === 'url' && !/^https?:\/\/\S+$/.test(String(item))) {
-        errors.push(validationIssue_(child.key + '[' + i + ']', 'Debe ser una URL http(s)://'));
+        errors.push(validatorIssue_(child.key + '[' + i + ']', 'url'));
       } else if (
         child.itemType === 'email' &&
         !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(item))
       ) {
-        errors.push(validationIssue_(child.key + '[' + i + ']', 'Correo inválido'));
+        errors.push(validatorIssue_(child.key + '[' + i + ']', 'email'));
       }
       return;
     }
     if (child.type === 'key-value') {
       if (isEmptyValue_(item ? item.key : undefined)) {
-        errors.push(validationIssue_(child.key + '[' + i + '].key', 'Este campo es obligatorio'));
+        errors.push(validatorIssue_(child.key + '[' + i + '].key', 'required'));
       }
       return;
     }
@@ -355,7 +432,7 @@ function validateChild_(ss, child, items, errors) {
       var value = item && typeof item === 'object' ? item[f.key] : undefined;
       var path = child.key + '[' + i + '].' + f.key;
       if (f.required && isEmptyValue_(value)) {
-        errors.push(validationIssue_(path, 'Este campo es obligatorio'));
+        errors.push(validatorIssue_(path, 'required'));
         return;
       }
       if (isEmptyValue_(value)) return;

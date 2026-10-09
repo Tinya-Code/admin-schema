@@ -95,6 +95,36 @@ describe('apiErrorInterceptor — mensajes humanos', () => {
       }),
     ).toBe('Ya existe un registro con este valor');
   });
+
+  /**
+   * D42 — el422 manda sus rutas en `error.errors[]`, NO en `path`: sin
+   * modelar esa lista el form veía «Errores de validación» y no pintaba
+   * ningún campo (base.md §5, guía §10).
+   */
+  it('conserva errors[] completo (path, message, code) en el ApiError', () => {
+    const error = errorFromBody({
+      error: {
+        status: 422,
+        message: 'Errores de validación',
+        errors: [
+          {
+            path: 'sku',
+            message: 'Debe tener al menos 5 caracteres.',
+            code: 'VALIDATION_MIN_LENGTH',
+          },
+          { path: 'faq[2].answer', message: 'Campo obligatorio.', code: 'VALIDATION_REQUIRED' },
+        ],
+      },
+    });
+    expect(error.status).toBe(422);
+    expect(error.message).toBe('Errores de validación');
+    expect(error.issues).toEqual([
+      { path: 'sku', message: 'Debe tener al menos 5 caracteres.', code: 'VALIDATION_MIN_LENGTH' },
+      { path: 'faq[2].answer', message: 'Campo obligatorio.', code: 'VALIDATION_REQUIRED' },
+    ]);
+    // Sin `path` en el sobre no hay fieldPath: las rutas vienen en los issues.
+    expect(error.fieldPath).toBeUndefined();
+  });
 });
 
 /**

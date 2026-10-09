@@ -397,7 +397,11 @@ export type ListColumnFormat =
 export interface ListColumn {
   key: string;
   label: string;
-  /** Por defecto: `text`. */
+  /**
+   * Sólo para sobreescribir: sin él manda la tabla de
+   * `columns/column-defaults` (`FORMATO_POR_DEFECTO`) según el `type` del
+   * campo con esta `key` (R4.4).
+   */
   format?: ListColumnFormat;
 }
 

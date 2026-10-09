@@ -2,39 +2,39 @@ import { Component, computed, inject, input, output } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
 
-import {
-  LucideArrowLeft,
-  LucideClock,
-  LucideExternalLink,
-  LucidePencil,
-  LucideTrash2,
-} from '@lucide/angular';
+import { LucideArrowLeft, LucideExternalLink, LucidePencil, LucideTrash2 } from '@lucide/angular';
 import type {
   CopyShareAction,
   DetailViewSchema,
   FieldSchema,
-  ListField,
   ResourceAction,
   ResourceSchema,
 } from '../../core/models/schema.model';
 import { isShareAction, resolveShare, type ResolvedShare } from '../../actions/action-registry';
 import { ActionService } from '../../actions/action-service';
+import { RenderHost } from '../../core/registry/render-host';
 import { ApiService } from '../../core/services/api.service';
-import { Badge, type BadgeKind } from '../../shared/components/badge/badge';
 import { Button } from '../../shared/components/button/button';
 import { CopyShare } from '../../shared/components/copy-share/copy-share';
 import { getValue } from '../../shared/utils/field-path';
 
 type Row = Record<string, unknown>;
 
+/**
+ * Campo ya resuelto contra el registro, **sin formatear**.
+ *
+ * Antes de R4.2 este objeto traía `value` + `kind` + `badgeKind`, que era
+ * como `detail-view` derivaba a mano qué pintar (`image | badge | text`).
+ * Hoy sólo aporta agrupación —clave, etiqueta, campo y valor crudo— y el
+ * pintado lo decide el registro vía `<app-render-host mode="display">`.
+ */
 interface FieldValue {
   key: string;
   label: string;
-  value: string;
-  kind: 'text' | 'badge' | 'image' | 'date' | 'number' | 'boolean' | 'list';
-  badgeKind?: BadgeKind;
-  rawList?: Record<string, unknown>[];
-  listFields?: FieldSchema[];
+  /** Campo del schema (o un `text` sintético si la clave no existe). */
+  field: FieldSchema;
+  /** Valor crudo del registro. */
+  raw: unknown;
 }
 
 interface DetailSection {
@@ -43,99 +43,28 @@ interface DetailSection {
   fields: FieldValue[];
 }
 
-const DATE_FORMAT = new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeZone: 'UTC' });
-const DATE_TIME_FORMAT = new Intl.DateTimeFormat('es-PE', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'UTC',
-});
-const NUMBER_FORMAT = new Intl.NumberFormat('es-PE');
-
-function resolveBadgeKind(val: string): BadgeKind {
-  const upper = String(val).toUpperCase();
-  if (['PENDIENTE', 'WAITING', 'EN_PROCESO', 'PROCESSING'].includes(upper)) return 'warning';
-  if (
-    ['ENTREGADO', 'DELIVERED', 'ACTIVA', 'ACTIVE', 'COMPLETADO', 'SUCCESS', 'SI', 'SÍ'].includes(
-      upper,
-    )
-  )
-    return 'success';
-  if (['CANCELADO', 'CANCELLED', 'REVOCADA', 'REVOKED', 'ERROR', 'NO'].includes(upper))
-    return 'danger';
-  return 'neutral';
-}
-
-function formatValue(
-  field: FieldSchema,
-  raw: unknown,
-): {
-  text: string;
-  kind: FieldValue['kind'];
-  badgeKind?: BadgeKind;
-  rawList?: Record<string, unknown>[];
-  listFields?: FieldSchema[];
-} {
-  if (raw === null || raw === undefined || raw === '') {
-    return { text: '—', kind: 'text' };
-  }
-  switch (field.type) {
-    case 'date': {
-      const d = new Date(String(raw));
-      return {
-        text: Number.isNaN(d.getTime()) ? String(raw) : DATE_FORMAT.format(d),
-        kind: 'date',
-      };
-    }
-    case 'number':
-    case 'currency': {
-      const n = Number(raw);
-      return { text: Number.isFinite(n) ? NUMBER_FORMAT.format(n) : String(raw), kind: 'number' };
-    }
-    case 'boolean':
-      return {
-        text: raw ? 'Sí' : 'No',
-        kind: 'badge',
-        badgeKind: raw ? 'success' : 'neutral',
-      };
-    case 'select': {
-      const selectField = field as { options?: { value: string; label: string }[] } & FieldSchema;
-      const found = (selectField.options ?? []).find((o) => o.value === String(raw));
-      const text = found ? found.label : String(raw);
-      return { text, kind: 'badge', badgeKind: resolveBadgeKind(String(raw)) };
-    }
-    case 'image':
-      return { text: String(raw), kind: 'image' };
-    case 'list': {
-      const listField = field as ListField;
-      const arr = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
-      return {
-        text: `${arr.length} elementos`,
-        kind: 'list',
-        rawList: arr,
-        listFields: listField.itemFields,
-      };
-    }
-    default:
-      return { text: String(raw), kind: 'text' };
-  }
-}
-
 /**
  * Vista de detalle genérica: muestra los campos de un registro en modo lectura.
- * Incluye cabecera estilizada, soporte de badges semánticos, renderizado de imágenes,
- * timeline interactivo para listas anidadas (como history) y barra de acciones.
+ * Incluye cabecera estilizada, timeline interactivo para listas anidadas
+ * (como history) y barra de acciones.
+ *
+ * **R4.2 · F3 (`refactormotor.md`):** dejó de derivar `kind` a mano y de
+ * tener plantilla propia de campo. Agrupa (`sections()`, `resolveFieldValue()`,
+ * el `<dt>`/`<dd>`, el bloque de historial y `hasLargeContent()`) y el valor
+ * lo pinta el registro con `mode="display"` — la misma tabla por tipo que
+ * cualquier otra superficie. Lo único que queda por fuera son las secciones
+ * que no son campos: cabecera, `copy-share` y acciones.
  */
 @Component({
   selector: 'app-detail-view',
   imports: [
-    Badge,
     Button,
     CopyShare,
     LucideArrowLeft,
-    LucideClock,
     LucideExternalLink,
     LucidePencil,
     LucideTrash2,
+    RenderHost,
   ],
   template: `
     <div class="space-y-6">
@@ -148,9 +77,17 @@ function formatValue(
             <h1 class="font-display text-2xl font-bold tracking-tight text-neutral-light">
               {{ title() }}
             </h1>
-            @for (badge of headerBadges(); track badge.key) {
-              @if (badge.value !== '—') {
-                <app-badge [label]="badge.value" [kind]="badge.badgeKind ?? 'neutral'" />
+            @for (campo of headerFields(); track campo.key) {
+              @if (!vacio(campo.raw)) {
+                <!-- La cabecera siempre mostró los headerFields como chips:
+                     el matiz viaja al host, no un @switch por tipo acá. -->
+                <app-render-host
+                  mode="display"
+                  [chip]="true"
+                  [type]="campo.field.type"
+                  [config]="campo.field"
+                  [value]="campo.raw"
+                />
               }
             }
           </div>
@@ -221,87 +158,34 @@ function formatValue(
               <!-- Grid para campos regulares -->
               @if (regularFields(section).length > 0) {
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                  @for (field of regularFields(section); track field.key) {
+                  @for (campo of regularFields(section); track campo.key) {
                     <div class="space-y-1">
-                      <dt class="text-xs font-medium text-neutral">{{ field.label }}</dt>
-                      @if (field.kind === 'image' && field.value !== '—') {
-                        <dd>
-                          <a
-                            [href]="field.value"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="group relative inline-block overflow-hidden rounded-xl border border-neutral/20 shadow-xs transition hover:border-primary"
-                          >
-                            <img
-                              [src]="field.value"
-                              [alt]="field.label"
-                              class="h-28 w-28 object-cover transition duration-300 group-hover:scale-105"
-                            />
-                            <div
-                              class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100"
-                            >
-                              <svg lucideExternalLink size="18" class="text-white" />
-                            </div>
-                          </a>
-                        </dd>
-                      } @else if (field.kind === 'badge') {
-                        <dd>
-                          <app-badge [label]="field.value" [kind]="field.badgeKind ?? 'neutral'" />
-                        </dd>
-                      } @else {
-                        <dd class="text-sm font-medium text-neutral-light break-words">
-                          {{ field.value }}
-                        </dd>
-                      }
+                      <dt class="text-xs font-medium text-neutral">{{ campo.label }}</dt>
+                      <dd class="text-sm font-medium text-neutral-light break-words">
+                        <app-render-host
+                          mode="display"
+                          [type]="campo.field.type"
+                          [config]="campo.field"
+                          [value]="campo.raw"
+                        />
+                      </dd>
                     </div>
                   }
                 </dl>
               }
 
               <!-- Renderizado de listas anidadas (Timeline de eventos / items) -->
-              @for (field of listFields(section); track field.key) {
+              @for (campo of listFields(section); track campo.key) {
                 <div class="pt-2">
                   <h3 class="mb-3 text-xs font-semibold text-neutral uppercase">
-                    {{ field.label }}
+                    {{ campo.label }}
                   </h3>
-                  @if (field.rawList && field.rawList.length > 0) {
-                    <div
-                      class="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-neutral/20"
-                    >
-                      @for (item of field.rawList; track $index) {
-                        <div class="relative group">
-                          <span
-                            class="absolute -left-6 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary/20 ring-4 ring-surface"
-                          >
-                            <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
-                          </span>
-                          <div
-                            class="rounded-xl border border-neutral/10 bg-neutral/5 p-3.5 transition hover:border-neutral/20"
-                          >
-                            <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                              @if (item['action']) {
-                                <app-badge
-                                  [label]="formatActionLabel(item['action'])"
-                                  [kind]="resolveActionBadgeKind(item['action'])"
-                                />
-                              }
-                              @if (item['at']) {
-                                <span class="text-xs text-neutral flex items-center gap-1">
-                                  <svg lucideClock size="12" />
-                                  {{ formatDateTime(item['at']) }}
-                                </span>
-                              }
-                            </div>
-                            @if (item['detail']) {
-                              <p class="text-sm text-neutral-light">{{ item['detail'] }}</p>
-                            }
-                          </div>
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <p class="text-xs italic text-neutral">No hay registros en el historial.</p>
-                  }
+                  <app-render-host
+                    mode="display"
+                    [type]="campo.field.type"
+                    [config]="campo.field"
+                    [value]="campo.raw"
+                  />
                 </div>
               }
             </div>
@@ -368,7 +252,7 @@ export class DetailView {
     return String(rec[schema.keyField] ?? '—');
   });
 
-  protected readonly headerBadges = computed<FieldValue[]>(() => {
+  protected readonly headerFields = computed<FieldValue[]>(() => {
     const headerKeys = this.detail().headerFields ?? [];
     return headerKeys.map((key) => this.resolveFieldValue(key));
   });
@@ -421,61 +305,54 @@ export class DetailView {
     return actions.filter(isShareAction);
   });
 
+  /**
+   * Agrupación, no formato: devuelve el campo y el valor crudo. El pintado
+   * es cosa del registro (R4.2).
+   */
   private resolveFieldValue(key: string): FieldValue {
     const schema = this.schema();
     const rec = this.effectiveRecord();
     const field = schema.fields.find((f) => f.key === key);
-    const label = field?.label ?? key.replace(/_/g, ' ');
     const raw = getValue(rec, key);
-    if (!field) {
-      return {
-        key,
-        label,
-        value: raw !== null && raw !== undefined ? String(raw) : '—',
-        kind: 'text',
-      };
-    }
-    const formatted = formatValue(field, raw);
+    // Una clave que ningún schema declara no tiene descriptor: se resuelve
+    // como texto crudo, que era exactamente lo que hacía el `default` del
+    // `formatValue` viejo.
+    const declarado: FieldSchema = field ?? { key, label: key.replace(/_/g, ' '), type: 'text' };
     return {
       key,
-      label,
-      value: formatted.text,
-      kind: formatted.kind,
-      badgeKind: formatted.badgeKind,
-      rawList: formatted.rawList,
-      listFields: formatted.listFields,
+      label: field?.label ?? declarado.label,
+      field: declarado,
+      raw,
     };
   }
 
+  /**
+   * Valor vacío con el criterio de siempre (`null`, `undefined`, `''`): ni
+   * el chip de la cabecera ni el `—` del cuerpo cambian de criterio.
+   */
+  protected vacio(valor: unknown): boolean {
+    return valor === null || valor === undefined || valor === '';
+  }
+
+  /** Un historial sólo es historial si hay valor que recorrer. */
+  private esHistorial(campo: FieldValue): boolean {
+    return campo.field.type === 'list' && !this.vacio(campo.raw);
+  }
+
   protected regularFields(section: DetailSection): FieldValue[] {
-    return section.fields.filter((f) => f.kind !== 'list');
+    return section.fields.filter((f) => !this.esHistorial(f));
   }
 
   protected listFields(section: DetailSection): FieldValue[] {
-    return section.fields.filter((f) => f.kind === 'list');
+    return section.fields.filter((f) => this.esHistorial(f));
   }
 
   protected hasLargeContent(section: DetailSection): boolean {
-    return section.fields.some((f) => f.kind === 'list' || f.key === 'description');
+    return section.fields.some((f) => this.esHistorial(f) || f.key === 'description');
   }
 
   /** Enlace y mensaje, resueltos por `resolveShare` (R3.10: una sola copia). */
   protected shareOf(action: CopyShareAction): ResolvedShare {
     return resolveShare(action, this.actionService.vars(this.effectiveRecord()));
-  }
-
-  protected formatDateTime(val: unknown): string {
-    if (!val) return '—';
-    const d = new Date(String(val));
-    return Number.isNaN(d.getTime()) ? String(val) : DATE_TIME_FORMAT.format(d);
-  }
-
-  protected formatActionLabel(val: unknown): string {
-    if (!val) return '';
-    return String(val).replace(/_/g, ' ');
-  }
-
-  protected resolveActionBadgeKind(val: unknown): BadgeKind {
-    return resolveBadgeKind(String(val));
   }
 }

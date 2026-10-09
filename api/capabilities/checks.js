@@ -32,6 +32,7 @@ var CHECKS_ = {
       validationIssue_(
         params.field,
         params.message || 'No coincide con el formato que pide este campo',
+        validationCode_('pattern'),
       ),
     ];
   },
@@ -62,7 +63,13 @@ var CHECKS_ = {
       sum += Number(text.charAt(i)) * Number(params.weights[i]);
     }
     if (sum % 11 === Number(params.expected)) return [];
-    return [validationIssue_(params.field, params.message || 'Dígito verificador inválido')];
+    return [
+      validationIssue_(
+        params.field,
+        params.message || 'Dígito verificador inválido',
+        validationCode_('mod11'),
+      ),
+    ];
   },
 
   // not-in-sheet — TODOS los strings del guardado contra una hoja de
@@ -140,7 +147,11 @@ var CHECKS_ = {
     var incomingHistory = children.history;
     if (!Array.isArray(incomingHistory) || incomingHistory.length < savedHistory.length) {
       return [
-        validationIssue_('history', 'El historial no se puede modificar ni reducir (append-only)'),
+        validationIssue_(
+          'history',
+          'El historial no se puede modificar ni reducir (append-only)',
+          validationCode_('history-append-only'),
+        ),
       ];
     }
     for (var i = 0; i < savedHistory.length; i++) {
@@ -151,12 +162,17 @@ var CHECKS_ = {
           validationIssue_(
             'history',
             'El historial no se puede modificar ni reducir (append-only)',
+            validationCode_('history-append-only'),
           ),
         ];
       }
       if (saved.action !== inc.action || saved.detail !== inc.detail) {
         return [
-          validationIssue_('history', 'El historial guardado es inmutable y no se puede alterar'),
+          validationIssue_(
+            'history',
+            'El historial guardado es inmutable y no se puede alterar',
+            validationCode_('history-append-only'),
+          ),
         ];
       }
     }
@@ -179,6 +195,7 @@ var CHECKS_ = {
             validationIssue_(
               'auth_state',
               'No se puede modificar la autorización de un pedido ya entregado',
+              validationCode_('no-auth-after-delivered'),
             ),
           ];
         }
@@ -231,7 +248,11 @@ function checkScanValue_(value, path, patterns, errors) {
   for (var i = 0; i < patterns.length; i++) {
     if (value.indexOf(patterns[i]) !== -1) {
       errors.push(
-        validationIssue_(path, 'Contenido de relleno no permitido: "' + patterns[i] + '"'),
+        validationIssue_(
+          path,
+          'Contenido de relleno no permitido: "' + patterns[i] + '"',
+          validationCode_('not-in-sheet'),
+        ),
       );
       return;
     }

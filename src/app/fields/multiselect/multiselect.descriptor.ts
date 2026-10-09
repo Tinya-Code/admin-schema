@@ -7,5 +7,5 @@ export const descriptor: RenderDescriptor = {
   since: '1.0',
   load: () => import('./multiselect').then((module) => module.FieldMultiselect),
   seed: 'array',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
 };

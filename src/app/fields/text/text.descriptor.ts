@@ -8,5 +8,5 @@ export const descriptor: RenderDescriptor = {
   load: () => import('./text').then((module) => module.FieldText),
   // Nace como cadena: los textos, fechas, urls, selects y relacionales.
   seed: 'string',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
 };

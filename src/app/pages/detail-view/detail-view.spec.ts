@@ -63,22 +63,50 @@ describe('DetailView', () => {
     fixture = TestBed.createComponent(DetailView);
   });
 
-  it('1. renderiza la cabecera con el título del registro y los badges de headerFields', () => {
+  /**
+   * Monta la vista y espera los display del registro.
+   *
+   * `fixture.whenStable()` no basta: el `load()` de cada descriptor es un
+   * `import()` ajeno al rastreo de Angular. Se espera acotadamente mientras
+   * quede algún `<app-skeleton>`; si un componente nunca monta, la espera se
+   * agota y falla la aserción del test (acotación, no espera infinita).
+   */
+  async function montar(fixture: ComponentFixture<DetailView>): Promise<void> {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    for (
+      let intento = 0;
+      intento < 100 && fixture.nativeElement.querySelector('app-skeleton');
+      intento++
+    ) {
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    fixture.detectChanges();
+  }
+
+  it('1. renderiza la cabecera con el título del registro y los badges de headerFields', async () => {
     fixture.componentRef.setInput('schema', mockSchema);
     fixture.componentRef.setInput('record', mockRecord);
-    fixture.detectChanges();
+    await montar(fixture);
 
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('h1')?.textContent?.trim()).toBe('Ana García');
     // badge de ref y status en la cabecera
     expect(root.textContent).toContain('ORD-42');
     expect(root.textContent).toContain('Pendiente');
+    // Los headerFields salen como chips (R4.2): `ref` en neutral y
+    // `status` en la clase de estado que ya usaba la ficha.
+    const cabeceras = root.querySelectorAll('header app-badge');
+    expect(cabeceras.length, 'deben ser 2 los chips de la cabecera').toBe(2);
+    expect(cabeceras[0].className).toContain('bg-neutral');
+    expect(cabeceras[1].className).toContain('bg-accent/20');
   });
 
-  it('2. renderiza las secciones de campos con sus valores', () => {
+  it('2. renderiza las secciones de campos con sus valores', async () => {
     fixture.componentRef.setInput('schema', mockSchema);
     fixture.componentRef.setInput('record', mockRecord);
-    fixture.detectChanges();
+    await montar(fixture);
 
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent).toContain('Ana García');
@@ -130,7 +158,7 @@ describe('DetailView', () => {
     expect(emitted).toBe(true);
   });
 
-  it('5. renderiza secciones de historial (tipo list) cuando existen', () => {
+  it('5. renderiza secciones de historial (tipo list) cuando existen', async () => {
     const listSchema: ResourceSchema = {
       ...mockSchema,
       fields: [
@@ -152,7 +180,7 @@ describe('DetailView', () => {
     };
     fixture.componentRef.setInput('schema', listSchema);
     fixture.componentRef.setInput('record', recordWithHistory);
-    fixture.detectChanges();
+    await montar(fixture);
 
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent).toContain('Pedido registrado');

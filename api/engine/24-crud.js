@@ -211,7 +211,7 @@ function resourceCreate_(ss, resource, map, request) {
     var rawKey = payload[map.keyField];
     var key = rawKey === undefined || rawKey === null ? '' : String(rawKey);
     if (key === '') {
-      throw validationError_([validationIssue_(map.keyField, 'Este campo es obligatorio')]);
+      throw validationError_([validatorIssue_(map.keyField, 'required')]);
     }
 
     // Fila principal: columnas del payload + posición + campos computados.
@@ -472,7 +472,7 @@ function reorderCollection_(ss, resource, map, request) {
       throw apiError_(404, 'No existe: ' + intent.key);
     }
     if (hasAfter && entryIndexOf_(entries, map.keyField, intent.after) === -1) {
-      throw validationError_([validationIssue_('reorder.after', 'La referencia no existe')]);
+      throw validationError_([validatorIssue_('reorder.after', 'relation')]);
     }
 
     var items = entries.map(function (entry) {

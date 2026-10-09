@@ -65,10 +65,12 @@ export const apiErrorInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     map((event) => {
       if (event instanceof HttpResponse && isErrorBody(event.body)) {
-        const { status, message, path, code } = event.body.error;
+        const { status, message, path, code, errors } = event.body.error;
         // R2.9: ésta es la ÚNICA llamada a la tabla de §4.5.
         auth.applyAuthCode(code);
-        throw new ApiError(status, message, path, code);
+        // `errors[]` es el422 con rutas (D42): va entero al ApiError para que
+        // `ErrorMapperService` lo convierta en `serverErrors[prefix + key]`.
+        throw new ApiError(status, message, path, code, errors ?? []);
       }
       return event;
     }),

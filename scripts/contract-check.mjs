@@ -29,6 +29,11 @@
 //      exactamente el `input` de `/auth/login` (y al revés), y
 //      `rememberMe` es `false` — D10-3 negó `localStorage` (§9.3), así que
 //      un `true` prometería un storage que nadie usa.
+//  11. (R4.6 · F7 + B11) vocabulario de validadores: cada nombre que el
+//      registro del front declara (`ValidatorName`) existe en la tabla
+//      `VALIDATORS_` del back, que es quien fija el mensaje y el código
+//      `VALIDATION_*`. Al revés no se exige: el back valida cosas que el
+//      form no puede comprobar (`immutable`, `enum`, FK…).
 // Los campos system del back (p. ej. position) no se exigen en el front y
 // las extraColumns (string-list) quedan fuera de alcance: el modelo front
 // de string-list no las representa.
@@ -380,6 +385,48 @@ for (const id of Object.keys(backend)) {
     }
   }
 }
+
+/**
+ * 11 · Vocabulario de validadores (R4.6 · F7 + B11).
+ *
+ * El front declara sus nombres en `export type ValidatorName` (TS) y el back
+ * los implementa en `var VALIDATORS_` (JS): un nombre nuevo de un lado sin
+ * su entrada del otro significa un validador que un lado aplica y el otro ni
+ * se entera, o un código `VALIDATION_*` que no existe. Se leen como texto en
+ * vez de importarlos: el registro del front trae `@angular/forms/signals` y
+ * el del back es un script de Apps Script sin módulos.
+ */
+function checkValidatorVocabulary() {
+  const frontFile = path.join(ROOT, 'src', 'app', 'core', 'registry', 'field-validators.ts');
+  const backFile = path.join(ROOT, 'api', 'engine', '23-validate.js');
+  const union = readFileSync(frontFile, 'utf8').match(/export type ValidatorName =([\s\S]*?);/);
+  const tabla = readFileSync(backFile, 'utf8').match(/var VALIDATORS_ = \{([\s\S]*?)\n\};/);
+  if (union === null || tabla === null) {
+    rojo(
+      'no se pudo leer el vocabulario de validadores ' +
+        `(front: ${union === null ? 'sin ValidatorName' : 'ok'}, ` +
+        `back: ${tabla === null ? 'sin VALIDATORS_' : 'ok'})`,
+    );
+    return;
+  }
+  const front = [...union[1].matchAll(/'([a-z-]+)'/g)].map((m) => m[1]);
+  const back = [...tabla[1].matchAll(/^ {2}'?([a-z-]+)'?:/gm)].map((m) => m[1]);
+  if (front.length === 0 || back.length === 0) {
+    rojo(`vocabulario de validadores vacío (front ${front.length}, back ${back.length})`);
+    return;
+  }
+  for (const name of front) {
+    if (!back.includes(name)) {
+      rojo(
+        `validador '${name}' declarado en field-validators.ts pero no en ` +
+          'api/engine/23-validate.js — el front aplicaría una regla cuyo código ' +
+          'VALIDATION_* el back no emite',
+      );
+    }
+  }
+}
+
+checkValidatorVocabulary();
 
 for (const front of fronts) {
   const back = backend[front.id];

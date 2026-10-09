@@ -7,5 +7,5 @@ export const descriptor: RenderDescriptor = {
   since: '1.0',
   load: () => import('./boolean').then((module) => module.FieldBoolean),
   seed: 'boolean',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
 };

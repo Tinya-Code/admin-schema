@@ -8,7 +8,7 @@ export const descriptor: RenderDescriptor = {
   load: () => import('./slug').then((module) => module.FieldSlug),
   // Nace como cadena: los textos, fechas, urls, selects y relacionales.
   seed: 'string',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
   // Se aparta de la forma estándar sólo por `exists`: con el registro ya
   // creado el campo queda bloqueado (`lockAfterCreate`, R3.6).
   inputs: (config, extras) => ({

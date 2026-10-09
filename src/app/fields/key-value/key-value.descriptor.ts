@@ -7,5 +7,5 @@ export const descriptor: RenderDescriptor = {
   since: '1.0',
   load: () => import('./key-value').then((module) => module.FieldKeyValue),
   seed: 'array',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
 };

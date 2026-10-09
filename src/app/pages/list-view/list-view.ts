@@ -22,6 +22,7 @@ import { ApiError } from '../../core/models/api.model';
 import type {
   FieldSchema,
   ListColumn,
+  ListColumnFormat,
   ListFilter,
   ResourceAction,
   ResourceSchema,
@@ -31,12 +32,14 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { DrawerForm } from '../drawer-form/drawer-form';
+import { RenderHost } from '../../core/registry/render-host';
 import { getSchema } from '../../schemas/registry';
-import { Badge, type BadgeKind } from '../../shared/components/badge/badge';
 import { Button } from '../../shared/components/button/button';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import { getValue } from '../../shared/utils/field-path';
+import { formatoDeColumna } from '../../columns/column-defaults';
+import type { ColumnCell } from '../../columns/column-cell';
 
 type Row = Record<string, unknown>;
 type Status = 'loading' | 'ready' | 'error';
@@ -47,35 +50,14 @@ const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
   { value: 'no', label: 'No' },
 ];
 
-const NUMBER_FORMAT = new Intl.NumberFormat('es-PE');
-
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
-function formatDate(value: unknown): string {
-  if (typeof value !== 'string' || value === '') {
-    return value == null ? '' : String(value);
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  // Fechas `YYYY-MM-DD`: forzar UTC para no desfasar un día.
-  return date.toLocaleDateString('es-PE', { timeZone: 'UTC' });
-}
-
-function formatNumber(value: unknown): string {
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return value == null ? '' : String(value);
-  }
-  return NUMBER_FORMAT.format(number);
-}
-
 /**
  * Listado genérico de una colección (base.md §10 «Listado»): tabla desde
- * `listColumns` con los 7 formatos, búsqueda/filtros **en el cliente** (el
+ * `listColumns` con los 7 formatos **resueltos por el registro** (R4.3),
+ * búsqueda/filtros **en el cliente** (el
  * contrato de api.md no define parámetros de consulta: el endpoint admin
  * devuelve todos los registros), interruptor `active`, acciones de fila y
  * estados universales (skeleton, vacío, error con reintento).
@@ -83,7 +65,6 @@ function formatNumber(value: unknown): string {
 @Component({
   selector: 'app-list-view',
   imports: [
-    Badge,
     Button,
     CdkDrag,
     CdkDragHandle,
@@ -100,6 +81,7 @@ function formatNumber(value: unknown): string {
     LucideDynamicIcon,
     LucideTrash2,
     LucideZap,
+    RenderHost,
     Skeleton,
   ],
   template: `
@@ -257,52 +239,14 @@ function formatNumber(value: unknown): string {
                       }
                       @for (column of schema().listColumns; track column.key) {
                         <td class="px-4 py-2.5 align-middle">
-                          @switch (column.format ?? 'text') {
-                            @case ('thumbnail') {
-                              @if (thumbnailSrc(row, column); as src) {
-                                <img
-                                  [src]="src"
-                                  [alt]="thumbnailAlt(row, column)"
-                                  class="size-9 rounded-md object-cover"
-                                  loading="lazy"
-                                />
-                              } @else {
-                                <span class="text-neutral" aria-hidden="true">—</span>
-                              }
-                            }
-                            @case ('boolean') {
-                              @if (isSwitchColumn(column)) {
-                                <input
-                                  type="checkbox"
-                                  class="size-5 cursor-pointer accent-primary"
-                                  [checked]="booleanValue(row, column)"
-                                  [disabled]="savingKey() === keyOf(row)"
-                                  [attr.aria-label]="column.label + ': ' + titleOf(row)"
-                                  (click)="$event.stopPropagation()"
-                                  (change)="toggleActive(row, checkboxValue($event))"
-                                />
-                              } @else if (badgeInfo(row, column); as badge) {
-                                <app-badge [label]="badge.label" [kind]="badge.kind" />
-                              }
-                            }
-                            @case ('badge') {
-                              @if (badgeInfo(row, column); as badge) {
-                                <app-badge [label]="badge.label" [kind]="badge.kind" />
-                              }
-                            }
-                            @case ('number') {
-                              {{ formatNumber(cellValue(row, column)) }}
-                            }
-                            @case ('currency') {
-                              {{ formatCurrency(cellValue(row, column)) }}
-                            }
-                            @case ('date') {
-                              {{ formatDate(cellValue(row, column)) }}
-                            }
-                            @default {
-                              {{ cellText(row, column) }}
-                            }
-                          }
+                          <!-- Los 7 formatos salen del registro (R4.3):
+                               la vista sólo elige cuál y entrega la celda. -->
+                          <app-render-host
+                            kind="column-format"
+                            [type]="formatOf(column)"
+                            [config]="column"
+                            [data]="cellOf(row, column)"
+                          />
                         </td>
                       }
                       @if (hasRowActions()) {
@@ -740,94 +684,34 @@ export class ListView {
     return String(row[this.schema().titleField] ?? '');
   }
 
-  cellValue(row: Row, column: ListColumn): unknown {
-    return getValue(row, column.key);
+  /**
+   * Formato efectivo de la columna (R4.4 · «declarada, no implícita»).
+   *
+   * `column.format` sólo sobreescribe; si no, manda la tabla de
+   * `column-defaults` según el `type` del campo — nunca el `?? 'text'`
+   * implícito que había.
+   */
+  formatOf(column: ListColumn): ListColumnFormat {
+    return formatoDeColumna(column, this.schema().fields);
   }
 
-  cellText(row: Row, column: ListColumn): string {
-    const value = this.cellValue(row, column);
-    return value == null ? '' : String(value);
-  }
-
-  formatNumber(value: unknown): string {
-    return formatNumber(value);
-  }
-
-  formatCurrency(value: unknown): string {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
-      return value == null ? '' : String(value);
-    }
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
+  /**
+   * Contexto de la celda que recibe el formato (R4.3 · `extras.data`).
+   *
+   * Concentra aquí lo que sólo la vista sabe — permisos, moneda, guardado y
+   * la escritura de la fila — para que «añadir un formato» no la toque.
+   */
+  cellOf(row: Row, column: ListColumn): ColumnCell {
+    return {
+      row,
+      column,
+      fields: this.schema().fields,
+      title: this.titleOf(row),
+      canUpdate: this.canUpdate(),
+      saving: this.savingKey() === this.keyOf(row),
       currency: this.currencyCode(),
-    }).format(number);
-  }
-
-  formatDate(value: unknown): string {
-    return formatDate(value);
-  }
-
-  booleanValue(row: Row, column: ListColumn): boolean {
-    const value = this.cellValue(row, column);
-    return value === true || value === 'true';
-  }
-
-  /** `active` declarado como boolean en el schema → interruptor (base.md §10). */
-  isSwitchColumn(column: ListColumn): boolean {
-    if (column.format !== 'boolean' || column.key !== 'active' || !this.canUpdate()) {
-      return false;
-    }
-    return this.schema().fields.some((field) => field.type === 'boolean' && field.key === 'active');
-  }
-
-  badgeInfo(row: Row, column: ListColumn): { label: string; kind: BadgeKind } {
-    const value = this.cellValue(row, column);
-    if (typeof value === 'boolean') {
-      const field = this.schema().fields.find((candidate) => candidate.key === column.key);
-      const label =
-        value === true
-          ? ((field?.type === 'boolean' ? field.trueLabel : undefined) ?? 'Sí')
-          : ((field?.type === 'boolean' ? field.falseLabel : undefined) ?? 'No');
-      return { label, kind: value ? 'success' : 'danger' };
-    }
-    const text = value == null ? '' : String(value);
-    return text === '' ? { label: 'Sin dato', kind: 'danger' } : { label: text, kind: 'success' };
-  }
-
-  /** `image_url` directo, primer item de `images[]` o `null`. */
-  thumbnailSrc(row: Row, column: ListColumn): string | null {
-    const value = this.cellValue(row, column);
-    if (typeof value === 'string') {
-      return value !== '' ? value : null;
-    }
-    if (Array.isArray(value)) {
-      const first = value[0];
-      const url = typeof first === 'string' ? first : getValue(first, 'image_url');
-      return typeof url === 'string' && url !== '' ? url : null;
-    }
-    if (value && typeof value === 'object') {
-      const url = getValue(value, 'image_url');
-      return typeof url === 'string' && url !== '' ? url : null;
-    }
-    return null;
-  }
-
-  /** Texto alternativo del item de imagen que corresponde a la columna. */
-  thumbnailAlt(row: Row, column: ListColumn): string {
-    const value = this.cellValue(row, column);
-    let item: unknown = row;
-    if (Array.isArray(value)) {
-      item = value[0] ?? null;
-    } else if (value && typeof value === 'object') {
-      item = value;
-    }
-    const alt = item == null ? null : getValue(item, 'image_alt');
-    if (typeof alt === 'string' && alt !== '') {
-      return alt;
-    }
-    const rootAlt = row['image_alt'];
-    return typeof rootAlt === 'string' ? rootAlt : '';
+      toggle: (checked: boolean) => void this.toggleActive(row, checked),
+    };
   }
 
   filterOptions(filter: ListFilter): SelectOption[] {
@@ -846,10 +730,6 @@ export class ListView {
 
   selectValue(event: Event): string {
     return (event.target as HTMLSelectElement).value;
-  }
-
-  checkboxValue(event: Event): boolean {
-    return (event.target as HTMLInputElement).checked;
   }
 
   private async load(schema: ResourceSchema): Promise<void> {

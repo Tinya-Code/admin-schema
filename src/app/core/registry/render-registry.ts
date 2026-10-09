@@ -9,8 +9,10 @@ import {
 
 import type { RootTree } from '../../fields/field-node';
 import type { SeedKind } from '../../shared/utils/seed';
+import { columnFormatDescriptors } from '../../columns/descriptors';
 import { fieldDescriptors } from '../../fields/descriptors';
 import { widgetDescriptors } from '../../widgets/descriptors';
+import type { FieldSchema, ListColumn, WidgetSchema } from '../models/schema.model';
 
 /**
  * Registro único de render (R3.1 · `doc/plan-refactor-motor.md` §3.1).
@@ -39,6 +41,17 @@ export type RenderKind = 'field' | 'column-format' | 'widget' | 'action' | 'view
 
 /** Superficies en las que un descriptor puede aparecer. */
 export type RenderSurface = 'form' | 'display' | 'list' | 'filter';
+
+/**
+ * Qué puede describir un `RenderDescriptor`: un campo del formulario, un
+ * widget del dashboard o una columna de listado (R4.3).
+ *
+ * Es el tipo del input `config` del host. Los descriptores sólo comparten
+ * `key` y `label`; lo demás lo decide cada `kind`, y quien necesita el resto
+ * lo castea con su propia mirada (`cfgCampo()`, que es lo que el host ya
+ * hacía antes de que existieran las columnas).
+ */
+export type RenderConfig = FieldSchema | WidgetSchema | ListColumn;
 
 /**
  * Contexto de render que el host expone por DI (R3.4 · `doc/plan-refactor-motor.md` §3.4).
@@ -206,7 +219,7 @@ export async function resolve<C = unknown>(
 }
 
 // Catálogo a scope de módulo: se registra al importar, sin esperar a DI.
-for (const descriptor of [...fieldDescriptors, ...widgetDescriptors]) {
+for (const descriptor of [...fieldDescriptors, ...widgetDescriptors, ...columnFormatDescriptors]) {
   register(descriptor.kind, descriptor);
 }
 

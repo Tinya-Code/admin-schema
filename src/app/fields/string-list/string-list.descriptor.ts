@@ -7,5 +7,5 @@ export const descriptor: RenderDescriptor = {
   since: '1.0',
   load: () => import('./string-list').then((module) => module.FieldStringList),
   seed: 'array',
-  surfaces: ['form'],
+  surfaces: ['form', 'display'],
 };
