@@ -347,7 +347,6 @@ api/
 ├── 00-config              ← constantes + MANIFIESTO de propiedades (solo nombres)
 │
 ├── schema/                ← 🧬 FUENTE ÚNICA (datos declarativos)
-│   ├── 01-types
 │   ├── 02-enums
 │   ├── 03-resources-*     ← categories, products, site, legal
 │   └── 04-registry

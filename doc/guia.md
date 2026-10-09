@@ -171,7 +171,7 @@ Luego:
 3. `clasp version "vN - …"` + `clasp deploy -i <deploymentId> -V <n>`
    (la URL sirve una **versión fija**: push solo actualiza el HEAD).
 
-**No hace falta** tocar `core/`, `engine/`, `primitives/` ni `setup/` —
+**No hace falta** tocar `core/`, `engine/`, `capabilities/` ni `setup/` —
 el router arma las rutas del recurso solo y `/admin/schema` lo publica como
 contrato legible. **Del lado del frontend** sí hay una línea: crear
 `src/app/schemas/<id>.schema.ts` y registrarla en `schemas/registry.ts`
@@ -237,7 +237,7 @@ Verificación local (no red):
 
 ```bash
 npm run api:check                    # reglas: sin nombres de dominio en
-                                     # core/engine/primitives + registry ↔ archivos
+                                     # core/engine/capabilities + registry ↔ archivos
 bash scripts/api-regression.sh       # 11 fixtures handler-a-handler
 ```
 

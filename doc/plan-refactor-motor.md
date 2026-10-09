@@ -26,6 +26,14 @@
   npx prettier --check . 2>&1    # ⚠️ warnings en stderr
   ```
 
+- **Criterio de desempate (decisión del mantenedor, 2026-10-08).** Ante
+  cualquier bifurcación técnica se elige **lo que deje el motor más limpio y
+  consistente**, aunque cueste más trabajo. Una solución rápida que deja un
+  `switch` o un `if` especial en un fichero compartido **pierde** frente al
+  rediseño. Si una tarea chiquita requiere trabajo extra para que el motor
+  quede bien, **se hace el trabajo extra** y se anota en §4 — no se parchea.
+  (Procedencia: D32. No es «rediseñar siempre»: hay que poder articular por
+  qué la opción limpia es mejor técnicamente.)
 - **Reglas no negociables** (`refactormotor.md` §1 y `auth.md` §0):
   1. El **schema es dato puro** — serializable a JSON; la lógica se
      **referencia por nombre** y vive en un registro.
@@ -1113,7 +1121,7 @@ configurado"`.
 
 ### 3.1 Registro único de render (F1)
 
-- [ ] **R3.1** — Definir `RenderDescriptor`
+- [x] **R3.1** — Definir `RenderDescriptor` ✅ **cerrada 2026-10-08**
   - **Archivo nuevo:** `src/app/core/registry/render-registry.ts`
   - **Contrato:**
     ```ts
@@ -1125,27 +1133,51 @@ configurado"`.
       load: () => Promise<Type<any>>; // lazy
       surfaces?: ('form' | 'display' | 'list' | 'filter')[];
       defaults?: Partial<C>;
-      configSchema?: MetaSchema;
     }
     ```
+    > **`configSchema?: MetaSchema` eliminada del contrato.** No existe en
+    > ningún sitio (`grep -rn "configSchema" src/` → 0) y el plan ya la había
+    > descartado en **D17** (§4): la cláusula entera, `MetaSchema` incluida.
   - **Hecho cuando:** el tipo compila y tiene test unitario.
+  - **Estado:** `render-registry.spec.ts` — 6 tests. `resolve()` es
+    **asíncrona** (`load()` importa bajo demanda) y devuelve el `fallback`
+    síncrono cuando no hay descriptor; un fallo de `load()` **no se traga**.
 
-- [ ] **R3.2** — Funciones de registro y consulta
+- [x] **R3.2** — Funciones de registro y consulta ✅ **cerrada 2026-10-08**
   - **Según D9-1:** `provideRenderDescriptors(...)` con autodescubrimiento
     (`import.meta.glob`) **o** registro manual de una línea.
   - **API:** `register(kind, descriptor)` · `get(kind, type)` ·
     `isSupported(kind, type)` · `resolve(kind, type, fallback)`.
   - **Hecho cuando:** `isSupported` reemplaza a `isSupportedFieldType` sin
     romper a sus 4 consumidores.
+  - **Estado:** ✅ — los 4 consumidores (`form-view`, `form-schema`,
+    `contract.spec`, `field-host`) migran a `isSupported('field', type)` y
+    `isSupportedFieldType` + el `Set` **desaparecen**.
+    - **Se elige la rama «registro manual» de D9-1** (`import.meta.glob` no
+      sobrevive a `ng build`) — ver **D26**.
+    - **El registro se llena a scope de módulo, no desde DI:** `buildFormSchema()`
+      es una función pura que consulta sin inyectar nada. `provideRenderDescriptors()`
+      existe igualmente como punto de entrada de `app.config.ts`.
+    - **§5 enmendada:** la fila «Consulta: `isSupported<Categoria>(id)`» queda
+      expresada como `isSupported('field', id)`, que es el sentido literal de
+      «`isSupported` reemplaza a `isSupportedFieldType`».
 
-- [ ] **R3.3** — Descriptores de los 20 tipos de campo
+- [x] **R3.3** — Descriptores de los 20 tipos de campo ✅ **cerrada 2026-10-08**
   - **Archivo nuevo por tipo:** `src/app/fields/<type>/<type>.descriptor.ts`
   - **Pasos:** uno por cada uno de los 20; cada uno declara `kind: 'field'`,
     `load`, `surfaces`.
   - **Verificación:** `npm test` — los 20 resuelven.
   - **Hecho cuando:** no queda ningún `Set` de tipos.
+  - **Estado:** 20 ficheros + manifiesto `src/app/fields/descriptors.ts`
+    (una línea por tipo). `render-registry.spec.ts` afirma los 20
+    registrados **y** que cada uno resuelve su componente real.
+    `SUPPORTED_FIELD_TYPES` (el `Set`) **eliminado**; la lista
+    `SUPPORTED_FIELD_TYPE_LIST` queda sólo como aserción de compilación
+    (D17/R1.7) y está re-comentada como «no fuente de verdad en runtime».
+    - **Coste de D26:** añadir un tipo exige además **una línea** en el
+      manifiesto — no es un host, así que R3.8 sigue cumpliéndose.
 
-- [ ] **R3.4** — `<app-render-host>` genérico
+- [x] **R3.4** — `<app-render-host>` genérico ✅ **cerrada 2026-10-08**
   - **Archivo nuevo:** `src/app/core/registry/render-host.ts`
   - **Pasos:**
     1. Basado en `NgComponentOutlet`, con `[kind] [type] [config] [ctx]`.
@@ -1155,8 +1187,19 @@ configurado"`.
        `data-field`, `colSpanClass`.
     4. Conservar el fallback `Skeleton`.
   - **Hecho cuando:** renderiza los 20 tipos.
+  - **Estado:** ✅ — **225/225** (202 de R3.1–R3.3 + 23 nuevos en
+    `render-host.spec.ts`, uno por tipo más registro, degradación y
+    envoltorio). El envoltorio completo es el de `FieldHost` (`<label
+[for]>`, marcas, `data-field`, `colSpanClass`, error, ayuda,
+    `FIELD_ARIA`); `resolve()` + `UnknownRender` cubren al tipo que no esté
+    en el catálogo y en dev avisa antes de degradar.
+    - **D27:** `multiselect` e `image` **no** caben en `NgComponentOutlet` —
+      se declaran en la plantilla con su binding `[formField]` (ver §4).
+    - **Tabla `controlInputs`:** cubre los 18 tipos que sí salen del
+      registro; `group`/`list` siguen recibiendo sus templates por
+      `viewChild`.
 
-- [ ] **R3.5** — Migrar `FieldHost` al registro
+- [x] **R3.5** — Migrar `FieldHost` al registro ✅ **cerrada 2026-10-08**
   - **Archivo:** `src/app/fields/field-host/field-host.ts` (431 líneas)
   - **Pasos:** eliminar `SUPPORTED_FIELD_TYPES` y los 21 imports a mano; el
     `@switch` pasa a resolverse desde el registro.
@@ -1164,31 +1207,133 @@ configurado"`.
     `ngTemplateOutlet`) y `ListChildContext`.
   - **Verificación:** `npm test` · `npm run build` · sin pantalla rota en los
     7 schemas.
+  - **Estado:** ✅ — `field-host.ts` quedó en **93 líneas**: un adaptador fino
+    que traduce su API histórica (`field` + `tree` + `pathPrefix` …) al
+    `RenderContext` y delega en `<app-render-host>`. El `@switch` de 20 ramas,
+    los 21 imports a mano, el envoltorio y `FIELD_ARIA` viven en `RenderHost`;
+    la recursión de `group`/`list` (los `ng-template`) y `ListChildContext`
+    también, y es `RenderHost` quien se auto-importa. `SUPPORTED_FIELD_TYPES`
+    sigue **eliminado**; `SUPPORTED_FIELD_TYPE_LIST` permanece sólo como
+    tripwire de compilación (D17/R1.7), re-comentada como «no fuente de
+    verdad en runtime».
+    - **D28:** al pasar a carga perezosa, `whenStable()` no esperaba al
+      `import()` del descriptor y **13 tests** se rompieron con el control
+      llegando tarde — ver §4.
+    - `goToError` pasó a `async`: espera la estabilidad antes de enfocar.
+  - **Gates 6/6:** front **225/225** · api **390/390** · `api:check` ✔ ·
+    `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R3.6** — Migrar `WidgetHost` al registro
+- [x] **R3.6** — Migrar `WidgetHost` al registro
   - **Archivo:** `src/app/widgets/widget-host/widget-host.ts`
   - **Pasos:** eliminar `SUPPORTED_WIDGET_TYPES` y los 6 imports; añadir los
     6 descriptores `kind: 'widget'`.
   - **Verificación:** los 4 widgets del dashboard renderizan.
+  - **Estado:** ✅ **hecho.** `WidgetHost` quedó en **180 → 58 líneas** y pasó
+    a adaptador fino, el mismo molde que `FieldHost` en R3.5: conserva sólo
+    su contrato histórico (`widget`/`data`) y su `host` con la clase de ancho
+    en la grilla, y delega el despacho en `<app-render-host kind="widget">`.
+    - Desaparecieron `SUPPORTED_WIDGET_TYPES`, `isSupportedWidgetType()`, el
+      `@switch` de 6 ramas, los 6 imports de componente, los 6 `computed`
+      de estrechado (`metricCard()`, `barChart()`, …) y los 3 normalizadores
+      de payload (`series()`, `recordListData()`, `statusProgressData()`).
+    - **6 descriptores** `kind: 'widget'` + manifiesto
+      `widgets/descriptors.ts` (6 líneas), registrado junto a los de campo
+      en `render-registry.ts`.
+    - `RenderHost` gana la rama de widget: sin envoltorio de campo (no hay
+      etiqueta, marca required, error ni ayuda), con `data` como input y con
+      `ctx` **no requerido** — un widget no pertenece a un formulario. El
+      envoltorio de campo pasa a estar tras `esCampo()`.
+    - **D29:** el cableado por tipo se movió de `controlInputs` (un `switch`
+      que habría crecido con 6 casos de widget) a `RenderDescriptor.inputs`
+      — ver §4.
+    - **D30:** el `@defer (on viewport)` de `chart-line` vivía en el host y
+      ya no tenía casa — ver §4.
+    - `dashboard.spec.ts` y `widget-host.spec.ts` esperan la estabilidad
+      antes de assertar (mismo criterio que D28): los componentes salen de
+      un `import()` y llegan tarde al ciclo síncrono.
+  - **Gates 6/6:** front **225/225** · api **390/390** · `api:check` ✔ ·
+    `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R3.7** — Test de exhaustividad _(absorbe T1.3)_
+- [x] **R3.7** — Test de exhaustividad _(absorbe T1.3)_
   - **Archivo:** `src/app/core/registry/contract.spec.ts`
   - **Pasos:** recorrer los schemas y afirmar que **cada** `field.type`,
     `column.format`, `widget.type` y `action.type` usado tiene descriptor.
   - **Hecho cuando:** añadir `type: 'foo'` a cualquier schema **falla el
     test**.
+  - **Estado:** ✅ **hecho.** 7 tests en la ruta que el plan nombra. El
+    recorrido de `field.type` se **mudó** desde `schemas/contract.spec.ts`
+    (R1.7/D17) para no duplicarlo; allí quedan el catálogo y las acciones.
+    - **Recorrido de schemas** — `field.type` (anidados incluidos) y
+      `widget.type` contra `isSupported`, con guardianes de no-vacuidad para
+      que un catálogo vacío no dé verde.
+    - **Unión ↔ registro** (lo que el recorrido no ve) — `SUPPORTED_FIELD_TYPE_LIST`
+      (exportado de `field-host.ts`) y el nuevo `TIPOS_WIDGET`, ambos
+      `satisfies` sobre su unión, uno a uno contra `isSupported`. Sin esta
+      segunda capa, **dar de baja un descriptor que ningún schema declara
+      pasaba en verde**: `dashboard.schema.ts` usa 4 de los 6 widgets y hoy
+      no declara ni `bar-chart` ni `chart-line`.
+    - **Tripwire de `kind`** — `renderKinds()` (nuevo en el registro) contra
+      `RECORRIDOS`: el día que existan descriptores de `column-format`
+      (R4.3) o de `action` (R3.9) el test se pone rojo y obliga a ampliar el
+      recorrido. Un `kind` registrado y sin recorrer es el agujero exacto
+      que R3.7 vino a cerrar.
+    - **`column.format` y `action.type` no tienen descriptor** — ver D31.
+  - **Verificación en rojo (ejecutada, no deducida):** sin
+    `chartLineDescriptor` ⇒ **1 rojo** («todo tipo de la unión de widgets»);
+    sin `textDescriptor` ⇒ **2 rojos** (schema + lista de campos).
+  - **Gates 6/6:** front **230/230** · api **390/390** · `api:check` ✔ ·
+    `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R3.8** — Verificación: «añadir un tipo no toca el motor»
+- [x] **R3.8** — Verificación: «añadir un tipo no toca el motor»
   - **Pasos:** crear un tipo de prueba (`field-tmp`) y comprobar que **sólo**
     hay que crear carpeta + descriptor, sin editar hosts.
   - **Hecho cuando:** el tipo de prueba se elimina y el criterio §0 pasa.
+  - **Estado:** ✅ **hecho.** Se creó `field-tmp` de verdad — carpeta con
+    componente y descriptor, alta en el manifiesto, miembro de la unión — y
+    se **montó y pintó**: `<app-field-field-tmp>` dentro del envoltorio
+    completo de R3.4 (`label[for="…campo"]`, `data-field="…campo"`, rótulo).
+    Con el tipo dado de alta, front **232/232** y build verdes **sin editar
+    ninguna vista**; después se borró (0 rastros) y los 6 gates vuelven a
+    pasar.
+  - **Inventario real de lo que obligó a tocar:**
+
+    | Archivo                                                                          | ¿§0 lo prohíbe?               | Veredicto                                     |
+    | -------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------- |
+    | `fields/field-tmp/` — componente + descriptor                                    | no                            | ✅ es lo que §0 pide                          |
+    | `fields/descriptors.ts` — 1 import + 1 línea                                     | no                            | ✅ el registro (D9-1)                         |
+    | `core/models/schema.model.ts` — interfaz + miembro de la unión                   | no: es el modelo, no el motor | obligatorio — sin eso el tipo no existe       |
+    | `fields/field-host/field-host.ts` — `'field-tmp'` en `SUPPORTED_FIELD_TYPE_LIST` | **sí: nombra `FieldHost`**    | ⚠️ **§0 no pasaba → arreglado en esta tarea** |
+    | `shared/utils/seed.ts` — `case 'field-tmp'`                                      | no está en la lista de §0     | decisión del valor inicial → **D32**          |
+
+    **`render-host.ts`, `widget-host.ts` y cualquier vista: cero toques** en
+    todo el experimento — que es lo que R3.8 vino a comprobar.
+
+  - **El arreglo de esta tarea.** El tripwire D17 de `field-host/field-host.ts`
+    (`SUPPORTED_FIELD_TYPE_LIST` + `Exclude<FieldType, …>`) **no tenía uso en
+    runtime**: sólo alimentaba esa aserción de compilación. Se
+    mudó a `fields/descriptors.ts`, con lo que:
+    1. `FieldHost` deja de estar en el camino de «añadir un tipo» (**§0
+       pasa**, literalmente);
+    2. el registro y su aserción quedan en el **mismo archivo**, así que un
+       tipo nuevo toca una carpeta y una línea de este manifiesto;
+    3. no cambia ningún comportamiento — verificado con build y 232 tests
+       verdes con `field-tmp` dado de alta y `field-host.ts` intacto.
+  - **Gates 6/6 (tras borrar el tipo):** front **253/253** · api
+    **390/390** · `api:check` ✔ · `build` ✔ · prettier deuda **17** ·
+    `api:drift` ✔.
+  - **Segundo pase, con D32 resuelta.** El experimento se repitió después de
+    mover la siembra al descriptor: `seed.ts` con **cero menciones** del tipo
+    nuevo, build verde y **254 tests** (el oro por descriptor cubre solo al
+    tipo recién nacido). §0 pasa sin una sola línea en un fichero compartido.
+    El detalle está en **D32**.
 
 ### 3.2 Registro de acciones (F2 — absorbe T1.1)
 
-- [ ] **R3.9** — `ActionDescriptor` y `ActionService`
+- [x] **R3.9** — `ActionDescriptor` y `ActionService`
   - **Archivos nuevos:** `src/app/actions/action-registry.ts`,
-    `src/app/actions/action-service.ts`
-  - **Contrato:**
+    `src/app/actions/action-service.ts` + `action-registry.spec.ts` y
+    `action-service.spec.ts` (**12 tests**).
+  - **Contrato (implementado):**
     ```ts
     interface ActionDescriptor {
       type: string;
@@ -1196,51 +1341,268 @@ configurado"`.
       run: (ctx: ActionContext, action: ResourceAction) => Promise<ActionResult>;
       confirm?: boolean; // usa confirm-dialog
     }
-    interface ActionContext {
-      record;
-      resource;
-      api;
-      router;
-      toast;
-      user;
+    /** Lo que aporta el llamador. `record` es null en header/bulk. */
+    interface ActionRequest {
+      record: Record<string, unknown> | null;
+      resource: string;
+      api: ApiService;
+      router: Router;
+      toast: NotificationService;
+      user: SessionUser | null;
+    }
+    /** Lo que recibe el descriptor: la petición + las plantillas resueltas. */
+    interface ActionContext extends ActionRequest {
+      vars: Record<string, unknown>; // {...config, ...record, public_base_url}
+    }
+    interface ActionResult {
+      ok: boolean; // false: no llegó a ejecutarse; el error ya se notificó
+      reload?: boolean; // tocó datos: la vista debe recargar (R3.11)
     }
     ```
+    `ActionService.run(action, request: ActionRequest)`.
+  - **Estado:** ✅ **hecho.** Registro gemelo de `render-registry`
+    (`registerAction` / `getAction` / `actionsFor(surface)`) más
+    `actionType()`, que resuelve el `type` **opcional** de `NavigateAction`
+    → `'navigate'`. El servicio hace siempre el mismo camino: resolver el
+    descriptor → **falla ruidosa** si no existe (el fallback «disponible
+    próximamente» de hoy es un fail-silent que oculta esquemas mal
+    declarados) → confirmación opcional → montar el ctx → ejecutar y, si el
+    descriptor lanza, `toast.error` + `{ ok: false }`.
+  - **Dos desviaciones menores del contrato, ambas necesarias:**
+    - **`vars` (séptimo campo).** Sin él `copy-share` perdería
+      `public_base_url` y `share_message_template`, que aporta
+      `ConfigService.buildInterpolationContext`. Se pone en `ActionContext`
+      (lo que recibe el descriptor) y **no** en `ActionRequest` (lo que
+      aporta el llamador): así el servicio lo construye y ninguna vista
+      repite `buildInterpolationContext`.
+    - **`ActionResult` estaba sin definir en el plan** → `{ ok, reload? }`.
+  - **Confirmación sin puertos nuevos:** `confirm: true` del descriptor con
+    `action.confirmMessage` (fallback `action.label`); pasa por
+    `NotificationService.confirm`, que ya tiene 6 llamantes y alimenta
+    `app-confirm-dialog` en `app.html:4`.
+  - **`render-registry` no se tocó** → `renderKinds()` sigue sin
+    `kind: 'action'`, así que el tripwire de D31 no se pone rojo (la acción
+    tiene registro propio, como mandan los nombres de fichero del plan). El
+    cruce `ResourceAction` ↔ `getAction` queda para **R3.10**, cuando
+    existan los 3 descriptores.
+  - **Verificación en rojo (ejecutada, no deducida):** `actionType` sin
+    `?? 'navigate'` ⇒ **2 rojos**; sin el `throw` del fail-loud ⇒ **1 rojo**
+    (3 rojos en una pasada, restaurado después).
+  - **Gates 6/6:** front **265/265** (40 ficheros) · api **390/390** ·
+    `api:check` ✔ · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
+  - **Gotcha:** el registro es estado de módulo compartido **entre los tests
+    de un mismo fichero**; y `vi.fn()` sin `mockResolvedValue` devuelve
+    `undefined`, no una promesa.
+  - **Gotcha corregido en R3.11:** el aislamiento **no** alcanza a todos los
+    ficheros — vitest comparte el mismo `Map` entre specs que caen en el mismo
+    worker, y `action-service.spec` sobrescribe `copy-share` / `navigate` /
+    `trigger-endpoint` con dobles. Costó 4 tests rojos en `descriptors.spec`
+    en una corrida y 0 en la siguiente **sin tocar código**. Quien ensucia
+    limpia: ese fichero restaura el catálogo real en su `afterEach`.
 
-- [ ] **R3.10** — Descriptores de las 3 acciones existentes
+- [x] **R3.10** — Descriptores de las 3 acciones existentes
   - `copy-share` · `navigate` · `trigger`.
   - `copy-share` se implementa **una sola vez** (hoy: 3).
+  - **Archivos nuevos:** `src/app/actions/descriptors.ts`,
+    `src/app/actions/contract.spec.ts`, `src/app/actions/descriptors.spec.ts`
+    (**12 tests**). `action-registry.ts` suma el catálogo a scope de módulo
+    (mismo criterio que `render-registry.ts:209`) y `actionTypes()`.
+  - **Estado:** ✅ **hecho.** Los tres descriptores quedan declarados con sus
+    superficies: `copy-share` (`row`, `detail`, `post-create`), `navigate`
+    (`row`, `detail`) y `trigger-endpoint` (`row`, `detail`, `confirm: true`).
+    Como nadie consulta todavía `actionsFor(surface)`, las superficies son
+    contrato de R3.11, no comportamiento.
+  - **`copy-share` implementado una sola vez:** `resolveShare(action, vars)`
+    en `descriptors.ts` resuelve enlace y mensaje **en un solo sitio**; hoy
+    esa lógica vive triplicada en `list-view.runAction`,
+    `detail-view.resolveUrl/resolveShareText` y
+    `post-create-modal.resolvedShareUrl/resolvedShareText`. Los tres la
+    consumirán en **R3.11**, junto con la migración de las vistas.
+  - **Comportamiento que cambia (decisión registrada):** la fila del listado
+    **pasa a honrar `share_message_template`**, que antes sólo usaban
+    `detail-view` y `post-create-modal` — era una divergencia entre las tres
+    copias, no una regla de negocio. Si no debe ser así, hay que revertirlo en
+    `resolveShare`, no volver a separar las rutas.
+  - **`trigger-endpoint`:** interpola `endpoint` con el mismo contexto que el
+    resto y lo llama con `ApiService.request(método, ruta)`. **R3.12** lo
+    cambia por rutas lógicas (`POST /admin/<recurso>/:id/actions/<name>`, O2);
+    acá se respeta la ruta literal que declara el schema hoy.
+  - **Exhaustividad:** `actions/contract.spec.ts` replica el molde de
+    `core/registry/contract.spec.ts` (R3.7) en los dos sentidos — unión ↔
+    registro (`TIPOS_ACCION` con `satisfies` sobre
+    `NonNullable<ResourceAction['type']>`) y recorrido de los **tres sitios**
+    donde el modelo admite acciones (`schema.actions`, `detail.actions`,
+    `postCreate.actions`), con guardianes de no-vaciedad. Cubre el caso que el
+    recorrido no ve: `navigate` y `trigger-endpoint` **no los declara ningún
+    schema** y su descriptor seguiría obligatorio.
+  - Se corrigió la nota obsoleta de `core/registry/contract.spec.ts`, que
+    seguía diciendo que `action.type` no tenía registro.
+  - **Verificación en rojo (ejecutada, no deducida):** quitar `navigate` del
+    catálogo ⇒ **3 rojos**; quitar el fallback a `share_message_template` ⇒
+    **1 rojo** (4 en una pasada, restaurado después).
+  - **Gates 6/6:** front **277/277** (42 ficheros) · api **390/390** ·
+    `api:check` ✔ · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R3.11** — Migrar las vistas al `ActionService`
+- [x] **R3.11** — Migrar las vistas al `ActionService`
   - **Archivos:** `list-view.ts:714`, `detail-view.ts:408`,
     `post-create-modal.ts`
   - **Pasos:** reemplazar los `if (action.type === …)` por
     `actionService.run(action, ctx)`.
   - **Verificación:** `grep -rn "action.type ===" src/app --include='*.ts'` → 0
     fuera de los descriptores.
+  - **Estado:** ✅ **hecho.** Las tres vistas pasan por el registro:
+    - `list-view` — única superficie que **ejecuta**: delega en
+      `ActionService.run(action, { record, resource, api, router, toast,
+user })`, con `user` de `AuthService`. El icono de fila sale del
+      descriptor (`iconOf()` = `getAction(actionType(action))?.icon`), de modo
+      que un descriptor nuevo aparece en la tabla sin tocar la plantilla.
+    - `detail-view` — sólo **presenta**: `shareOf()` =
+      `resolveShare(action, actionService.vars(effectiveRecord()))`. Mueren
+      `resolveUrl` y `resolveShareText`, y con ellos `ConfigService` en esta
+      vista (`vars` pasó a ser el séptimo campo público del servicio).
+    - `post-create-modal` — ídem, `shareOf()` sobre su propio `context()`
+      (sigue aplicando `configValues` por encima). Mueren `resolvedShareUrl`
+      y `resolvedShareText`.
+  - **Verificación en rojo (ejecutada):** `git grep "action.type ===" HEAD`
+    → **2** (`list-view.ts:333` en plantilla y `:714` en código); hoy el grep
+    devuelve **1**, y es el de `actions/descriptors.ts`.
+  - **Tercer cambio de comportamiento registrado:** `post-create-modal`
+    **pasa a honrar `share_message_template`** (antes sólo miraba
+    `shareTextTemplate`), porque ya no tiene ruta propia. Mismas condiciones
+    que el de R3.10: si no debe ser así se revierte en `resolveShare`, no
+    volviendo a separar las tres rutas.
+  - **Dependencia de DI nueva:** `list-view` inyecta `AuthService` para
+    aportar `user` (contrato de R3.9) ⇒ los specs que montan la vista con
+    `ApiService` stubbeado (`list-view.remove`, `list-view.quick-edit`,
+    `resource-page`) necesitan `{ provide: API_URL, useValue: '/api' }`, la
+    misma convención que ya usaba `render-host.spec`.
+  - **Gates 6/6:** front **277/277** (42 ficheros) · api **390/390** ·
+    `api:check` ✔ (7 recursos, 84 campos) · `build` ✔ · prettier deuda **17** ·
+    `api:drift` ✔.
 
-- [ ] **R3.12** — `trigger` → acción de backend declarada (B3)
+- [x] **R3.12** — `trigger` → acción de backend declarada (B3)
   - **Pasos:** `action.type: 'trigger'` invoca
     `POST /admin/<recurso>/:id/actions/<name>` — **rutas lógicas** (O2).
+  - **Estado:** ✅ **hecho, cara front.** El back lo publica **R5.4**, que sigue
+    pendiente; el front ya manda exactamente esa ruta, así que R5.4 sólo tiene
+    que escucharla.
+    - `TriggerAction` pasó de `trigger-endpoint` + `endpoint` + `method` a
+      **`trigger`** + `name?`. El destino **ya no lo declara el schema**: se
+      deriva de `resource` + clave del registro + `name` (o `id`), que es la
+      misma ruta que R5.4 publicará. Ningún schema declaraba
+      `trigger-endpoint`, así que el cambio no toca producción.
+    - **O2 respetado:** la ruta lógica viaja en el `path` del envelope
+      (`/admin/orders/p1/actions/markDelivered`); el HTTP sigue siendo el
+      `POST API_URL` de siempre. La clave se interpola igual que hace
+      `ApiService.withKey` con el CRUD.
+    - **Desviación nº 3 del contrato de R3.9:** `ActionRequest.keyField`
+      (tras `vars` y `ActionResult`). Sin él el descriptor no sabe qué campo del
+      `record` es la clave: es información que sólo tiene la vista, que es
+      quien tiene el schema. Lo aporta `list-view`.
+    - **Sin clave ⇒ fail-loud:** un `record` sin la clave del schema lanza
+      («… necesita la clave ref del registro») en vez de mandar
+      `/admin/x/undefined/actions/…`.
+  - **Verificación en rojo (ejecutada, 3 mutaciones):** quitar `name ?? id`
+    ⇒ **1 rojo**; sacar la clave de la ruta ⇒ **2 rojos**; quitar la guardia
+    de clave ⇒ **1 rojo**.
+  - **Limpieza derivada:** `ACCIONES_EJECUTADAS = ['copy-share']` (R1.7)
+    desapareció — la lista de acciones ejecutables sale de `actionTypes()`, o
+    sea del registro. Las notas de R1.7 y D16 sobre «`trigger-endpoint`
+    declarado sin implementar» quedan como **históricas**: describen el estado
+    anterior a R3.10/R3.12.
+  - **Gates 6/6:** front **279/279** (42 ficheros) · api **390/390** ·
+    `api:check` ✔ (7 recursos, 84 campos) · `build` ✔ · prettier deuda **17** ·
+    `api:drift` ✔.
 
 ### 3.3 Capacidades del back (B1)
 
-- [ ] **R3.13** — Unificar `REGISTRY.capabilities`
-  - **Archivo nuevo:** `api/capabilities/` con `fieldTypes/`, `validators/`,
-    `checks/`, `computed/`, `hooks/`, `operators/`, `handlers/`, `adapters/`.
-  - **Contrato uniforme:** `{ id, since, argsSchema, run }`.
-  - **Puerta de entrada única:** `registerCapability(category, descriptor)`.
+- [x] **R3.13** — Unificar `REGISTRY.capabilities` ✅ **cerrada 2026-10-08**
+  - **Pasos:** `api/capabilities/` con `fieldTypes/`, `validators/`, `checks/`,
+    `computed/`, `hooks/`, `operators/`, `handlers/`, `adapters/`;
+    **contrato uniforme** `{ id, since, argsSchema, run }`;
+    **puerta de entrada única** `registerCapability(category, descriptor)`.
+  - **Estado:** ✅ **hecho.** `api/capabilities/00-register.js` es la única puerta
+    y declara el `var FIELD_TYPES = {}` + `REGISTRY.types.fieldTypes = FIELD_TYPES`
+    (proyección legacy).
+    - `REGISTRY.capabilities` (las 8 categorías) se declaró en `api/00-registry.js`.
+    - `run` **obligatorio**: función en categorías ejecutables
+      (`checks/computed/hooks/operators/handlers`) y `null` en las de datos
+      (`fieldTypes/validators/adapters`) — **D33**.
+    - Proyección a los mapas que lee `engine/` (`ops`, `transforms`, `checks`,
+      `handlers`, `hooks`): **cero cambios en `engine/`** (§B1). `validators` y
+      `adapters` quedan declaradas y **vacías** (ficheros stub que documentan
+      cuándo y con qué se llenan).
+    - **Puerta verificable:** regla nueva **B1** en `scripts/api-check.sh` — una
+      asignación directa a esos mapas fuera de `capabilities/` (y de los tests)
+      sale en rojo. Mutación ⇒ **1 rojo**.
+  - **Verificación en rojo (ejecutada):** M1 sin validar `since` ⇒ **2 rojos**;
+    M2 `run` no obligatorio ⇒ **2**; M7 asignación directa (`api:check`) ⇒ **1**.
+  - **Gates 6/6:** front **279/279** (42 ficheros) · api **419/419** (28) ·
+    `api:check` ✔ (4 reglas) · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R3.14** — Migrar las capacidades existentes
-  - `FIELD_TYPES` (20) · `checks` · `hooks` · `computed` (`token`, `pin`,
-    `now`) · `handlers` · `operators`.
-  - **Verificación:** `npm run test:api` — 144+ en verde.
+- [x] **R3.14** — Migrar las capacidades existentes ✅ **cerrada 2026-10-08**
+  - **Pasos:** `FIELD_TYPES` (20) · `checks` · `hooks` · `computed` (`token`,
+    `pin`, `now`) · `handlers` · `operators`; verificar con `npm run test:api`.
+  - **Estado:** ✅ **hecho, con los 6 gates corridos al cierre (D36 — R3.13 y
+    R3.14 no se pueden cerrar por separado: el tripwire sólo pasa con la
+    migración hecha).**
+    - **Migrado (`git mv`, historial preservado):** 20 `fieldTypes` · 5 `checks`
+      · 4 `computed` (`slugify`, `token`, `pin` + `now` declarado) · 14
+      `operators` · 1 `hooks` (`pinHash`, extraído de `pin-verify.js`) · 11
+      `handlers` (incluye `schema` y `upload-signature`, que antes sólo se
+      resolvían por el fallback a `globalThis` del router — **D36**).
+    - **Se fueron de sitio:** `api/primitives/` **desaparece** y
+      `api/schema/types/01-types.js` → `api/capabilities/fieldTypes.js`
+      (decisión de limpieza: mover el conjunto completo, handlers incluidos).
+    - **Verificación en rojo (7 mutaciones, ejecutada):** M1 ⇒ **2** · M2 ⇒ **2**
+      · M3 `computed` sin proyección a `REGISTRY.transforms` ⇒ **49 en 5**
+      ficheros · M4 un tipo sin registrar ⇒ **4 en 27** · M5 checks sin
+      validar `args` ⇒ **3** · M6 `field.computed` sin validar ⇒ **2** ·
+      M7 (`api:check` B1) ⇒ **1 rojo** (restaurado y verde).
+    - **Specs:** `api/__tests__/capabilities.spec.js` (22: puerta + tripwire del
+      contrato uniforme) y `api/__tests__/validate-registry.spec.js` (+7).
+    - **Docs al día:** `README.md` (sólo los nodos tocados), `MAPA.md` (incluye
+      el orden de carga y el nombre de la sección), `guia.md`,
+      `motor-renderizado-actual.md`, `baseapi.md`, `refactormotor.md`,
+      `plan-limpieza.md`.
+    - **Gotcha local (no commiteado):** `api/.clasp.json` (gitignore) tenía
+      `filePushOrder` con las 4 rutas ya borradas y sin `capabilities/` →
+      reescrito a **32 entradas** verificadas. **D35:** si se clona el repo,
+      ese fichero se recrea a mano — sin él `capabilities/` se empuja por orden
+      alfabético (funciona), pero el orden documentado en el plan no está.
+    - **Fuera de alcance (D37):** el árbol de `api/README.md` ya estaba
+      desactualizado en cosas que este cambio no toca (`04-registry`,
+      `03-resources-*`, «21 tipos») — sólo se actualizó lo que movía.
+  - **Gates 6/6:** front **279/279** (42 ficheros) · api **419/419** (28) ·
+    `api:check` ✔ (4 reglas) · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R3.15** — Validación de referencias al cargar
-  - **Pasos:** cada `computed: 'token'`, `check: 'not-in-sheet'`… debe
-    existir, y sus `args` cumplir `argsSchema`.
-  - **Hecho cuando:** una referencia rota rompe el arranque/CI (R1.5).
+- [x] **R3.15** — Validación de referencias al cargar ✅ **cerrada 2026-10-08**
+  - **Pasos:** cada `computed: 'token'`, `check: 'not-in-sheet'`… debe existir,
+    y sus `args` cumplir `argsSchema`.
+  - **Estado:** ✅ **hecho** en `api/schema/validate-registry.js`, todo leyendo
+    de `REGISTRY.capabilities` (fuente única), no de los mapas legacy:
+    1. `field.type` ∈ `capabilities.fieldTypes`.
+    2. **Nuevo 3f:** `field.computed` es `string` y existe en
+       `capabilities.computed` (hoy sólo `now`).
+    3. `operations.<op>.computed[i].transform` existe y `params` cumple su
+       `argsSchema`.
+    4. `resource.checks[i].check` existe y la declaración **menos la clave
+       `check`** cumple su `argsSchema`.
+    5. `resource.hooks.<op>[i]` existe en `capabilities.hooks`.
+    - **Vocabulario de `argsSchema` (D33):** `{ <arg>: { type, required? } }`
+      con `type ∈ text|number|boolean|array|object`; `null` = sin argumentos
+      declarados (no se juzga); `{}` = no admite ninguno. El juez propio es
+      `capabilityArgsIssues_(where, schema, args)` (ya en la puerta de R3.13).
+  - **Hecho cuando:** una referencia rota o argumento mal declarado rompe el
+    arranque — `loadBackend()` carga `validate-registry` al final ⇒ rojo en CI.
+  - **Verificación en rojo:** M5 ⇒ **3 rojos**; M6 ⇒ **2 rojos**.
 
-- [ ] **R3.16** — Gates de la fase
+- [x] **R3.16** — Gates de la fase ✅ **cerrada 2026-10-08**
+  - **Gates 6/6:** front **279/279** (42 ficheros) · api **419/419** (28
+    ficheros) · `api:check` ✔ (4 bloques: Regla 1, **B1 nueva**, Regla 5, contract
+    7 recursos/84 campos) · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
+  - **Prettier:** `--write` sobre los 16 ficheros propios tocados; la deuda
+    vuelve a **17** (los 17 preexistentes no se tocaron).
 
 ---
 
@@ -1613,26 +1975,38 @@ reorder, bulk }` con cada una encendible/apagable.
 
 ## §4. Decisiones pendientes
 
-| ID      | Decisión                                                                                                        | Bloquea                 | Estado                                                                                                          |
-| ------- | --------------------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **D9**  | `refactormotor` §9 — 6 decisiones                                                                               | R0.3                    | ✅ **resueltas** → §6                                                                                           |
-| **D10** | `auth` §9 — 7 decisiones                                                                                        | R0.4                    | ✅ **resueltas** → §6                                                                                           |
-| **D8**  | Absorber `plan-motor-de-renderizado.md`                                                                         | R0.5                    | ✅ **absorbido y borrado**                                                                                      |
-| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)                                                                      | R8.1                    | abierta                                                                                                         |
-| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                | R8.2                    | abierta                                                                                                         |
-| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                    | R8.3                    | abierta                                                                                                         |
-| **D14** | R10: recrear pedidos o regenerar PIN                                                                            | R8.8                    | abierta                                                                                                         |
-| **D15** | `confirm-dialog`: usar o retirar                                                                                | R10.1                   | abierta                                                                                                         |
-| **D16** | `POST /admin/events`: retirar o justificar                                                                      | R10.2                   | abierta                                                                                                         |
-| **D17** | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                         | R1.7                    | ✅ **resuelta** → R1.7                                                                                          |
-| **D18** | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                               | R1.8                    | ✅ **resuelta** → R1.8                                                                                          |
-| **D19** | KDF de contraseña: costo, formato y tarea que lo implementa                                                     | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                         |
-| **D20** | Ruta de verificación de PIN: `/p/pin/:ref` o `/p/orders/:ref/pin`                                               | R2.5 (contrato público) | ✅ **resuelta** → A                                                                                             |
-| **D21** | El token admin antiguo no tiene fila en `_users`: ¿qué identidad es?                                            | R2.6                    | ✅ **resuelta** → C                                                                                             |
-| **D22** | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                           | R2.12 · Fase 10         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización             |
-| **D23** | `GAS_TOKEN` caducaba cada 6 h y nada lo renovaba: los scripts de humo pierden la sesión                         | R1.11 · R2.18           | ✅ **resuelta** → auto-login en `scripts/smoke-auth.mjs`                                                        |
-| **D24** | El setup pedía clave **y** valor a mano; `bootstrapAdmin_` sólo aceptaba argumentos                             | R1.11 · R2.18           | ✅ **resuelta** → `setupAll()` único + props creadas por el setup                                               |
-| **D25** | `ADMIN_PASSWORD` no alcanza la fila de `_users`: el admin se creó con la contraseña **generada** del primer run | R1.11 · R2.18           | ✅ **resuelta** → `bootstrapAdmin_` **reconcilia** la fila si hay contraseña explícita (auth.md §4.7 enmendado) |
+| ID      | Decisión                                                                                                                                  | Bloquea                 | Estado                                                                                                                                                                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **D9**  | `refactormotor` §9 — 6 decisiones                                                                                                         | R0.3                    | ✅ **resueltas** → §6                                                                                                                                                                                                                            |
+| **D10** | `auth` §9 — 7 decisiones                                                                                                                  | R0.4                    | ✅ **resueltas** → §6                                                                                                                                                                                                                            |
+| **D8**  | Absorber `plan-motor-de-renderizado.md`                                                                                                   | R0.5                    | ✅ **absorbido y borrado**                                                                                                                                                                                                                       |
+| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)                                                                                                | R8.1                    | abierta                                                                                                                                                                                                                                          |
+| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                                          | R8.2                    | abierta                                                                                                                                                                                                                                          |
+| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                                              | R8.3                    | abierta                                                                                                                                                                                                                                          |
+| **D14** | R10: recrear pedidos o regenerar PIN                                                                                                      | R8.8                    | abierta                                                                                                                                                                                                                                          |
+| **D15** | `confirm-dialog`: usar o retirar                                                                                                          | R10.1                   | abierta                                                                                                                                                                                                                                          |
+| **D16** | `POST /admin/events`: retirar o justificar                                                                                                | R10.2                   | abierta                                                                                                                                                                                                                                          |
+| **D17** | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                                                   | R1.7                    | ✅ **resuelta** → R1.7                                                                                                                                                                                                                           |
+| **D18** | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                                                         | R1.8                    | ✅ **resuelta** → R1.8                                                                                                                                                                                                                           |
+| **D19** | KDF de contraseña: costo, formato y tarea que lo implementa                                                                               | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                                                                                                                                                          |
+| **D20** | Ruta de verificación de PIN: `/p/pin/:ref` o `/p/orders/:ref/pin`                                                                         | R2.5 (contrato público) | ✅ **resuelta** → A                                                                                                                                                                                                                              |
+| **D21** | El token admin antiguo no tiene fila en `_users`: ¿qué identidad es?                                                                      | R2.6                    | ✅ **resuelta** → C                                                                                                                                                                                                                              |
+| **D22** | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                                                     | R2.12 · Fase 10         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización                                                                                                                                              |
+| **D23** | `GAS_TOKEN` caducaba cada 6 h y nada lo renovaba: los scripts de humo pierden la sesión                                                   | R1.11 · R2.18           | ✅ **resuelta** → auto-login en `scripts/smoke-auth.mjs`                                                                                                                                                                                         |
+| **D24** | El setup pedía clave **y** valor a mano; `bootstrapAdmin_` sólo aceptaba argumentos                                                       | R1.11 · R2.18           | ✅ **resuelta** → `setupAll()` único + props creadas por el setup                                                                                                                                                                                |
+| **D25** | `ADMIN_PASSWORD` no alcanza la fila de `_users`: el admin se creó con la contraseña **generada** del primer run                           | R1.11 · R2.18           | ✅ **resuelta** → `bootstrapAdmin_` **reconcilia** la fila si hay contraseña explícita (auth.md §4.7 enmendado)                                                                                                                                  |
+| **D26** | `import.meta.glob` no sobrevive a `ng build` (esbuild no implementa el transform)                                                         | R3.2                    | ✅ **resuelta** → registro manual (§4.3)                                                                                                                                                                                                         |
+| **D27** | `NgComponentOutlet` no emite `ɵɵcontrol`: sin `[formField]` en la plantilla los `FormValueControl` no arrancan                            | R3.4                    | ✅ **resuelta** → `multiselect` e `image` declarados a mano en `render-host.ts`                                                                                                                                                                  |
+| **D28** | `whenStable()` no espera al `import()` perezoso del descriptor: el control llegaba tarde al siguiente ciclo                               | R3.5                    | ✅ **resuelta** → `PendingTasks.run()` en `render-host.ts` + `goToError` espera la estabilidad                                                                                                                                                   |
+| **D29** | El motor cableaba los inputs de cada tipo con un `switch` (`group`/`list`/`slug`); con 6 widgets serían 9 casos                           | R3.6                    | ✅ **resuelta** → `RenderDescriptor.inputs`: el cableado vive en cada descriptor                                                                                                                                                                 |
+| **D30** | El `@defer (on viewport)` de `chart-line` vivía en `WidgetHost`, que deja de conocer tipos                                                | R3.6                    | ✅ **resuelta** → el defer pasa al propio `ChartLine`; el chunk lo abre `descriptor.load()`                                                                                                                                                      |
+| **D31** | R3.7 pide asegurar que `column.format` y `action.type` tienen descriptor, y ninguno de los dos tiene registro aún                         | R3.7                    | ✅ **resuelta** → constancia en el test + `renderKinds()`. Con R3.9/R3.10 las acciones tienen registro y recorrido propios (`actions/contract.spec.ts`) y no son un `kind` de render, así que el tripwire queda sólo para `column.format` (R4.3) |
+| **D32** | Un tipo de campo nuevo obliga a añadir `case` en `shared/utils/seed.ts` — fichero compartido, fuera de la lista de §0                     | R3.8                    | ✅ **resuelta (B)** → `RenderDescriptor.seed` como **dato**; `seed.ts` deja de despachar por tipo y un tipo nuevo no lo toca                                                                                                                     |
+| **D33** | `argsSchema` no tenía vocabulario declarado, ni estaba dicho si las categorías de datos llevan `run`                                      | R3.13, R3.15            | ✅ **resuelta** → R3.13/R3.15 + **§D33**: `ARGS_TYPES_`, `run: null` en datos, `capabilityArgsIssues_` único                                                                                                                                     |
+| **D34** | `since` no tiene release de proyecto: ¿qué versión se declara en cada capacidad heredada?                                                 | R3.13                   | ✅ **resuelta** → `'1.0'` para todo lo heredado (el campo existe para el día que haya releases)                                                                                                                                                  |
+| **D35** | `api/.clasp.json` (local, gitignored) tenía `filePushOrder` con las 4 rutas borradas y sin `capabilities/`                                | R3.14                   | ✅ **resuelta** → reescrito a 32 entradas verificadas; **no viaja en el commit** (fichero no versionado) — se recrea a mano al clonar                                                                                                            |
+| **D36** | R3.13 y R3.14 no se pueden cerrar por separado: el tripwire del contrato uniforme sólo pasa con la migración hecha                        | R3.13, R3.14            | ✅ **resuelta** → ejecutadas como **un solo lote**; gates corridos una sola vez, al cierre de R3.14                                                                                                                                              |
+| **D37** | `api/README.md` y `api/MAPA.md` ya estaban desactualizados en cosas que este cambio no toca (`04-registry`, `03-resources-*`, «21 tipos») | —                       | ⚠️ **abierta** — fuera del alcance de la Fase 3; sólo se actualizaron los nodos que movían                                                                                                                                                       |
 
 ### D17 · R1.7 «Test de contrato del front» — tres premisas
 
@@ -2072,6 +2446,394 @@ editor-only — ninguna ruta HTTP llega a `bootstrapAdmin_`.
 duplicar · props reconcilian · idempotente) · mutaciones **5/5** (siempre
 explícita · idempotencia rota · fila equivocada · salt/hash desparejados · no
 detecta la fila) · 5 gates verdes.
+
+---
+
+### D26 · `import.meta.glob` no sobrevive a `ng build` — R3.2
+
+**Situación.** D9-1 planteaba dos ramas: autodescubrimiento con
+`import.meta.glob` **o** registro manual de una línea. Se asumió que un
+Angular 22 con Vite soportaba el glob. **No es así.**
+
+**Evidencia (comprobado, no deducido).**
+
+1. `ng build` usa `@angular/build:application` → **esbuild**. Un barrido de
+   `node_modules/@angular/build/` no encuentra **ninguna** implementación del
+   transform (`rg -l "import\.meta\.glob" node_modules/@angular/build/` → 0).
+   Vite sí lo implementa, pero sólo se invoca desde
+   `@angular/build:dev-server` y `@angular/build:unit-test`.
+2. **Sondeo empírico decisivo:** con el módulo alcanzable desde
+   `app.config.ts`, el `dist/` conserva **sin transformar** tanto la llamada
+   `import.meta.glob` como el literal del patrón. En runtime eso es
+   `undefined(...)` ⇒ **TypeError en el arranque**.
+   > Trampa: la primera medición mintió — un `export` no usado es podado por
+   > esbuild, así que el grep de `dist/` devolvía «limpio». El sondeo sólo
+   > es válido con el código **alcanzable** en el grafo.
+3. `tsconfig.app.json` lleva `"types": []`, así que `vite/client` habría
+   exigido un `/// <reference types="vite/client" />` explícito: el mero hecho
+   de compilar no prueba nada sobre el transform.
+4. Además, el glob habría funcionado en `npm test` y **no** en
+   `npm run build` — exactamente el tipo de asimetría que el propio código
+   de `field-host` venía advirtiendo («para que lo vean por igual `npm run
+build` y `npm test`»).
+
+**Decisión.** Se toma la **otra rama que D9-1 ya contempla: registro manual**.
+
+| Pieza                                        | Papel                                                  |
+| -------------------------------------------- | ------------------------------------------------------ |
+| `src/app/fields/<type>/<type>.descriptor.ts` | un fichero por tipo (R3.3)                             |
+| `src/app/fields/descriptors.ts`              | manifiesto: **una línea** por tipo                     |
+| `src/app/core/registry/render-registry.ts`   | importa el manifiesto y registra **a scope de módulo** |
+
+**Consecuencias.**
+
+- Añadir un tipo ⇒ carpeta + descriptor + **una línea** en el manifiesto.
+  **Ningún host se toca**, así que el criterio de R3.8 se mantiene; sí es un
+  coste más que no contemplaba el «sólo carpeta + descriptor» literal.
+- El registro se llena **al importar**, no desde DI, porque
+  `buildFormSchema()` es una función pura que consulta sin inyectar nada.
+  `provideRenderDescriptors()` se conserva como entrada explícita de
+  `app.config.ts` y avisa en dev si el manifiesto vino vacío.
+- Los descriptores sólo hacen `import type` de `RenderDescriptor`, así que
+  no hay ciclo: `render-registry → descriptors → 20 descriptores` es acíclico
+  en runtime.
+- Los componentes siguen llegando **perezosos** por `load()`; el build
+  emite _shims_ de reexportación de 176–262 B por tipo y **cero duplicación**
+  (todo el código de los 20 vive en un único chunk).
+
+**Verificación:** `npm test` **202/202** · `npm run build` ✔ · `dist/` sin
+rastro de `import.meta.glob`.
+
+### D27 · `NgComponentOutlet` no emite `ɵɵcontrol` — R3.4
+
+**Situación.** R3.4 monta los controles del registro con `NgComponentOutlet`
+
+- `ngComponentOutletInputs`. Dos de los veinte — `multiselect` e `image`,
+  los únicos que implementan `FormValueControl` — fallaban con
+  `NG0952: Model is required but no value is available yet`.
+
+**Evidencia (comprobado, no deducido).**
+
+1. Ambos declaran `value = model.required()`, que **no puede leerse** hasta
+   que la directiva `FormField` del elemento lo inicializa desde el nodo
+   `[formField]`.
+2. Esa inicialización vive en las instrucciones `ɵɵcontrolCreate()` /
+   `ɵɵcontrol()`, que el **compilador emite en la vista donde está escrito
+   el binding** (`_debug_node-chunk.mjs`: usan `getCurrentTNode()` /
+   `getSelectedTNode()`). No son host-bindings de la directiva, así que no
+   existen «de regalo» cuando la directiva se adjunta.
+3. `NgComponentOutlet` sólo hace `ComponentRef.setInput`: al no haber HTML
+   con `[formField]`, `controlDef.update` **nunca corre** y el `model()`
+   queda sin valor.
+4. El mismo control montado por `FieldHost` (binding estático) sí funciona —
+   `form-view.a11y.spec.ts` lo cubre y está en verde.
+
+**Primer intento descartado.** `hostDirectives: [{ directive: FormField,
+inputs: ['formField'] }]` convierte `formField` en input declarado del
+componente y satisface a `setInput`, pero **no crea las instrucciones de
+compilación**: el error pasa de `NG303` a `NG0952`. No es un problema de
+orden, es que falta el código emitido.
+
+**Decisión.** Los dos se **declaran a mano** en la plantilla de
+`render-host.ts`, con exactamente los bindings que ya usaba `FieldHost`
+(`[id]` `[field]` `[formField]` y `[resource]` en `image`). Los otros 18
+siguen resolviéndose desde el registro con `NgComponentOutlet`.
+
+**Consecuencias.**
+
+- Un tipo **nuevo que cumpla `FormValueControl`** sí exige tocar
+  `render-host.ts` (una rama `@else if` de cinco líneas); el resto de tipos
+  siguen siendo carpeta + descriptor. La excepción queda anotada en R3.8.
+- `controlInputs` deja de cubrir `multiselect`/`image`: la tabla se queda en
+  18 tipos.
+- Los `hostDirectives` del primer intento se retiraron de `multiselect.ts` e
+  `image.ts`: ya no montan nada por `NgComponentOutlet` y sólo añadían una
+  segunda vía de entrada para un binding que sigue vivo en `FieldHost`.
+
+**Verificación:** `npm test` **225/225** · `npm run build` ✔.
+
+### D28 · `whenStable()` no espera al `import()` del descriptor — R3.5
+
+**Situación.** Al delegar `FieldHost` en `<app-render-host>` los 20 controles
+pasan a resolverse por `load()` (chunk perezoso, D26). Cayeron **13 tests**
+con el mismo síntoma: el `<label [for]>` estaba, el control no —
+`label[for=…] sin elemento`, `input` a `null` y foco perdido en un `DIV`.
+
+**Evidencia (comprobado, no deducido).**
+
+1. `render-host.spec.ts` ya lo advertía: _«`whenStable()` no cubre acá: el
+   `import()` del descriptor es una promesa…»_ — y lo parchaba con un
+   polling propio.
+2. Instrumentando el montaje: el componente **sí** acababa en el `document`
+   con su id correcto, pero **después** de la aserción. No era un problema de
+   ancla, era de orden.
+3. Descartado el camino `ComponentRef.setInput` + `setAttribute('id')`: cada
+   control ya fija su ancla **desde su propia plantilla**
+   (`text.ts:23` → `[id]="state().name()"`), de modo que `setInput('id')`
+   lanzaba `NG0303` (no es un input declarado) y montar a mano sólo añadía
+   otro ciclo asíncrono. Se revirtió al 100 %: `NgComponentOutlet` monta
+   **durante** la change detection.
+
+**Decisión.** El `load()` se registra como **tarea pendiente de Angular**
+(`PendingTasks.run()`), así `whenStable()` espera el chunk igual que espera
+un `fetch`. Dos consecuencias derivan de ahí:
+
+- **Harness** — `form-view.a11y.spec.ts` espera la estabilidad tras pulsar
+  cada pestaña antes de auditar. Las aserciones no cambian: sólo se espera
+  el render que antes llegaba síncrono con los imports estáticos.
+- **Producto** — `goToError` pasa a `async` y hace
+  `await appRef.whenStable()` antes de `focusField()`. El `setTimeout(0)`
+  anterior enfocaba un envoltorio que todavía no tenía control dentro, así
+  que en runtime el foco se perdía al saltar a una pestaña sin cargar.
+
+**Consecuencias.**
+
+- El esqueleto de R3.4 ya no es cosmético: es lo que se ve mientras baja el
+  chunk, y ahora la estabilidad **espera** a que termine.
+- `render-host.spec.ts` conserva su polling, que pasa a ser redundante
+  (innocuo) — se deja para no tocar un test verde sin necesidad.
+
+**Verificación:** `npm test` **225/225** · `npm run build` ✔ ·
+`test:api` **390/390** · `api:check` ✔ · prettier deuda **17** ·
+`api:drift` ✔.
+
+---
+
+### D29 · El motor no puede saber qué recibe cada tipo — R3.6
+
+**Situación.** `RenderHost` cableaba los inputs con un `switch` sobre
+`cfg.type` (los tres que se apartan de la forma estándar: `group`, `list` y
+`slug`). Al migrar widgets ese `switch` habría crecido con **seis** casos
+más — `metric-card` quiere `{label, value, hint}` y `bar-chart`
+`{label, data, unit}` —, y el criterio de R3.8 («añadir un tipo no toca el
+motor») se habría roto en el momento: crear un widget de paso habría exigido
+editar `render-host.ts`.
+
+**Decisión.** El cableado se muda al descriptor:
+`RenderDescriptor.inputs?: (config, extras) => Record<string, unknown>`.
+
+- `extras` es un único objeto con lo que el host conoce y el descriptor no:
+  `ctx` (árbol, errores y prefijo — sólo campo), `data` (payload — sólo
+  widget) y los dos templates con los que se compone `group` y `list`.
+- El host hace exactamente dos cosas: `descriptor.inputs(cfg, extras)` si el
+  descriptor lo declara, o si no la **forma estándar de su `kind`** —
+  `{field, tree}` en campos, `{widget, data}` en widgets.
+- Se declararon `inputs` en `group`, `list`, `slug` y en los 6 widgets: el
+  `switch` desapareció de `render-host.ts`.
+
+**Por qué un objeto `extras` y no seis parámetros:** el 80 % de los
+descriptores no necesita nada más que el `config`, y con una firma de un
+solo objeto añadir un argumento futuro no rompe a nadie.
+
+**Consecuencias.**
+
+- Los 17 campos con forma estándar **no escriben `inputs`**: siguen sin tocar
+  nada, que era justo la ventaja de R3.3.
+- `ngComponentOutletInputs` no tolera inputs inexistentes (`NG0303`), así que
+  `quick-actions` declara `inputs: (config) => ({ widget: config })` y no
+  recibe `data`: es el único widget sin dato y el descriptor lo dice.
+- El filtrado de series (`{label: string, value: number}`) pasó a
+  `widgets/series.ts` → `toSeries()`: es una regla de validación en el
+  **borde**, compartida por `bar-chart` y `chart-line`, no un detalle de
+  cada gráfico.
+
+**Verificación:** `npm test` **225/225** · `npm run build` ✔.
+
+---
+
+### D30 · El `@defer` de `chart-line` ya no tiene host — R3.6
+
+**Situación.** `chart-line` se difería desde la plantilla de `WidgetHost`:
+`@defer (on viewport)` + placeholder con miniatura SVG, `@loading` con
+esqueleto y `@error` con `data-testid="chart-error"`. `WidgetHost` deja de
+conocer tipos, así que ese bloque se queda sin casa — y meterlo en el motor
+habría hecho lo contrario a R3.8: el host tendría que saber cuándo diferir.
+
+Dos lecturas posibles, y **las dos importan** porque no miden lo mismo:
+
+1. **Separar el chunk de 61,4 K gz.** Ése ya no lo hace el `@defer`: lo hace
+   el `import('./chart-line')` del descriptor, que es lo único que puede
+   partir una dependencia importada **estáticamente** desde `chart-line.ts`.
+   La comprobación está en `npm run build`: `chart-line` sale como lazy chunk
+   y no entra en el bundle inicial.
+2. **No crear el lienzo hasta que el gráfico se ve.** Ése sí es del
+   `@defer`, y es UX, no de bundle.
+
+**Decisión.** El bloque entero pasa a `ChartLine`: **el componente es dueño
+de su propia estrategia de render**. El motor sigue sin conocer ningún tipo.
+
+**Consecuencias.**
+
+- `viewChild('canvas')` deja de ser `required`: el lienzo sólo existe una
+  vez completado el bloque. El `effect` lo lee como señal — antes era
+  inerte hasta `ngAfterViewInit`, ahora basta con esperar a que aparezca.
+- `sparkPoints()` se muda con el placeholder; `WidgetHost` no dibuja nada.
+- El `aria-live` también baja al componente: el wrapper seguía siendo
+  específico de un solo widget.
+- **Tests:** jsdom no implementa `IntersectionObserver`, así que
+  `chart-line.spec.ts` pasa a `DeferBlockBehavior.Manual` (como ya hacía
+  `widget-host.spec.ts`) y pinta el bloque a mano: un caso nuevo para
+  placeholder, otro para `Complete`. Los dos tests de defer que estaban en
+  `widget-host.spec.ts` se sustituyen por uno de despacho — allí ya sólo
+  corresponde comprobar que el registro devuelve el componente.
+- `ChartLineWidget` y la cabecera de `chart-line.ts` describían el chunk
+  viejo («el compilador parte lo que se referencia dentro del bloque»); los
+  dos quedan reescritos.
+
+**Verificación:** `npm test` **225/225** · `npm run build` ✔ (lazy chunk
+`chart-line`).
+
+---
+
+### D31 · R3.7 pide dos registros que todavía no existen — `column.format` y `action.type`
+
+**Situación.** El paso de R3.7 dice: recorrer los schemas y afirmar que
+**cada** `field.type`, `column.format`, `widget.type` y `action.type` usado
+tiene descriptor. Dos de los cuatro no pueden afirmarse hoy:
+
+- **`column.format`** — `RenderKind` ya reserva `'column-format'` (R3.1) y
+  hay **cero** descriptores. Los 7 formatos se dibujan con un `@switch` con
+  `@default` en `list-view.ts`, que degrada a texto (D17 lo verificó). El
+  registro llega en **R4.3**.
+- **`action.type`** — el registro de acciones (`ActionDescriptor`) es
+  **R3.9**, la unidad siguiente.
+
+Y no es una omisión de implementación: `RenderDescriptor.load` devuelve un
+**componente** (`() => Promise<Type>`), y un formato de columna no es un
+componente — es una decisión de pintado de celda. Darles descriptor exige
+antes el contrato de R4.3, que es trabajo de diseño y no de una prueba.
+
+**Decisión.** El test deja constancia explícita del hueco en su cabecera y
+**no lo maquilla**: en vez de assertar algo falso, añade el tripwire que
+obligará a escribir el recorrido el día que el registro exista.
+
+**Cómo se cierra el hueco mientras tanto.**
+
+1. `renderKinds()` (nuevo en `render-registry.ts`) contra la lista
+   `RECORRIDOS` del test: **todo `kind` con descriptor debe ser recorrido**.
+   R4.3 o R3.9 registran su `kind` ⇒ el test se pone rojo ⇒ hay que ampliar
+   el recorrido. Es la misma filosofía que el viaje inverso de D17.
+2. La exhaustividad de `ListColumnFormat` y de `ResourceAction` sigue siendo
+   de `tsc`: las tres son uniones de TypeScript (D17, premisa 3).
+
+**Verificación en rojo (ejecutada):** sin `chartLineDescriptor` ⇒ 1 test
+rojo; sin `textDescriptor` ⇒ 2 rojos. El tripwire de `kind` no se puede
+provocar sin registrar un `kind` nuevo — es el que quedará rojo en R4.3.
+
+**Verificación:** `npm test` **230/230** · `npm run build` ✔.
+
+---
+
+### D32 · «Añadir un tipo» obligaba a tocar un fichero compartido — `seedValue`
+
+**Hallazgo de R3.8.** Con el tripwire D17 fuera de `FieldHost`, el
+experimento `field-tmp` dejó **exactamente un** punto de fricción:
+`shared/utils/seed.ts`.
+
+```ts
+export function seedValue(field: FieldSchema): unknown {
+  switch (field.type) {
+    /* 20 ramas */
+  } // sin `default`
+}
+```
+
+`noImplicitReturns` (TS7030) cortaba el build si un tipo nuevo no tenía
+`case`. **No era un descuido: era fail-loud** — obligaba a _decidir_ el
+valor inicial de un campo recién nacido. Un `default: return ''` lo
+arreglaba en una línea y era exactamente el fallo silencioso que prohíbe la
+regla 4. Pero `shared/utils/seed.ts` no está en la lista de §0 (`engine/`,
+`FieldHost`, `WidgetHost`, vistas), así que R3.8 pasaba **literalmente** y
+§0 quedaba con un agujero en su intención.
+
+**Decisión: B — la siembra sale del `switch` y pasa al descriptor.**
+
+Dos formas posibles de B, y se descarta la evidente:
+
+|                                   | Variante                                                         | Veredicto                                                                                                                                                                                                                                                 |
+| --------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B1 · `seed: (cfg) => unknown`** | Función en el descriptor, como `load` e `inputs`.                | ❌ `group` necesitaría importar `seedFields`, y eso cierra el ciclo **registro → manifiesto → descriptor → `seed` → registro**. Además rompería la propiedad que hoy tienen todos los descriptores: son **datos + un `import()`**, sin lógica de dominio. |
+| **B2 · `seed: 'string' \| …`**    | **Nombre** resuelto por `seed.ts`, como `surfaces` es un nombre. | ✅ **elegida.** Cero ciclo, descriptors puros, y `seed.ts` queda como único dueño de recorrer el árbol.                                                                                                                                                   |
+
+Es además la forma que la propia regla 1 del plan describe: _«el schema es
+dato puro; la lógica se **referencia por nombre** y vive en un registro»_.
+
+**Cómo quedó.**
+
+```ts
+// core/models · el tipo que declara el descriptor
+export type SeedKind = 'string' | 'number' | 'boolean' | 'array' | 'recursive';
+
+// en cada descriptor de campo
+seed: 'string',        // 12 tipos   · nacen como cadena
+seed: 'number',        //  2         · `null`, nunca `0`
+seed: 'boolean',       //  1
+seed: 'array',         //  4
+seed: 'recursive',     //  1         · `group`: siembra un nodo por hijo
+```
+
+- **`seed.ts` ya no despacha por tipo.** `seedValue` pregunta al registro:
+  sin descriptor ⇒ `undefined` (**misma degradación que el render**, R1.10);
+  descriptor sin `seed` ⇒ **lanza** (fail-loud).
+- **Dos guardas en vez de un `default` silencioso:** el estrechado a
+  `GroupField` para `'recursive'` lanza si un tipo lo declara sin subcampos,
+  y **el `switch` se queda sin `default`** — de modo que ampliar `SeedKind`
+  sin cubrir su rama es un TS7030 en compilación, no un `undefined` en
+  producción.
+- **La exhaustividad que faltaba la pone CI**, no `tsc`: `contract.spec.ts`
+  afirma que **todo descriptor de campo declara `seed`** (el registro guarda
+  `RenderDescriptor` con `type: string`, así que una unión no puede
+  imponerse en compilación).
+
+**Verificación (los tres casos, ejecutados en rojo).**
+
+| Qué se probó                                       | Resultado                                                                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Dar de alta `field-tmp` **sin tocar `seed.ts`**    | ✅ build verde; el único archivo con rastro es el manifiesto, la unión y la carpeta nueva. **`seed.ts`: cero menciones.** |
+| `seed.ts` cubre 20 + 1 tipos sin cambiar una línea | ✅ 254 tests con el tipo dado de alta (el oro por descriptor lo cubre solo)                                               |
+| Quitar `seed` de un descriptor                     | 🔴 **2 rojos** — el de CI y el oro de ese tipo                                                                            |
+| Tras borrar el experimento                         | ✅ **6/6 gates**, **253/253** front                                                                                       |
+
+**Lo que queda fuera de D32 (y por qué).** `form-schema.ts`, `detail-view.ts`,
+`form-model.ts`, `form-view.ts`, `list-view.ts`, `depends-on.ts` y `login.ts`
+siguen con `if (field.type === …)` / `switch (field.type)` propios. **Ninguno
+corta el build** al añadir un tipo — son dispatch no exhaustivo —, así que no
+son un agujero de §0: son el **gagüe de R10.4** («anti-patrones», Fase 10),
+que es quien decide cuáles se registran y cuáles se quedan.
+
+---
+
+### D33 · `argsSchema` no tenía vocabulario — R3.13 · R3.15
+
+El plan dice «sus `args` cumplir `argsSchema`» (§3.3 y todo lo que le sigue),
+pero **nunca define el vocabulario** ni si las categorías de datos llevan `run`.
+Sin eso la puerta única no puede juzgar nada y R3.15 no puede validar `params`.
+
+**Resolución — vocabulario fijo `ARGS_TYPES_ = ['text','number','boolean','array','object']`:**
+
+```js
+registerCapability('computed', {
+  id: 'slugify',
+  since: '1.0',
+  argsSchema: { sep: { type: 'text' }, keep: { type: 'boolean', required: true } },
+  run: (target, args) => /* ... */,
+});
+```
+
+- `{ type, required? }` — `type` obligatorio y dentro del vocabulario;
+  `required` opcional (falso por omisión).
+- `null` = «no tiene argumentos declarados» → **no se juzga** (así lo usan los
+  14 `operators`).
+- `{}` = «no admite ninguno» → cualquier `args` es un error.
+- `run` **obligatorio** en las categorías ejecutables (`checks`, `computed`,
+  `hooks`, `operators`, `handlers`) y **`null`** en las de datos
+  (`fieldTypes`, `validators`, `adapters`): son descripciones, no código.
+- El juez es **`capabilityArgsIssues_(where, schema, args)`** en
+  `api/capabilities/00-register.js`. La puerta (R3.13) y la validación al
+  cargar (R3.15) llaman a **la misma función**, así que «lo que entra» y «lo
+  que se comprueba» no pueden divergir.
+- Vocabulario cerrado a propósito: un tipo nuevo de argumento es una
+  **decisión** (esto, §4), no un typo que pase al validador.
 
 ---
 

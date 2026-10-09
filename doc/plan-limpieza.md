@@ -716,7 +716,7 @@ choquen, **manda `auth.md`** (cabecera de este plan).
 | Front, widget        | `widgets/widget-<type>/widget-<type>.ts`                                                                   |
 | Front, acción        | `actions/action-<type>.ts`                                                                                 |
 | Front, descriptor    | `…/<type>.descriptor.ts` (junto al componente)                                                             |
-| Back, tipos          | `api/schema/types/NN-<categoria>.js`                                                                       |
+| Back, tipos          | `api/capabilities/<categoria>.js`                                                                          |
 | Back, recurso        | `api/schema/resources/<id>.js`                                                                             |
 | Back, capacidades    | `api/capabilities/<categoria>/<nombre>.js` (`validators/`, `computed/`, `hooks/`, `checks/`, `operators/`) |
 | Back, motor          | `api/engine/NN-<nombre>.js` (orden numérico = orden de carga)                                              |

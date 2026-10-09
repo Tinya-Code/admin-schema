@@ -56,7 +56,7 @@ export function getSchema(id: string): ResourceSchema | undefined { … }
 
 > **Hecho importante:** el front **no consume `/admin/schema` en runtime**.
 > Lo afirma el propio fichero (`registry.ts:18`) y lo confirma el handler back
-> (`api/primitives/handlers/schema.js`: «El admin NO lo consume en runtime»).
+> (`api/capabilities/handlers/schema.js`: «El admin NO lo consume en runtime»).
 
 No hay `SchemaService` que descargue definiciones ni merge en memoria. El
 catálogo del front es la fuente de verdad **en ejecución**; la sincronización
@@ -290,7 +290,7 @@ vista. Ver T1.1 del plan.
 
 ### 2.1 Catálogo de tipos — el puente al almacenamiento
 
-`api/schema/types/01-types.js`
+`api/capabilities/fieldTypes.js`
 
 ```js
 var FIELD_TYPES = {
@@ -424,7 +424,7 @@ shapeResponse_ ← readDetail_  ⚠️ RELEE la hoja, no devuelve lo escrito
 
 ### 2.6 Exposición `exposeToFront`
 
-`api/primitives/handlers/schema.js` — `handleSchema()`
+`api/capabilities/handlers/schema.js` — `handleSchema()`
 
 ```js
 Object.keys(REGISTRY.resources).forEach(function (id) {
