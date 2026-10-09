@@ -40,11 +40,18 @@ describe('Dashboard', () => {
   const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const text = (): string => root().textContent ?? '';
 
-  const render = (data: Record<string, unknown> | null): void => {
+  /**
+   * Los componentes salen del registro con un `import()`, que `RenderHost`
+   * registra como tarea pendiente para que `whenStable()` lo cubra (D28).
+   * Sin este ciclo el outlet sigue en skeleton y no hay nada que assertar.
+   */
+  const render = async (data: Record<string, unknown> | null): Promise<void> => {
     fixture.componentRef.setInput('schema', SCHEMA);
     if (data !== null) {
       fixture.componentRef.setInput('data', data);
     }
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
   };
 
@@ -63,8 +70,8 @@ describe('Dashboard', () => {
     fixture = TestBed.createComponent(Dashboard);
   });
 
-  it('declara y dibuja los dos widgets con datos fixture', () => {
-    render(FIXTURE);
+  it('declara y dibuja los dos widgets con datos fixture', async () => {
+    await render(FIXTURE);
 
     // metric-card
     expect(text()).toContain('Pendientes');
@@ -76,8 +83,8 @@ describe('Dashboard', () => {
     expect(root().querySelectorAll('[role="img"] > div').length).toBe(2);
   });
 
-  it('obtiene los datos de forma reactiva desde ApiService cuando no se pasa input data', () => {
-    render(null);
+  it('obtiene los datos de forma reactiva desde ApiService cuando no se pasa input data', async () => {
+    await render(null);
 
     expect(text()).toContain('Pendientes');
     expect(root().querySelector('[data-testid="value"]')?.textContent?.trim()).toBe('3');
@@ -92,8 +99,8 @@ describe('Dashboard', () => {
     expect(root().querySelector('app-widget-host')).toBeNull();
   });
 
-  it('sin datos el render no falla: cada widget muestra su estado vacío', () => {
-    render({});
+  it('sin datos el render no falla: cada widget muestra su estado vacío', async () => {
+    await render({});
 
     expect(root().querySelector('app-metric-card')).not.toBeNull();
     expect(root().querySelector('[data-testid="value-empty"]')).not.toBeNull();

@@ -17,9 +17,9 @@ import type {
   ResourceAction,
   ResourceSchema,
 } from '../../core/models/schema.model';
+import { isShareAction, resolveShare, type ResolvedShare } from '../../actions/action-registry';
+import { ActionService } from '../../actions/action-service';
 import { ApiService } from '../../core/services/api.service';
-import { ConfigService } from '../../core/services/config.service';
-import { interpolateTemplate } from '../../core/utils/template-interpolator';
 import { Badge, type BadgeKind } from '../../shared/components/badge/badge';
 import { Button } from '../../shared/components/button/button';
 import { CopyShare } from '../../shared/components/copy-share/copy-share';
@@ -192,9 +192,10 @@ function formatValue(
           <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             @for (action of copyShareActions(); track action.id) {
               <div class="flex-1 min-w-[280px]">
+                @let share = shareOf(action);
                 <app-copy-share
-                  [url]="resolveUrl(action)"
-                  [shareText]="resolveShareText(action)"
+                  [url]="share.url"
+                  [shareText]="share.shareText"
                   [label]="action.label"
                 />
               </div>
@@ -312,7 +313,7 @@ function formatValue(
 })
 export class DetailView {
   private readonly api = inject(ApiService, { optional: true });
-  private readonly configService = inject(ConfigService, { optional: true });
+  private readonly actionService = inject(ActionService);
 
   readonly schema = input.required<ResourceSchema>();
   readonly record = input.required<Row>();
@@ -417,9 +418,7 @@ export class DetailView {
 
   protected readonly copyShareActions = computed<CopyShareAction[]>(() => {
     const actions: ResourceAction[] = this.schema().actions ?? this.detail().actions ?? [];
-    return actions.filter(
-      (a): a is CopyShareAction => (a as CopyShareAction).type === 'copy-share',
-    );
+    return actions.filter(isShareAction);
   });
 
   private resolveFieldValue(key: string): FieldValue {
@@ -460,21 +459,9 @@ export class DetailView {
     return section.fields.some((f) => f.kind === 'list' || f.key === 'description');
   }
 
-  protected resolveUrl(action: CopyShareAction): string {
-    const ctx = this.configService
-      ? this.configService.buildInterpolationContext(this.effectiveRecord())
-      : this.effectiveRecord();
-    return interpolateTemplate(action.urlTemplate, ctx);
-  }
-
-  protected resolveShareText(action: CopyShareAction): string {
-    const ctx = this.configService
-      ? this.configService.buildInterpolationContext(this.effectiveRecord())
-      : this.effectiveRecord();
-    const template =
-      action.shareTextTemplate || (ctx['share_message_template'] as string | undefined);
-    if (!template) return '';
-    return interpolateTemplate(template, ctx);
+  /** Enlace y mensaje, resueltos por `resolveShare` (R3.10: una sola copia). */
+  protected shareOf(action: CopyShareAction): ResolvedShare {
+    return resolveShare(action, this.actionService.vars(this.effectiveRecord()));
   }
 
   protected formatDateTime(val: unknown): string {

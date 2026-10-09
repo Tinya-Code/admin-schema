@@ -1,12 +1,4 @@
-import {
-  AfterViewInit,
-  Component,
-  OnDestroy,
-  computed,
-  effect,
-  input,
-  viewChild,
-} from '@angular/core';
+import { Component, OnDestroy, computed, effect, input, viewChild } from '@angular/core';
 import type { ElementRef } from '@angular/core';
 import {
   CategoryScale,
@@ -19,6 +11,7 @@ import {
   type ChartConfiguration,
 } from 'chart.js';
 
+import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import type { BarDatum } from '../bar-chart/bar-chart';
 
 // Chart.js usa registro explícito en vez de `chart.js/auto`: sólo entra lo que
@@ -28,20 +21,25 @@ Chart.register(CategoryScale, LineController, LineElement, LinearScale, PointEle
 /**
  * Serie temporal con Chart.js (viabilidad B2.1).
  *
- * La librería —61,4 K gz medidos— sólo se arrastra con ESTE componente, y
- * `widget-host` lo referencia exclusivamente dentro de su
- * `@defer (on viewport)`. Por eso vive en el chunk diferido que Angular
- * genera y **no entra en el bundle inicial**. Las tres condiciones del
- * compilador se cumplen (angular.dev «Deferred loading with @defer»): es
- * standalone, se referencia sólo dentro del bloque y se importa por ruta
- * directa — el repo no tiene barrels, que son la causa nº 1 de que el
- * chunk diferido no se cree.
+ * La librería —61,4 K gz medidos— sólo se arrastra con ESTE componente y se
+ * descarga en su propio chunk: el descriptor del widget la trae con
+ * `import('./chart-line')` y es esa llamada la que hace que esbuild la
+ * aparte del bundle inicial (aquí se importa estáticamente, así que ningún
+ * `@defer` de otro fichero podría separarla).
  *
- * El `@defer` vive en `widget-host` y no acá: sólo un componente referenciado
- * desde otro archivo es lo que el compilador parte.
+ * El `@defer (on viewport)` de abajo cumple el otro objetivo y vive aquí, y
+ * no en un host: el chunk llega con el panel, pero el lienzo y la instancia
+ * de `Chart` sólo se crean cuando el gráfico entra en pantalla. Un host no
+ * puede decidir eso — desde R3.6 el motor no conoce ningún tipo concreto
+ * (R3.6 · `doc/plan-refactor-motor.md`).
+ *
+ * La condición `on viewport` necesita `IntersectionObserver`, que jsdom no
+ * trae: los tests configuran `DeferBlockBehavior.Manual` y pintan el bloque
+ * a mano, igual que hacía `widget-host.spec`.
  */
 @Component({
   selector: 'app-chart-line',
+  imports: [Skeleton],
   template: `
     <div class="rounded-lg border border-neutral/20 bg-surface p-4">
       <p class="mb-3 text-sm text-neutral">{{ label() }}</p>
@@ -49,14 +47,40 @@ Chart.register(CategoryScale, LineController, LineElement, LinearScale, PointEle
       @if (data().length === 0) {
         <p class="text-sm text-neutral/60" data-testid="empty">Sin datos.</p>
       } @else {
-        <div role="img" [attr.aria-label]="summary()" class="relative h-32">
-          <canvas #canvas class="absolute inset-0 h-full w-full"></canvas>
+        <div aria-live="polite" aria-atomic="true">
+          @defer (on viewport) {
+            <div role="img" [attr.aria-label]="summary()" class="relative h-32">
+              <canvas #canvas class="absolute inset-0 h-full w-full"></canvas>
+            </div>
+          } @placeholder {
+            <div class="relative h-32" aria-hidden="true">
+              <svg
+                viewBox="0 0 100 40"
+                preserveAspectRatio="none"
+                class="absolute inset-0 h-full w-full text-primary"
+              >
+                <polyline
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  vector-effect="non-scaling-stroke"
+                  [attr.points]="sparkPoints()"
+                />
+              </svg>
+            </div>
+          } @loading {
+            <app-skeleton [lines]="3" [height]="24" />
+          } @error {
+            <p class="text-sm text-neutral/60" data-testid="chart-error">
+              No se pudo cargar el gráfico.
+            </p>
+          }
         </div>
       }
     </div>
   `,
 })
-export class ChartLine implements AfterViewInit, OnDestroy {
+export class ChartLine implements OnDestroy {
   /** Título del gráfico. */
   readonly label = input.required<string>();
   /** Series a dibujar; vacío ⇒ estado «Sin datos». */
@@ -64,30 +88,31 @@ export class ChartLine implements AfterViewInit, OnDestroy {
   /** Sufijo de las cifras del eje («unidades», «S/»). */
   readonly unit = input('');
 
-  private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
-  private chart: Chart<'line'> | null = null;
-
   /**
-   * Los efectos corren DURANTE el ciclo de CD, así que en el primer ciclo
-   * el lienzo todavía no existe. Esta banda mantiene el `effect` inerte
-   * hasta que `ngAfterViewInit` haya dibujado de verdad.
+   * Opcional y no `required`: el lienzo sólo existe una vez completado el
+   * `@defer`, así que el `effect` de abajo se re-ejecuta solo al aparecer y
+   * dibuja en ese momento. Un `viewChild.required` reventaría en el primer
+   * ciclo, cuando el bloque todavía está en placeholder.
    */
-  private ready = false;
+  private readonly canvas = viewChild<ElementRef<HTMLCanvasElement>>('canvas');
+
+  private chart: Chart<'line'> | null = null;
 
   constructor() {
     effect(() => {
+      const lienzo = this.canvas();
       this.data();
       this.label();
       this.unit();
-      if (this.ready) {
-        this.render();
+
+      if (lienzo) {
+        this.render(lienzo.nativeElement);
+      } else {
+        // Sin lienzo (sin datos, o el bloque aún en placeholder) no hay nada
+        // que mantener vivo: una instancia huérfana seguiría redibujando.
+        this.destroy();
       }
     });
-  }
-
-  ngAfterViewInit(): void {
-    this.ready = true;
-    this.render();
   }
 
   ngOnDestroy(): void {
@@ -110,16 +135,33 @@ export class ChartLine implements AfterViewInit, OnDestroy {
     );
   });
 
-  private render(): void {
+  /** Miniatura del placeholder: la misma serie, dibujada con SVG y sin JS. */
+  protected readonly sparkPoints = computed(() => {
+    const rows = this.data();
+    if (rows.length === 0) {
+      return '';
+    }
+    const max = Math.max(0, ...rows.map((row) => row.value));
+    const last = rows.length - 1;
+    return rows
+      .map((row, index) => {
+        const x = last === 0 ? 50 : (index / last) * 100;
+        const y = max === 0 ? 40 : 40 - (row.value / max) * 36;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(' ');
+  });
+
+  private render(canvas: HTMLCanvasElement): void {
     const rows = this.data();
 
-    // Sin datos no hay lienzo en el template: acceder a `canvas` lanzaría.
+    // Sin datos no hay lienzo en el template: crear un `Chart` sobre él
+    // reventaría (y el `@if` ya se lo habría llevado por delante).
     if (rows.length === 0) {
       this.destroy();
       return;
     }
 
-    const canvas = this.canvas().nativeElement;
     const config: ChartConfiguration<'line'> = {
       type: 'line',
       data: {

@@ -6,15 +6,18 @@ import { firstValueFrom } from 'rxjs';
 import {
   LucideChevronDown,
   LucideChevronUp,
+  LucideDynamicIcon,
   LucideEye,
   LucideGripVertical,
   LucidePencil,
   LucidePlus,
   LucideRotateCw,
-  LucideShare2,
   LucideTrash2,
   LucideZap,
 } from '@lucide/angular';
+import type { LucideIcon } from '@lucide/angular';
+import { actionType, getAction } from '../../actions/action-registry';
+import { ActionService } from '../../actions/action-service';
 import { ApiError } from '../../core/models/api.model';
 import type {
   FieldSchema,
@@ -25,7 +28,7 @@ import type {
   SelectOption,
 } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
-import { ConfigService } from '../../core/services/config.service';
+import { AuthService } from '../../core/services/auth.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { DrawerForm } from '../drawer-form/drawer-form';
 import { getSchema } from '../../schemas/registry';
@@ -34,8 +37,6 @@ import { Button } from '../../shared/components/button/button';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import { getValue } from '../../shared/utils/field-path';
-import { interpolateTemplate } from '../../core/utils/template-interpolator';
-import { buildShareMessage, writeClipboard } from '../../core/utils/clipboard';
 
 type Row = Record<string, unknown>;
 type Status = 'loading' | 'ready' | 'error';
@@ -96,7 +97,7 @@ function formatNumber(value: unknown): string {
     LucidePencil,
     LucidePlus,
     LucideRotateCw,
-    LucideShare2,
+    LucideDynamicIcon,
     LucideTrash2,
     LucideZap,
     Skeleton,
@@ -330,8 +331,9 @@ function formatNumber(value: unknown): string {
                                 (click)="runAction(action, row)"
                                 class="h-8 px-2 text-xs text-neutral hover:text-primary hover:bg-primary/10"
                               >
-                                @if (action.type === 'copy-share') {
-                                  <svg lucideShare2 size="15" />
+                                @let actionIcon = iconOf(action);
+                                @if (actionIcon) {
+                                  <svg [lucideIcon]="actionIcon" size="15" />
                                 } @else {
                                   {{ action.label }}
                                 }
@@ -411,9 +413,10 @@ export class ListView {
   readonly viewRecord = output<Row>();
 
   private readonly api = inject(ApiService);
-  private readonly configService = inject(ConfigService, { optional: true });
+  private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   readonly notifications = inject(NotificationService);
+  private readonly actionService = inject(ActionService);
 
   readonly status = signal<Status>('loading');
   readonly rows = signal<Row[]>([]);
@@ -706,37 +709,25 @@ export class ListView {
     }
   }
 
+  /**
+   * Ejecuta una acción del schema. El comportamiento vive en el registro de
+   * acciones (R3.9–R3.11): la vista sólo aporta el registro y los puertos.
+   */
   async runAction(action: ResourceAction, row: Row): Promise<void> {
-    const ctx = this.configService
-      ? this.configService.buildInterpolationContext(row as Record<string, unknown>)
-      : (row as Record<string, unknown>);
+    await this.actionService.run(action, {
+      record: row,
+      resource: this.schema().id,
+      api: this.api,
+      router: this.router,
+      toast: this.notifications,
+      user: this.auth.user(),
+      keyField: this.schema().keyField,
+    });
+  }
 
-    if (action.type === 'copy-share') {
-      const url = interpolateTemplate(action.urlTemplate, ctx);
-      const text = action.shareTextTemplate
-        ? interpolateTemplate(action.shareTextTemplate, ctx)
-        : '';
-      // Mismo mensaje que `copy-share` (core/utils/clipboard): el formateado
-      // completo —saludo, ref, enlace y PIN— con fallback en un solo sitio.
-      const message = buildShareMessage(url, text);
-      const copied = await writeClipboard(message);
-      if (copied) {
-        this.notifications.success('Mensaje copiado al portapapeles.');
-      } else {
-        this.notifications.info(`Copiar manualmente: ${message}`);
-      }
-      return;
-    }
-    if ('urlTemplate' in action && action.urlTemplate) {
-      const url = interpolateTemplate(action.urlTemplate, ctx);
-      if (/^https?:\/\//.test(url)) {
-        window.open(url, '_blank', 'noopener');
-      } else {
-        void this.router.navigateByUrl(url);
-      }
-      return;
-    }
-    this.notifications.info(`La acción «${action.label}» estará disponible próximamente.`);
+  /** Icono que el descriptor declara para la acción; sin él, el rótulo. */
+  protected iconOf(action: ResourceAction): LucideIcon | undefined {
+    return getAction(actionType(action))?.icon;
   }
 
   // ── Helpers de celda (uso en template) ──

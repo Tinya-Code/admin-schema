@@ -1,10 +1,19 @@
-import { Component, computed, effect, inject, Injector, signal } from '@angular/core';
+import {
+  ApplicationRef,
+  Component,
+  computed,
+  effect,
+  inject,
+  Injector,
+  signal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { form, submit } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import type { FieldSchema, ResourceSchema } from '../../core/models/schema.model';
+import { isSupported } from '../../core/registry/render-registry';
 import { ApiService } from '../../core/services/api.service';
 import { ErrorMapperService, type MappedError } from '../../core/services/error-mapper.service';
 import { NotificationService } from '../../core/services/notification.service';
@@ -12,7 +21,7 @@ import {
   RelationDrawerService,
   type RelationCreateRequest,
 } from '../../core/services/relation-drawer.service';
-import { FieldHost, isSupportedFieldType } from '../../fields/field-host/field-host';
+import { FieldHost } from '../../fields/field-host/field-host';
 import { childTree, groupTree, type RootTree } from '../../fields/field-node';
 import { DrawerForm } from '../drawer-form/drawer-form';
 import { getSchema } from '../../schemas/registry';
@@ -438,6 +447,8 @@ export class FormView {
   private readonly errorMapper = inject(ErrorMapperService);
   /** `form()` puede reconstruirse fuera de contexto (cambio de ruta). */
   private readonly injector = inject(Injector);
+  /** Estabilidad de la app: cambio de sección + carga de chunks (ver `goToError`). */
+  private readonly appRef = inject(ApplicationRef);
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
 
   readonly schema = computed(() => getSchema(this.params().get('id') ?? ''));
@@ -576,7 +587,7 @@ export class FormView {
 
   /** Campos que la UI sabe dibujar (los de Fase 11 se omiten, no se borran del payload). */
   readonly renderedFields = computed(() =>
-    (this.schema()?.fields ?? []).filter((field) => isSupportedFieldType(field.type)),
+    (this.schema()?.fields ?? []).filter((field) => isSupported('field', field.type)),
   );
 
   /**
@@ -1321,8 +1332,14 @@ export class FormView {
    * Enlace del resumen → campo. Cambia de pestaña/sección si hace falta y
    * sólo después salta: en modo tabs el campo de otra pestaña todavía no
    * existe en el DOM en este punto.
+   *
+   * Esperar la estabilidad sustituye al `setTimeout` anterior: cubre de una
+   * vez la pasada de change detection del cambio de sección **y** la carga
+   * del chunk perezoso del descriptor (`load()`, R3.4). Sin esa espera el
+   * foco se pierde sobre el envoltorio, que sí existe pero todavía no tiene
+   * control dentro.
    */
-  goToError(entry: ErrorEntry, event: Event): void {
+  async goToError(entry: ErrorEntry, event: Event): Promise<void> {
     event.preventDefault();
     if (entry.section) {
       if (this.layoutMode() === 'tabs') {
@@ -1331,7 +1348,8 @@ export class FormView {
         this.openSections.update((open) => ({ ...open, [entry.section as string]: true }));
       }
     }
-    setTimeout(() => this.focusField(entry.id));
+    await this.appRef.whenStable();
+    this.focusField(entry.id);
   }
 
   /** Scroll + focus al campo con `data-field="id"` (mismo selector que `scrollToFirstError`). */

@@ -23,7 +23,7 @@ import { firstValueFrom } from 'rxjs';
 
 import type { FieldSchema, ListOptions, ResourceSchema } from '../../core/models/schema.model';
 import type { ApiService } from '../../core/services/api.service';
-import { isSupportedFieldType } from '../../fields/field-host/field-host';
+import { isSupported } from '../../core/registry/render-registry';
 import { evaluateCondition } from '../../shared/utils/condition-evaluator';
 import { validateMaxWords, validateMinWords } from '../../shared/utils/validators';
 
@@ -43,7 +43,7 @@ type ListPath<V> = SchemaPath<V, SchemaPathRules.Supported, PathKind.Child>;
  * las de cada ítem con `applyEach`, de modo que las reglas corren también
  * para los ítems que se agregan después.
  *
- * Solo se generan reglas para los tipos que la UI sabe editar (`isSupportedFieldType`):
+ * Solo se generan reglas para los tipos que la UI sabe editar (`isSupported('field', …)`):
  * un campo invisible con `required` bloquearía el guardado para siempre.
  *
  * `api` y `excludeKey` alimentan la validación `unique`: se consulta el
@@ -85,7 +85,7 @@ interface RuleScope {
 
 function applyRulesToFields(scope: RuleScope, fields: readonly FieldSchema[]): void {
   for (const field of fields) {
-    if (!isSupportedFieldType(field.type)) {
+    if (!isSupported('field', field.type)) {
       continue;
     }
     applyRulesToField(scope, field, pathAt<unknown>(scope.container, field.key));

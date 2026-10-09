@@ -3,6 +3,7 @@ import { Router, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 
+import { API_URL } from '../../core/tokens';
 import { ApiService } from '../../core/services/api.service';
 import { categoriesSchema } from '../../schemas/categories.schema';
 import { productsSchema } from '../../schemas/products.schema';
@@ -19,6 +20,9 @@ describe('ListView — edición rápida', () => {
     await TestBed.configureTestingModule({
       imports: [ListView],
       providers: [
+        // `ListView` inyecta `AuthService` (pide `API_URL`) — convención de
+        // `render-host.spec`.
+        { provide: API_URL, useValue: '/api' },
         provideRouter([]),
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
         {

@@ -7,6 +7,7 @@ import type {
   ResourceAction,
   ResourceSchema,
 } from '../../../core/models/schema.model';
+import { isShareAction, resolveShare, type ResolvedShare } from '../../../actions/action-registry';
 import { ConfigService } from '../../../core/services/config.service';
 import { interpolateTemplate } from '../../../core/utils/template-interpolator';
 import { Button } from '../button/button';
@@ -61,9 +62,10 @@ interface SummaryItem {
         @if (copyShareAction(); as action) {
           <div class="rounded-lg border border-primary/20 bg-primary/5 p-3.5">
             <p class="mb-2 text-xs font-medium text-primary">Enlace de Seguimiento</p>
+            @let share = shareOf(action);
             <app-copy-share
-              [url]="resolvedShareUrl(action)"
-              [shareText]="resolvedShareText(action)"
+              [url]="share.url"
+              [shareText]="share.shareText"
               [label]="action.label"
             />
           </div>
@@ -137,20 +139,12 @@ export class PostCreateModal {
     });
   });
 
-  protected readonly copyShareAction = computed<CopyShareAction | null>(() => {
-    const actions = this.config().actions || [];
-    const match = actions.find(
-      (a): a is CopyShareAction => (a as CopyShareAction).type === 'copy-share',
-    );
-    return match || null;
-  });
+  protected readonly copyShareAction = computed<CopyShareAction | null>(
+    () => (this.config().actions || []).find(isShareAction) ?? null,
+  );
 
-  protected resolvedShareUrl(action: CopyShareAction): string {
-    return interpolateTemplate(action.urlTemplate, this.context());
-  }
-
-  protected resolvedShareText(action: CopyShareAction): string {
-    if (!action.shareTextTemplate) return '';
-    return interpolateTemplate(action.shareTextTemplate, this.context());
+  /** Enlace y mensaje, resueltos por `resolveShare` (R3.10: una sola copia). */
+  protected shareOf(action: CopyShareAction): ResolvedShare {
+    return resolveShare(action, this.context());
   }
 }

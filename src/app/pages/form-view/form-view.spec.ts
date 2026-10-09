@@ -175,7 +175,7 @@ describe('FormView — resumen de errores', () => {
     // 4.2: activar un enlace de OTRA pestaña cambia de pestaña, pinta y
     // lleva el foco al campo. El detectChanges() inmediato es la versión de
     // test de la pasada de change detection que Angular hace en runtime
-    // antes de correr el setTimeout de goToError.
+    // mientras `goToError` espera la estabilidad (sección + chunk perezoso).
     const otherTab = Array.from(links).find((link) =>
       link.textContent?.trim().startsWith('Descripción —'),
     );

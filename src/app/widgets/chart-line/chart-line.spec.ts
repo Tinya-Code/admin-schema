@@ -1,4 +1,9 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import {
+  DeferBlockBehavior,
+  DeferBlockState,
+  ComponentFixture,
+  TestBed,
+} from '@angular/core/testing';
 
 import { ChartLine } from './chart-line';
 
@@ -33,6 +38,16 @@ describe('ChartLine', () => {
   const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
+  /**
+   * `on viewport` necesita `IntersectionObserver`, que jsdom no implementa:
+   * con `Manual` el bloque no evalúa su condición y lo pintamos a mano.
+   */
+  const pintarDefer = async (estado: DeferBlockState): Promise<void> => {
+    const blocks = await fixture.getDeferBlocks();
+    await blocks[0].render(estado);
+    fixture.detectChanges();
+  };
+
   beforeAll(() => {
     HTMLCanvasElement.prototype.getContext = (() =>
       ctxStub) as unknown as typeof originalGetContext;
@@ -43,20 +58,41 @@ describe('ChartLine', () => {
   });
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [ChartLine] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [ChartLine],
+      deferBlockBehavior: DeferBlockBehavior.Manual,
+    }).compileComponents();
     fixture = TestBed.createComponent(ChartLine);
   });
 
-  it('sin datos muestra el estado vacío y no toca el lienzo', () => {
+  it('sin datos muestra el estado vacío y no toca el lienzo', async () => {
     fixture.componentRef.setInput('label', 'Entregas por día');
     fixture.componentRef.setInput('data', []);
     fixture.detectChanges();
 
     expect(root().querySelector('[data-testid="empty"]')?.textContent?.trim()).toBe('Sin datos.');
     expect(root().querySelector('canvas')).toBeNull();
+    // Sin datos no hay bloque que diferir: sólo existe el estado vacío.
+    expect(await fixture.getDeferBlocks()).toHaveLength(0);
   });
 
-  it('con datos dibuja el lienzo y resume la serie en el aria-label', () => {
+  it('en placeholder dibuja la miniatura SVG y no monta el lienzo', async () => {
+    fixture.componentRef.setInput('label', 'Entregas por día');
+    fixture.componentRef.setInput('data', [
+      { label: 'Lun', value: 2 },
+      { label: 'Mar', value: 5 },
+    ]);
+    fixture.detectChanges();
+
+    await pintarDefer(DeferBlockState.Placeholder);
+
+    expect(root().querySelector('canvas')).toBeNull();
+    expect(root().querySelector('[role="img"]')).toBeNull();
+    expect(root().querySelector('polyline')?.getAttribute('points')?.split(' ')).toHaveLength(2);
+    expect(root().textContent).toContain('Entregas por día');
+  });
+
+  it('completado el defer dibuja el lienzo y resume la serie en el aria-label', async () => {
     fixture.componentRef.setInput('label', 'Entregas por día');
     fixture.componentRef.setInput('unit', ' u.');
     fixture.componentRef.setInput('data', [
@@ -64,6 +100,8 @@ describe('ChartLine', () => {
       { label: 'Mar', value: 5 },
     ]);
     fixture.detectChanges();
+
+    await pintarDefer(DeferBlockState.Complete);
 
     const chart = root().querySelector('[role="img"]');
     expect(root().querySelector('canvas')).not.toBeNull();

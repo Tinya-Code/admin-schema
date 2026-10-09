@@ -8,7 +8,7 @@ import { ordersSchema } from './orders.schema';
  *
  * El caso de `ref` viene de un bug real: el back lo genera solo
  * (`operations.create.computed`, transform `token` — ver
- * `api/primitives/transforms.js`), pero el schema de acá lo declaraba
+ * `api/capabilities/computed.js`), pero el schema de acá lo declaraba
  * editable al crear. El operador veía un campo que no sabía qué poner y el
  * motor descartaba lo que escribiera. De ahí `readonlyOn: 'create'` + `help`.
  *

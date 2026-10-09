@@ -4,6 +4,7 @@ import { BehaviorSubject, of } from 'rxjs';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
+import { API_URL } from '../../core/tokens';
 import { ApiService } from '../../core/services/api.service';
 import { schemas } from '../../schemas/registry';
 import { ResourcePage } from './resource-page';
@@ -67,6 +68,9 @@ describe('ResourcePage', () => {
     await TestBed.configureTestingModule({
       imports: [ResourcePage],
       providers: [
+        // `ListView` inyecta `AuthService` (pide `API_URL`) — convención de
+        // `render-host.spec`.
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ActivatedRoute,
           useValue: {

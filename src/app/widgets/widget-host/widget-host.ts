@@ -1,118 +1,43 @@
 import { Component, computed, input } from '@angular/core';
 
-import type {
-  BarChartWidget,
-  ChartLineWidget,
-  MetricCardWidget,
-  QuickActionsWidget,
-  RecordListWidget,
-  StatusProgressWidget,
-  WidgetSchema,
-} from '../../core/models/schema.model';
-import { Skeleton } from '../../shared/components/skeleton/skeleton';
-import { BarChart, type BarDatum } from '../bar-chart/bar-chart';
-import { ChartLine } from '../chart-line/chart-line';
-import { MetricCard } from '../metric-card/metric-card';
-import { QuickActions } from '../quick-actions/quick-actions';
-import { RecordList } from '../record-list/record-list';
-import { StatusProgress } from '../status-progress/status-progress';
-
-/** Tipos que la UI sabe renderizar. */
-const SUPPORTED_WIDGET_TYPES = new Set<string>([
-  'metric-card',
-  'bar-chart',
-  'chart-line',
-  'record-list',
-  'quick-actions',
-  'status-progress',
-]);
-
-/** ¿La UI sabe renderizar este widget? */
-export function isSupportedWidgetType(type: string): boolean {
-  return SUPPORTED_WIDGET_TYPES.has(type);
-}
+import type { WidgetSchema } from '../../core/models/schema.model';
+import { RenderHost } from '../../core/registry/render-host';
 
 /**
- * Despachador de widgets por `type` con soporte para anchos en grilla de 12 columnas.
+ * Adaptador de widgets (R3.6 · `doc/plan-refactor-motor.md` §3.6).
+ *
+ * Ya no despacha: `WidgetHost` era un `@switch` de seis ramas con los seis
+ * componentes importados a mano, exactamente lo que el registro viene a
+ * eliminar. Hoy sólo conserva lo que es **suyo** — traducir el contrato
+ * histórico `widget`/`data` al contrato genérico del motor
+ * (`type`/`config`/`data`) y pintar la clase de ancho en la grilla, que es
+ * una decisión del panel y no del motor de render.
+ *
+ * El `@switch`, los seis imports y `SUPPORTED_WIDGET_TYPES` desaparecieron:
+ * el tipo sale por `[type]`, el registro devuelve el componente y el
+ * `<app-render-host>` lo monta. Añadir un widget ⇒ carpeta + descriptor +
+ * una línea en `widgets/descriptors.ts` (R3.8).
+ *
+ * Nota sobre la accesibilidad: los widgets no llevan `aria-live`. Cada uno
+ * ya publica su propio estado (`role="img"` con resumen, `data-testid`,
+ * texto visible) y envolver el outlet entero en un `aria-live` anunciaría
+ * el panel completo con cada actualización de datos.
  */
 @Component({
   selector: 'app-widget-host',
-  imports: [BarChart, ChartLine, MetricCard, RecordList, QuickActions, StatusProgress, Skeleton],
+  imports: [RenderHost],
   host: {
     '[class]': 'gridSpanClass()',
   },
   template: `
-    @if (supported()) {
-      @switch (widget().type) {
-        @case ('metric-card') {
-          <app-metric-card
-            [label]="metricCard().label"
-            [value]="data()"
-            [hint]="metricCard().hint ?? ''"
-          />
-        }
-        @case ('bar-chart') {
-          <app-bar-chart
-            [label]="barChart().label"
-            [data]="series()"
-            [unit]="barChart().unit ?? ''"
-          />
-        }
-        @case ('chart-line') {
-          <div aria-live="polite" aria-atomic="true">
-            @defer (on viewport) {
-              <app-chart-line
-                [label]="chartLine().label"
-                [data]="series()"
-                [unit]="chartLine().unit ?? ''"
-              />
-            } @placeholder {
-              <div class="rounded-lg border border-neutral/20 bg-surface p-4" aria-hidden="true">
-                <p class="mb-3 text-sm text-neutral">{{ chartLine().label }}</p>
-                <div class="relative h-32">
-                  <svg
-                    viewBox="0 0 100 40"
-                    preserveAspectRatio="none"
-                    class="absolute inset-0 h-full w-full text-primary"
-                  >
-                    <polyline
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      vector-effect="non-scaling-stroke"
-                      [attr.points]="sparkPoints()"
-                    />
-                  </svg>
-                </div>
-              </div>
-            } @loading {
-              <app-skeleton [lines]="3" [height]="24" />
-            } @error {
-              <p class="text-sm text-neutral/60" data-testid="chart-error">
-                No se pudo cargar el gráfico.
-              </p>
-            }
-          </div>
-        }
-        @case ('record-list') {
-          <app-record-list [widget]="recordList()" [data]="recordListData()" />
-        }
-        @case ('quick-actions') {
-          <app-quick-actions [widget]="quickActions()" />
-        }
-        @case ('status-progress') {
-          <app-status-progress [widget]="statusProgress()" [data]="statusProgressData()" />
-        }
-      }
-    }
+    <app-render-host kind="widget" [type]="widget().type" [config]="widget()" [data]="data()" />
   `,
 })
 export class WidgetHost {
   readonly widget = input.required<WidgetSchema>();
   readonly data = input<unknown>(null);
 
-  protected readonly supported = computed(() => isSupportedWidgetType(this.widget().type));
-
+  /** `sm:col-span-*` del panel: ancho en la grilla de 12 columnas (literales: Tailwind v4 es JIT). */
   protected readonly gridSpanClass = computed(() => {
     const w = this.widget().width;
     switch (w) {
@@ -129,52 +54,5 @@ export class WidgetHost {
       default:
         return 'col-span-12 sm:col-span-6 lg:col-span-4 block';
     }
-  });
-
-  protected readonly metricCard = computed(() => this.widget() as MetricCardWidget);
-  protected readonly barChart = computed(() => this.widget() as BarChartWidget);
-  protected readonly chartLine = computed(() => this.widget() as ChartLineWidget);
-  protected readonly recordList = computed(() => this.widget() as RecordListWidget);
-  protected readonly quickActions = computed(() => this.widget() as QuickActionsWidget);
-  protected readonly statusProgress = computed(() => this.widget() as StatusProgressWidget);
-
-  protected readonly recordListData = computed<Record<string, unknown>[] | null>(() => {
-    const val = this.data();
-    return Array.isArray(val) ? (val as Record<string, unknown>[]) : null;
-  });
-
-  protected readonly statusProgressData = computed<Record<string, unknown> | null>(() => {
-    const val = this.data();
-    return typeof val === 'object' && val !== null ? (val as Record<string, unknown>) : null;
-  });
-
-  protected readonly series = computed<BarDatum[]>(() => {
-    const data = this.data();
-    if (!Array.isArray(data)) {
-      return [];
-    }
-    return data.filter(
-      (row): row is BarDatum =>
-        typeof row === 'object' &&
-        row !== null &&
-        typeof (row as BarDatum).label === 'string' &&
-        typeof (row as BarDatum).value === 'number',
-    );
-  });
-
-  protected readonly sparkPoints = computed(() => {
-    const rows = this.series();
-    if (rows.length === 0) {
-      return '';
-    }
-    const max = Math.max(0, ...rows.map((row) => row.value));
-    const last = rows.length - 1;
-    return rows
-      .map((row, index) => {
-        const x = last === 0 ? 50 : (index / last) * 100;
-        const y = max === 0 ? 40 : 40 - (row.value / max) * 36;
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .join(' ');
   });
 }

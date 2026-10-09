@@ -21,8 +21,8 @@ import { FormView } from './form-view';
  *
  * El helper vive a nivel de módulo porque los dos bloques lo comparten:
  * el primero recorre `products` (10 tipos) pestaña por pestaña — el layout
- * `tabs` sólo monta la sección activa — y el segundo cubre los 20 tipos de
- * `SUPPORTED_FIELD_TYPES` con un schema sintético.
+ * `tabs` sólo monta la sección activa — y el segundo cubre los 20 tipos del
+ * catálogo de `core/registry/render-registry` con un schema sintético.
  */
 function assertFieldA11y(root: Element, section: string): { controls: number; described: number } {
   const where = (el: Element) =>
@@ -136,6 +136,12 @@ describe('FormView — accesibilidad de campos (products)', () => {
     let described = 0;
     for (const tab of tabs) {
       (tab as HTMLElement).click();
+      fixture.detectChanges();
+      // Los controles del registro llegan por `load()` (R3.4): el chunk
+      // perezoso resuelve fuera del ciclo de CD, así que sin esperar la
+      // estabilidad la auditoría miraría el esqueleto y daría `label[for]`
+      // sin ancla. Las aserciones no cambian, sólo se espera el render.
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const panel = root.querySelector('[role="tabpanel"]');
@@ -284,11 +290,11 @@ describe('FormView — accesibilidad de campos (products)', () => {
  * Fase 9.1 — accesibilidad de los 20 tipos de campo.
  *
  * `products` sólo declara 10 tipos; este bloque monta un schema sintético
- * con los 20 que acepta `SUPPORTED_FIELD_TYPES` (incluido `date`, que ningún
- * schema real usa) y comprueba las dos caras del contrato de `field-host`
- * (líneas 138-153): los tipos con control único llevan `<label for>`
- * anclado a su propio nombre, y los compuestos y los `group` no lo llevan
- * a propósito, porque no existe un id al que apuntar.
+ * con los 20 que registra `core/registry/render-registry` (incluido `date`,
+ * que ningún schema real usa) y comprueba las dos caras del contrato de
+ * `field-host` (líneas 138-153): los tipos con control único llevan
+ * `<label for>` anclado a su propio nombre, y los compuestos y los `group` no
+ * lo llevan a propósito, porque no existe un id al que apuntar.
  *
  * Sin `layout` el componente cae en modo `sections` y monta todos los
  * campos de una vez, sin recorrer pestañas.

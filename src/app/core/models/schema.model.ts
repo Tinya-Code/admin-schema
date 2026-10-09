@@ -300,14 +300,13 @@ export interface BarChartWidget extends WidgetBase {
 }
 
 /**
- * Serie temporal con Chart.js **detrás de `@defer (on viewport)`**.
+ * Serie temporal con Chart.js.
  *
- * La librería (61,4 K gz medidos) vive en el chunk diferido que Angular
- * genera para `<app-chart-line>` dentro del `@defer` de `widget-host`, así
- * que **no entra en el bundle inicial** — mientras `chart-line` sólo se
- * referencie dentro de ese bloque y nunca por un barrel (angular.dev
- * «Deferred loading with @defer»: standalone + referencia exclusiva dentro
- * del bloque + import directo de fichero).
+ * La librería (61,4 K gz medidos) vive en el chunk que abre el descriptor
+ * (`import('./chart-line')`), así que **no entra en el bundle inicial**; el
+ * `@defer (on viewport)` que el propio componente dibuja tarda además la
+ * creación del lienzo hasta que el gráfico se ve. Ver
+ * `widgets/chart-line/chart-line.ts`.
  */
 export interface ChartLineWidget extends WidgetBase {
   type: 'chart-line';
@@ -443,9 +442,14 @@ export interface NavigateAction extends ResourceActionBase {
 }
 
 export interface TriggerAction extends ResourceActionBase {
-  type: 'trigger-endpoint';
-  endpoint: string;
-  method?: 'POST' | 'PUT';
+  /**
+   * Acción de dominio **declarada en el back** (B3 `actions.<name>`,
+   * publicada como `POST /admin/<recurso>/:id/actions/<name>` — R5.4).
+   * El destino no se declara acá: la ruta lógica se deriva en R3.12.
+   */
+  type: 'trigger';
+  /** Nombre de la acción en el back si difiere del `id` de esta declaración. */
+  name?: string;
   confirmMessage?: string;
 }
 

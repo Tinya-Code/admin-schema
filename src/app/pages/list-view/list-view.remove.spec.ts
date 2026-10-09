@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { vi } from 'vitest';
 
 import { ApiService } from '../../core/services/api.service';
+import { API_URL } from '../../core/tokens';
 import { NotificationService } from '../../core/services/notification.service';
 import { categoriesSchema } from '../../schemas/categories.schema';
 import { ConfirmDialog } from '../../shared/components/confirm-dialog/confirm-dialog';
@@ -56,6 +57,9 @@ describe('ListView — 9.4: borrado con confirmación', () => {
     await TestBed.configureTestingModule({
       imports: [RemoveHost],
       providers: [
+        // `ListView` inyecta `AuthService` (pide `API_URL`) — convención de
+        // `render-host.spec`.
+        { provide: API_URL, useValue: '/api' },
         provideRouter([]),
         { provide: Router, useValue: router },
         { provide: ApiService, useValue: api },
