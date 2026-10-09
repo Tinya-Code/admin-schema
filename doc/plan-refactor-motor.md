@@ -1612,12 +1612,42 @@ user })`, con `user` de `AuthService`. El icono de fila sale del
 
 **Precondición:** Fase 3.
 
-- [ ] **R4.1** — Modo `display` en el registro (F3)
+- [x] **R4.1** — Modo `display` en el registro (F3) ✅ **cerrada 2026-10-09**
   - **Pasos:** cada descriptor de campo declara si sabe pintarse en `display`;
     si no, `display` por defecto según tipo.
   - **Hecho cuando:** hay descriptor para los 20.
+  - **Estado:** ✅ **hecho.**
+    - **Declaración:** los 20 `fields/*/*.descriptor.ts` pasan de
+      `surfaces: ['form']` a `['form', 'display']` — es la declaración que pide
+      F3. **No** se añade `descriptor.display`: nadie lo leería hoy y sería
+      código muerto — **D38**.
+    - **Componente por tipo:** carpeta nueva `src/app/fields/display/` con
+      `display-defaults.ts` (tabla `DISPLAY_POR_DEFECTO: Record<FieldType,
+DisplayLoader>` + `displayLoader(type)`) y 6 componentes perezosos:
+      `display-text` (los 13 textuales) · `display-date` · `display-number`
+      (`number`+`currency`) · `display-badge` (`boolean`+`select`, exporta
+      `resolveBadgeKind`) · `display-image` · `display-list`.
+    - **Host:** `render-host.ts` gana los inputs `mode`
+      (`'form' | 'display'`, por defecto `'form'`), `value` y `chip`. La rama
+      de display va **antes** que la de form y no toca árbol, etiqueta ni
+      error; vacío (`null`/`undefined`/`''`) pinta `—` sin montar componente
+      y un type fuera de la tabla degrada a `unknown-render` — **D38**.
+    - **Tripwires:** `Record<FieldType, DisplayLoader>` no compila si falta un
+      tipo; `displayLoader()` no lanza con un `type` inventado (el schema es
+      JSON); y `contract.spec.ts` gana «todo descriptor de campo declara la
+      superficie display».
+    - **Specs:** `src/app/fields/display/display.spec.ts` — **25 tests** por
+      host (tabla de los 20, degradación, vacío/no-vacío, paridad por tipo,
+      chip de cabecera).
+    - **Verificación en rojo (3 mutaciones, ejecutada):** M1 `text` sin
+      `display` en `surfaces` ⇒ **6 rojos en 3 ficheros** (tripwire +
+      3 de texto + cabecera de detalle) · M2 `date: TEXTO` en la tabla ⇒
+      **2** · M3 `chip: false` en el host ⇒ **4 en 2** — restaurado y verde.
+  - **Gates 6/6 (compartidos con R4.2):** front **305/305** (43 ficheros) ·
+    api **419/419** (28) · `api:check` ✔ · `build` ✔ · prettier deuda **17** ·
+    `api:drift` ✔.
 
-- [ ] **R4.2** — Migrar `detail-view` al host genérico
+- [x] **R4.2** — Migrar `detail-view` al host genérico ✅ **cerrada 2026-10-09**
   - **Archivo:** `src/app/pages/detail-view/detail-view.ts`
   - **Pasos:**
     1. Dejar de derivar `kind` a mano (`image|badge|text`).
@@ -1625,34 +1655,189 @@ user })`, con `user` de `AuthService`. El icono de fila sale del
     3. Conservar `sections()` y `resolveFieldValue()` (agrupación).
   - **Verificación:** los 7 detalles renderizan igual (capturas antes/después).
   - **Hecho cuando:** `detail-view` no tiene plantilla propia de campo.
+  - **Estado:** ✅ **hecho.**
+    - **Se fue del fichero:** `formatValue`, `resolveBadgeKind`,
+      `formatDateTime`, `formatActionLabel`, `resolveActionBadgeKind`, las
+      constantes de formato y las ramas `image | badge | text | list` de la
+      plantilla.
+    - **Se quedó (agrupación):** `sections()`, `resolveFieldValue()` — que
+      ahora devuelve `{ key, label, field, raw }` **sin formatear** —,
+      `regularFields()`/`listFields()` (split por `esHistorial = type ===
+'list' && !vacio(raw)`), `hasLargeContent()`, `<dt>/<dd>`, el `<h3>` del
+      historial, `copy-share` y las acciones.
+    - **Cableado:** cabecera, celdas y bloque de historial montan
+      `<app-render-host mode="display" [value]="raw">`; la cabecera pasa
+      `[chip]="true"` y sigue filtrando el vacío antes de pintar.
+    - **Paridad de los chips de cabecera:** neutral por defecto (texto, fecha,
+      número), clase de estado para `boolean`/`select`, la URL para `image` y
+      «N elementos» para `list` — exactamente lo que decía el formateo previo.
+    - **Desviación de verificación — D39:** no se corrieron las capturas
+      antes/después; la paridad quedó en specs por tipo (los 25 de
+      `display.spec.ts`) + los 5 de `detail-view.spec.ts`, con el helper
+      `montar()` que espera el `load()` perezoso (`whenStable()` no cubre el
+      `import()`). Sin el helper, 3 tests fallaban por el skeleton — no por
+      render distinto.
+  - **Gates 6/6 (compartidos con R4.1):** front **305/305** (43 ficheros) ·
+    api **419/419** (28) · `api:check` ✔ · `build` ✔ · prettier deuda **17** ·
+    `api:drift` ✔.
 
-- [ ] **R4.3** — `column.format` como registro (`kind: 'column-format'`)
-  - **Archivo:** `src/app/pages/list-view/list-view.ts:259`
-  - **Pasos:** eliminar el `@switch` de 7 formatos; añadir los 7 descriptores.
+- [x] **R4.3** — `column.format` como registro (`kind: 'column-format'`) ✅
+      **cerrada 2026-10-09**
+  - **Archivos:** carpeta nueva `src/app/columns/` (9) + `list-view.ts` +
+    `render-registry.ts` / `render-host.ts` / `contract.spec.ts`.
+  - **Pasos:**
+    1. Descriptores de los 7 formatos con `kind: 'column-format'`,
+       `surfaces: ['list']` y `load()` con `import()` **con literal**.
+    2. `RenderConfig = FieldSchema | WidgetSchema | ListColumn` y
+       `config: input.required` en el host.
+    3. `list-view`: fuera el `@switch`, dentro
+       `<app-render-host kind="column-format" [config]="column" [data]="cellOf(row, column)" />`.
   - **Hecho cuando:** añadir un formato no toca `list-view`.
+  - **Estado:** ✅ **hecho.**
+    - **`src/app/columns/`:** `column-cell.ts` (contexto de celda: `row`,
+      `column`, `fields`, `title`, `canUpdate`, `saving`, `currency`,
+      `toggle`), `descriptors.ts` (manifiesto + `COLUMN_FORMAT_TYPES`) y
+      `format-{text,number,currency,date,badge,boolean,thumbnail}.ts` —
+      una pieza por `@case` del `@switch` viejo, con su doc de paridad.
+    - **Se fue de `list-view` (872 → 744):** `cellValue`, `cellText`,
+      `formatNumber`, `formatCurrency`, `formatDate`, `booleanValue`,
+      `isSwitchColumn`, `badgeInfo`, `thumbnailSrc`, `thumbnailAlt`,
+      `checkboxValue` y `NUMBER_FORMAT`. Quedan `formatOf()` (`column.format
+?? 'text'`), `cellOf()` y las decisiones de la vista (`keyOf`,
+      `titleOf`, `toggleActive`, `savingKey`, `canUpdate`, `currencyCode`).
+    - **Criterio de éxito:** hoy se añade `format-<n>.ts` + una línea en
+      `descriptors.ts` y **no se toca `list-view`**.
+    - **Tripwires en `contract.spec.ts` (+3):** los formatos entran en
+      `RECORRIDOS`; «todo `format` declarado en un schema tiene descriptor»,
+      «hay columnas con `format` declarado» (la queja de que los tests pasan
+      con la tabla vacía) y «los 7 de la unión tienen descriptor» (`satisfies`
+      - `Exclude`, en el molde de `TIPOS_WIDGET`).
+    - **Verificación en rojo (R4.3):** M1 (`currency` fuera del manifiesto)
+      = **5 rojos en 3 ficheros**; M2 (`formatOf` devolviendo siempre
+      `'text'`) = **2 en 1**; M3 (celda sin `fields` = cableado de contexto
+      roto) = **6 en 2** — restaurado y verde.
+    - **Gotchas:** `Intl` separa el símbolo monetario con espacio duro
+      (U+00A0) ⇒ los asertos normalizan; `Number(null)` es `0`, así que
+      `stock: null` sigue saliendo «0» (quirk heredado, se conserva — D40);
+      `nativeElement` es `any` ⇒ `querySelector<HTMLElement>` sólo sobre un
+      elemento tipado; `TestBed` **no es genérico** en esta versión.
+    - **Specs nuevos:** `columns/column-format.spec.ts` (20 — los 7 formatos
+      montados por el host, con sus `@case`) y
+      `list-view.formats.spec.ts` (3 — paridad fila a fila + 7 hosts con
+      `kind="column-format"` cayendo del registro).
+  - **Gates 6/6:** front **331/331** (45 ficheros) · api **419/419** (28) ·
+    `api:check` ✔ · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R4.4** — Tabla de formato por defecto según `field.type`
+- [x] **R4.4** — Tabla de formato por defecto según `field.type` ✅ **cerrada
+      2026-10-09**
+  - **Archivos:** `src/app/columns/column-defaults.ts` (nuevo) +
+    `list-view.formatOf` + el doc de `ListColumn.format` + `badgeInfo`.
   - **Pasos:** declarada, no implícita; `column.format` sólo para
     sobreescribirla.
   - **Hecho cuando:** un campo sin `format` renderiza predeciblemente.
+  - **Estado:** ✅ **hecho.**
+    - **La tabla:** `FORMATO_POR_DEFECTO: Record<FieldType, ListColumnFormat>`
+      en `column-defaults.ts`, hermana de `DISPLAY_POR_DEFECTO` (R4.1) —
+      `Record` = tripwire de exhaustividad **en compilación**, y
+      `formatoDeColumna(column, fields)` es la única puerta que `list-view`
+      usa (`column.format` → tabla por `type` → `text` si la `key` ni siquiera
+      está en `fields`).
+    - **Paridad con el display, dos concesiones:** `select` → `badge`,
+      `date` → `date`, `image` → `thumbnail`, `number`/`currency` iguales y
+      el resto `text` (idéntico al `@default` viejo); `boolean` baja al
+      **interruptor** de R4.3 en vez del chip y `list` sigue siendo `text`
+      porque el registro de formatos no tiene timeline (D41).
+    - **Cambio visible (el que había que decidir):** las columnas sin
+      `format` de `orders` (`status`, `auth_state`, `pickup_date`) y
+      `products` (`availability`) pasan de valor crudo a chip con la
+      **etiqueta** de la opción y fecha ya formateada; el resto de columnas
+      (`ref`, `customer_name`, `name`, `category_slug`…) no se mueven.
+    - **`badgeInfo` alineado con el detalle (D41):** `select` muestra
+      `option.label` y los estados se clasifican con `resolveBadgeKind`
+      (warning/success/danger/neutral, el criterio de la cabecera de la
+      ficha); los booleanos conservan `trueLabel`/`falseLabel` con
+      `success`/`danger` y el vacío sigue en «Sin dato»/`danger` — el
+      vocabulario de la lista para lo que permite escribir.
+    - **Verificación en rojo (R4.4):** M1 (`select: 'text'`) = **4 rojos en
+      2 ficheros**; M2 (`date: 'text'`) = **4 en 2**; M3 (`formatoDeColumna`
+      volviendo al `?? 'text'` implícito) = **3 en 2**; M4 (todo chip en
+      `success`) = **1 en 1** — restaurado y verde.
+    - **Gotchas:** los atributos **estáticos** del host sí quedan en el DOM
+      (`kind="column-format"`) pero un `[type]` ligado no ⇒ los specs afirman
+      por estructura (chip/fecha/interruptor/img), no por `getAttribute`; la
+      fila tiene una celda de acciones al final ⇒ `slice(0, n)`; `SlugField`
+      exige `from`.
+    - **Specs nuevos:** `columns/column-defaults.spec.ts` (5 — catálogo
+      completo, paridad tipo a tipo, precedencia de la declaración y
+      degradación) y 2 en `list-view.formats.spec.ts` (columnas **sin**
+      `format` pintando por tipo).
+  - **Gates 6/6:** front **339/339** (46 ficheros) · api **419/419** (28) ·
+    `api:check` ✔ · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R4.5** — Auditoría de componentes compartidos (absorbe T1.5)
+- [x] **R4.5** — Auditoría de componentes compartidos (absorbe T1.5) ✅
+      **cerrada 2026-10-09**
   - **Pasos:** los 10 de `shared/components/` — grep de
     `orders|pickpass|dashboard` dentro de cada uno.
   - **Verificación:** 0 referencias (los `*.spec.ts` de integración sí
     valen).
   - **Hecho cuando:** los 10 pasan o las excepciones están en §6.
+  - **Estado:** ✅ **los 10 pasan — sin excepciones para §6.**
+    - `badge · button · confirm-dialog · copy-share · drawer · empty-state ·
+modal · post-create-modal · skeleton · toast` → **0** referencias a
+      dominio fuera de specs.
+    - Comprobación extra (no la pedía el plan): ninguno importa de `pages/`
+      ni de `schemas/` y ninguno tiene endpoints endurecidos; el único
+      acoplamiento transversal es `post-create-modal` →
+      `actions/action-registry`, que es genérico (resuelve
+      `share`/`copy-share` del schema) y no de dominio.
+    - `post-create-modal.spec.ts` sí nombra dominios — permitido: es el
+      spec de integración.
+    - **Auditoría, no cambio:** no se tocó código; los gates corrían sobre
+      el estado de R4.4.
+  - **Gates 6/6:** front **339/339** (46 ficheros) · api **419/419** (28) ·
+    `api:check` ✔ · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R4.6** — Validadores extensibles y compartidos (F7 + B11)
-  - **Front:** registro de validadores con **los mismos nombres que el back**;
-    `buildFormSchema` los resuelve del registro en vez de un `if` por regla.
-  - **Back:** mensajes con **código estable** (`VALIDATION_REQUIRED`,
-    `VALIDATION_UNIQUE`) además del texto.
-  - ⚠️ **Conservar la forma exacta de `serverErrors[prefix+key]`** — es lo que
-    `FieldHost` mapea.
-  - **Hecho cuando:** añadir un validador = 1 entrada en cada lado.
+- [x] **R4.6** — Validadores extensibles y compartidos (F7 + B11)
+  - **Front:** `src/app/core/registry/field-validators.ts` (nuevo). Un
+    validador = **una entrada** (`name` + `declares` + `register`) nombrada
+    con `ValidatorName` (15 nombres, mismo vocabulario que el back).
+    `form-schema.ts` queda **sólo** con lo que no es validador: ciclo de vida
+    (visible/readonly/dependencias) y estructura (`group`, `list`,
+    `string-list`), más el bucle que recorre el registro — **538 → 255
+    líneas** y añadir una regla ya no lo toca.
+  - **Back:** `23-validate.js` gana la tabla `VALIDATORS_` (28 entradas) con
+    `validatorIssue_()` (mensaje byte a byte + código `VALIDATION_*`) y
+    `validationCode_()`; `24-crud.js` (2 call sites) y `capabilities/checks.js`
+    (7) pasan a hablar por código. Nuevos: `date-min` / `date-max` (rango de
+    fechas que el back no validaba).
+  - **Vocabulario compartido (B11):** `scripts/contract-check.mjs` — check 11
+    compara `ValidatorName` (front) con `VALIDATORS_` (back), front ⊆ back;
+    un nombre de un lado sin su entrada en el otro es ROJO. Corre dentro de
+    `npm run api:check`.
+  - ⚠️ **Conservar la forma exacta de `serverErrors[prefix+key]`** — resuelto:
+    `ErrorMapperService.map()` traduce `error.errors[]` a
+    `fields[path] = mensaje` con las claves exactas que `render-host` ya
+    leía; `applyServerErrors` no cambió. Sin ruta pintable, el mensaje del
+    sobre sigue en `general`.
+  - **Bug encontrado y arreglado:** `unique` sólo se declaraba en tipos sin
+    `case` propio, así que `products.sku` y `orders.ref` (tipo `text`)
+    declaraban la regla y **no se aplicaba**; el gate pasó a `TEXT_TYPES`.
+  - **Hecho cuando:** añadir un validador = 1 entrada en cada lado ✅
+    (entrada `ValidatorName` + entrada `VALIDATORS_`; el contract check los
+    obliga a ir juntos).
+  - **Rojos: 77** — back **62** (5 mutaciones: 41 / 16 / 3 / 1 / 1) ·
+    front **13** (4 mutaciones: F1 4, F2 5, F3 1, F4 3) ·
+    contract check **2** (M6 nombre del front sin back, M7 back sin validador).
+  - **Gates 6/6:** front **361/361** (48 ficheros) · api **462/462** (29) ·
+    `api:check` ✔ · `build` ✔ · prettier deuda **17** · `api:drift` ✔.
 
-- [ ] **R4.7** — Gates de la fase
+- [x] **R4.7** — Gates de la fase
+  - Corrida fresca, sin cambios entre R4.6 y acá:
+    front **361/361** (48 ficheros) · api **462/462** (29) · `api:check` 4
+    VERDE, 0 ROJO · `build` ✔ · prettier deuda **17** (los mismos 17 ajenos) ·
+    `api:drift` ✔.
+  - Fase 4 cierra con **77 rojos contados** (62 back · 13 front · 2 contract)
+    y con D42 resuelta dentro de R4.6.
 
 ---
 
@@ -1975,38 +2160,43 @@ reorder, bulk }` con cada una encendible/apagable.
 
 ## §4. Decisiones pendientes
 
-| ID      | Decisión                                                                                                                                  | Bloquea                 | Estado                                                                                                                                                                                                                                           |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **D9**  | `refactormotor` §9 — 6 decisiones                                                                                                         | R0.3                    | ✅ **resueltas** → §6                                                                                                                                                                                                                            |
-| **D10** | `auth` §9 — 7 decisiones                                                                                                                  | R0.4                    | ✅ **resueltas** → §6                                                                                                                                                                                                                            |
-| **D8**  | Absorber `plan-motor-de-renderizado.md`                                                                                                   | R0.5                    | ✅ **absorbido y borrado**                                                                                                                                                                                                                       |
-| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)                                                                                                | R8.1                    | abierta                                                                                                                                                                                                                                          |
-| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                                          | R8.2                    | abierta                                                                                                                                                                                                                                          |
-| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                                              | R8.3                    | abierta                                                                                                                                                                                                                                          |
-| **D14** | R10: recrear pedidos o regenerar PIN                                                                                                      | R8.8                    | abierta                                                                                                                                                                                                                                          |
-| **D15** | `confirm-dialog`: usar o retirar                                                                                                          | R10.1                   | abierta                                                                                                                                                                                                                                          |
-| **D16** | `POST /admin/events`: retirar o justificar                                                                                                | R10.2                   | abierta                                                                                                                                                                                                                                          |
-| **D17** | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                                                   | R1.7                    | ✅ **resuelta** → R1.7                                                                                                                                                                                                                           |
-| **D18** | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                                                         | R1.8                    | ✅ **resuelta** → R1.8                                                                                                                                                                                                                           |
-| **D19** | KDF de contraseña: costo, formato y tarea que lo implementa                                                                               | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                                                                                                                                                          |
-| **D20** | Ruta de verificación de PIN: `/p/pin/:ref` o `/p/orders/:ref/pin`                                                                         | R2.5 (contrato público) | ✅ **resuelta** → A                                                                                                                                                                                                                              |
-| **D21** | El token admin antiguo no tiene fila en `_users`: ¿qué identidad es?                                                                      | R2.6                    | ✅ **resuelta** → C                                                                                                                                                                                                                              |
-| **D22** | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                                                     | R2.12 · Fase 10         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización                                                                                                                                              |
-| **D23** | `GAS_TOKEN` caducaba cada 6 h y nada lo renovaba: los scripts de humo pierden la sesión                                                   | R1.11 · R2.18           | ✅ **resuelta** → auto-login en `scripts/smoke-auth.mjs`                                                                                                                                                                                         |
-| **D24** | El setup pedía clave **y** valor a mano; `bootstrapAdmin_` sólo aceptaba argumentos                                                       | R1.11 · R2.18           | ✅ **resuelta** → `setupAll()` único + props creadas por el setup                                                                                                                                                                                |
-| **D25** | `ADMIN_PASSWORD` no alcanza la fila de `_users`: el admin se creó con la contraseña **generada** del primer run                           | R1.11 · R2.18           | ✅ **resuelta** → `bootstrapAdmin_` **reconcilia** la fila si hay contraseña explícita (auth.md §4.7 enmendado)                                                                                                                                  |
-| **D26** | `import.meta.glob` no sobrevive a `ng build` (esbuild no implementa el transform)                                                         | R3.2                    | ✅ **resuelta** → registro manual (§4.3)                                                                                                                                                                                                         |
-| **D27** | `NgComponentOutlet` no emite `ɵɵcontrol`: sin `[formField]` en la plantilla los `FormValueControl` no arrancan                            | R3.4                    | ✅ **resuelta** → `multiselect` e `image` declarados a mano en `render-host.ts`                                                                                                                                                                  |
-| **D28** | `whenStable()` no espera al `import()` perezoso del descriptor: el control llegaba tarde al siguiente ciclo                               | R3.5                    | ✅ **resuelta** → `PendingTasks.run()` en `render-host.ts` + `goToError` espera la estabilidad                                                                                                                                                   |
-| **D29** | El motor cableaba los inputs de cada tipo con un `switch` (`group`/`list`/`slug`); con 6 widgets serían 9 casos                           | R3.6                    | ✅ **resuelta** → `RenderDescriptor.inputs`: el cableado vive en cada descriptor                                                                                                                                                                 |
-| **D30** | El `@defer (on viewport)` de `chart-line` vivía en `WidgetHost`, que deja de conocer tipos                                                | R3.6                    | ✅ **resuelta** → el defer pasa al propio `ChartLine`; el chunk lo abre `descriptor.load()`                                                                                                                                                      |
-| **D31** | R3.7 pide asegurar que `column.format` y `action.type` tienen descriptor, y ninguno de los dos tiene registro aún                         | R3.7                    | ✅ **resuelta** → constancia en el test + `renderKinds()`. Con R3.9/R3.10 las acciones tienen registro y recorrido propios (`actions/contract.spec.ts`) y no son un `kind` de render, así que el tripwire queda sólo para `column.format` (R4.3) |
-| **D32** | Un tipo de campo nuevo obliga a añadir `case` en `shared/utils/seed.ts` — fichero compartido, fuera de la lista de §0                     | R3.8                    | ✅ **resuelta (B)** → `RenderDescriptor.seed` como **dato**; `seed.ts` deja de despachar por tipo y un tipo nuevo no lo toca                                                                                                                     |
-| **D33** | `argsSchema` no tenía vocabulario declarado, ni estaba dicho si las categorías de datos llevan `run`                                      | R3.13, R3.15            | ✅ **resuelta** → R3.13/R3.15 + **§D33**: `ARGS_TYPES_`, `run: null` en datos, `capabilityArgsIssues_` único                                                                                                                                     |
-| **D34** | `since` no tiene release de proyecto: ¿qué versión se declara en cada capacidad heredada?                                                 | R3.13                   | ✅ **resuelta** → `'1.0'` para todo lo heredado (el campo existe para el día que haya releases)                                                                                                                                                  |
-| **D35** | `api/.clasp.json` (local, gitignored) tenía `filePushOrder` con las 4 rutas borradas y sin `capabilities/`                                | R3.14                   | ✅ **resuelta** → reescrito a 32 entradas verificadas; **no viaja en el commit** (fichero no versionado) — se recrea a mano al clonar                                                                                                            |
-| **D36** | R3.13 y R3.14 no se pueden cerrar por separado: el tripwire del contrato uniforme sólo pasa con la migración hecha                        | R3.13, R3.14            | ✅ **resuelta** → ejecutadas como **un solo lote**; gates corridos una sola vez, al cierre de R3.14                                                                                                                                              |
-| **D37** | `api/README.md` y `api/MAPA.md` ya estaban desactualizados en cosas que este cambio no toca (`04-registry`, `03-resources-*`, «21 tipos») | —                       | ⚠️ **abierta** — fuera del alcance de la Fase 3; sólo se actualizaron los nodos que movían                                                                                                                                                       |
+| ID      | Decisión                                                                                                                                                                                                                                          | Bloquea                 | Estado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D9**  | `refactormotor` §9 — 6 decisiones                                                                                                                                                                                                                 | R0.3                    | ✅ **resueltas** → §6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **D10** | `auth` §9 — 7 decisiones                                                                                                                                                                                                                          | R0.4                    | ✅ **resueltas** → §6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **D8**  | Absorber `plan-motor-de-renderizado.md`                                                                                                                                                                                                           | R0.5                    | ✅ **absorbido y borrado**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **D11** | ¿`pin` en `postCreate.summaryFields`? (R9)                                                                                                                                                                                                        | R8.1                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D12** | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                                                                                                                                                  | R8.2                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D13** | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                                                                                                                                                      | R8.3                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D14** | R10: recrear pedidos o regenerar PIN                                                                                                                                                                                                              | R8.8                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D15** | `confirm-dialog`: usar o retirar                                                                                                                                                                                                                  | R10.1                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D16** | `POST /admin/events`: retirar o justificar                                                                                                                                                                                                        | R10.2                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D17** | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                                                                                                                                                           | R1.7                    | ✅ **resuelta** → R1.7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **D18** | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                                                                                                                                                                 | R1.8                    | ✅ **resuelta** → R1.8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **D19** | KDF de contraseña: costo, formato y tarea que lo implementa                                                                                                                                                                                       | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **D20** | Ruta de verificación de PIN: `/p/pin/:ref` o `/p/orders/:ref/pin`                                                                                                                                                                                 | R2.5 (contrato público) | ✅ **resuelta** → A                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **D21** | El token admin antiguo no tiene fila en `_users`: ¿qué identidad es?                                                                                                                                                                              | R2.6                    | ✅ **resuelta** → C                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **D22** | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                                                                                                                                                             | R2.12 · Fase 10         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **D23** | `GAS_TOKEN` caducaba cada 6 h y nada lo renovaba: los scripts de humo pierden la sesión                                                                                                                                                           | R1.11 · R2.18           | ✅ **resuelta** → auto-login en `scripts/smoke-auth.mjs`                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **D24** | El setup pedía clave **y** valor a mano; `bootstrapAdmin_` sólo aceptaba argumentos                                                                                                                                                               | R1.11 · R2.18           | ✅ **resuelta** → `setupAll()` único + props creadas por el setup                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **D25** | `ADMIN_PASSWORD` no alcanza la fila de `_users`: el admin se creó con la contraseña **generada** del primer run                                                                                                                                   | R1.11 · R2.18           | ✅ **resuelta** → `bootstrapAdmin_` **reconcilia** la fila si hay contraseña explícita (auth.md §4.7 enmendado)                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **D26** | `import.meta.glob` no sobrevive a `ng build` (esbuild no implementa el transform)                                                                                                                                                                 | R3.2                    | ✅ **resuelta** → registro manual (§4.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **D27** | `NgComponentOutlet` no emite `ɵɵcontrol`: sin `[formField]` en la plantilla los `FormValueControl` no arrancan                                                                                                                                    | R3.4                    | ✅ **resuelta** → `multiselect` e `image` declarados a mano en `render-host.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **D28** | `whenStable()` no espera al `import()` perezoso del descriptor: el control llegaba tarde al siguiente ciclo                                                                                                                                       | R3.5                    | ✅ **resuelta** → `PendingTasks.run()` en `render-host.ts` + `goToError` espera la estabilidad                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **D29** | El motor cableaba los inputs de cada tipo con un `switch` (`group`/`list`/`slug`); con 6 widgets serían 9 casos                                                                                                                                   | R3.6                    | ✅ **resuelta** → `RenderDescriptor.inputs`: el cableado vive en cada descriptor                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **D30** | El `@defer (on viewport)` de `chart-line` vivía en `WidgetHost`, que deja de conocer tipos                                                                                                                                                        | R3.6                    | ✅ **resuelta** → el defer pasa al propio `ChartLine`; el chunk lo abre `descriptor.load()`                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **D31** | R3.7 pide asegurar que `column.format` y `action.type` tienen descriptor, y ninguno de los dos tiene registro aún                                                                                                                                 | R3.7                    | ✅ **resuelta** → constancia en el test + `renderKinds()`. Con R3.9/R3.10 las acciones tienen registro y recorrido propios (`actions/contract.spec.ts`) y no son un `kind` de render, así que el tripwire queda sólo para `column.format` (R4.3)                                                                                                                                                                                                                                                                          |
+| **D32** | Un tipo de campo nuevo obliga a añadir `case` en `shared/utils/seed.ts` — fichero compartido, fuera de la lista de §0                                                                                                                             | R3.8                    | ✅ **resuelta (B)** → `RenderDescriptor.seed` como **dato**; `seed.ts` deja de despachar por tipo y un tipo nuevo no lo toca                                                                                                                                                                                                                                                                                                                                                                                              |
+| **D33** | `argsSchema` no tenía vocabulario declarado, ni estaba dicho si las categorías de datos llevan `run`                                                                                                                                              | R3.13, R3.15            | ✅ **resuelta** → R3.13/R3.15 + **§D33**: `ARGS_TYPES_`, `run: null` en datos, `capabilityArgsIssues_` único                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **D34** | `since` no tiene release de proyecto: ¿qué versión se declara en cada capacidad heredada?                                                                                                                                                         | R3.13                   | ✅ **resuelta** → `'1.0'` para todo lo heredado (el campo existe para el día que haya releases)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **D35** | `api/.clasp.json` (local, gitignored) tenía `filePushOrder` con las 4 rutas borradas y sin `capabilities/`                                                                                                                                        | R3.14                   | ✅ **resuelta** → reescrito a 32 entradas verificadas; **no viaja en el commit** (fichero no versionado) — se recrea a mano al clonar                                                                                                                                                                                                                                                                                                                                                                                     |
+| **D36** | R3.13 y R3.14 no se pueden cerrar por separado: el tripwire del contrato uniforme sólo pasa con la migración hecha                                                                                                                                | R3.13, R3.14            | ✅ **resuelta** → ejecutadas como **un solo lote**; gates corridos una sola vez, al cierre de R3.14                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **D37** | `api/README.md` y `api/MAPA.md` ya estaban desactualizados en cosas que este cambio no toca (`04-registry`, `03-resources-*`, «21 tipos»)                                                                                                         | —                       | ⚠️ **abierta** — fuera del alcance de la Fase 3; sólo se actualizaron los nodos que movían                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **D38** | F3 dice «cada descriptor declara si sabe pintarse en `display`; si no, `display` por defecto según tipo»: ¿dónde vive la declaración y dónde el componente?                                                                                       | R4.1, R4.2              | ✅ **resuelta** → la declaración es `surfaces: ['form', 'display']` en los 20 descriptores (superficie que el modelo ya tenía) y el componente sale de `DISPLAY_POR_DEFECTO: Record<FieldType, DisplayLoader>` en `fields/display/`. Sin `descriptor.display` (nadie lo leería: código muerto). Los 6 display comparten la forma `{ field, value, chip }` porque `ngComponentOutletInputs` no admite claves no declaradas                                                                                                 |
+| **D39** | R4.2 pide verificar «los 7 detalles renderizan igual» con capturas antes/después, y no hay infraestructura de capturas                                                                                                                            | R4.2                    | ✅ **resuelta (desviación registrada)** → en su lugar: tabla de paridad tipo a tipo contra el `formatValue` viejo + 25 specs de display por host + los 5 de `detail-view.spec.ts`; la mutación M3 (`chip` sin pasar) deja el chip de cabecera en rojo                                                                                                                                                                                                                                                                     |
+| **D40** | R4.3 mueve el formateo al registro: ¿se aprovecha para «arreglar» los quirks que el `@switch` viejo heredaba (`null` → «0» en número, objeto → `[object Object]`) y para cambiar la verificación?                                                 | R4.3                    | ✅ **resuelta** → **paridad estricta**: los 7 formatos copian el comportamiento previo y sólo se movieron de sitio; normalizar el vacío sería otra decisión con su propia migración (los tests dejan constancia del quirk en el propio nombre). La verificación son specs de paridad (20 unit + 3 de integración) con el mismo helper de `load()` perezoso, no capturas                                                                                                                                                   |
+| **D41** | R4.4 obliga a decidir el destino de las columnas `select` sin `format` y a tocar `badgeInfo` (que hoy pinta **todo** `success`): ¿paridad estricta con la lista (`text`) o alinearse con el detalle?                                              | R4.4, D31               | ✅ **resuelta** → **alineación**: `select` → `badge` con `option.label` + `resolveBadgeKind`, porque el chip verde sin mirar el valor es peor que el texto crudo y `display-badge` ya anticipaba esta reutilización. `boolean` conserva `trueLabel`/`falseLabel` con `success`/`danger` y `list` queda en `text` (no hay timeline en el registro de formatos)                                                                                                                                                             |
+| **D42** | B11 dice que «el front mapea por código para i18n» y R4.6 avisa de conservar `serverErrors[prefix+key]`, pero **el front nunca leía `error.errors[]`** (422 que llegaba como `general` y ningún campo pintado — deuda L2.4 de `plan-limpieza.md`) | R4.6                    | ✅ **cerrada en R4.6** — `ApiErrorBody.errors?: ApiIssue[]` + `ApiError.issues` (5º arg opcional, retrocompatible) + `ErrorMapperService.map()` convierte cada issue en `fields[path] = mensaje` (claves intactas para `serverErrors[prefix+key]`), `fieldPath` del sobre como fallback y `general` sólo cuando no hay ruta pintable. **Sin** `codes` en `MappedError` (YAGNI: el código queda en `ApiError.issues[].code`). Specs nuevos: `error-mapper.service.spec.ts` (4) y un test del interceptor sobre `errors[]`. |
 
 ### D17 · R1.7 «Test de contrato del front» — tres premisas
 
