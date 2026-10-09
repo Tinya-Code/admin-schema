@@ -124,9 +124,22 @@ function walkFields_(where, fields, issues) {
     // 3a. tipo de campo inexistente → el motor no sabe leerlo ni pintarlo.
     if (
       typeof field.type === 'string' &&
-      !Object.prototype.hasOwnProperty.call(FIELD_TYPES, field.type)
+      !Object.prototype.hasOwnProperty.call(REGISTRY.capabilities.fieldTypes, field.type)
     ) {
       issues.push(at + ": tipo de campo inexistente '" + field.type + "'");
+    }
+
+    // 3f. `computed` de columna → generador declarado (R3.15). Hoy el único
+    // es 'now'; el motor lo distingue en 24-crud y la referencia rota cae
+    // acá, en el arranque, no en runtime.
+    if (field.computed !== undefined && field.computed !== null) {
+      if (typeof field.computed !== 'string') {
+        issues.push(at + ': `computed` debe ser el id de un generador');
+      } else if (
+        !Object.prototype.hasOwnProperty.call(REGISTRY.capabilities.computed, field.computed)
+      ) {
+        issues.push(at + ": computed inexistente '" + field.computed + "'");
+      }
     }
 
     // Los validadores se cubren en unknownKeys_: sólo existen los de
@@ -275,8 +288,15 @@ function validateResource_(id, resource, issues) {
         issues.push(at + ': no es un objeto');
         return;
       }
-      if (typeof decl.transform !== 'string' || !REGISTRY.transforms[decl.transform]) {
+      if (typeof decl.transform !== 'string' || !REGISTRY.capabilities.computed[decl.transform]) {
         issues.push(at + ": transform inexistente '" + decl.transform + "'");
+      } else {
+        // args contra argsSchema (R3.15): `params` es lo declarable.
+        var gen = REGISTRY.capabilities.computed[decl.transform];
+        issues.push.apply(
+          issues,
+          capabilityArgsIssues_(at + '.params', gen.argsSchema, decl.params),
+        );
       }
       if (typeof decl.field !== 'string' || !fieldKeys[decl.field]) {
         issues.push(at + ": campo destino '" + decl.field + "' no existe en el recurso");
@@ -287,18 +307,27 @@ function validateResource_(id, resource, issues) {
     });
   });
 
-  // 3d. checks inexistentes
+  // 3d. checks inexistentes + args contra argsSchema (R3.15)
   (resource.checks || []).forEach(function (decl, i) {
+    var at = where + '.checks[' + i + ']';
     var name = decl && decl.check;
-    if (typeof name !== 'string' || !REGISTRY.checks[name]) {
-      issues.push(where + '.checks[' + i + "]: check inexistente '" + name + "'");
+    var cap = typeof name === 'string' ? REGISTRY.capabilities.checks[name] : null;
+    if (!cap) {
+      issues.push(at + ": check inexistente '" + name + "'");
+      return;
     }
+    // La declaración ES el objeto entero: `check` no es argumento.
+    var args = {};
+    Object.keys(decl).forEach(function (key) {
+      if (key !== 'check') args[key] = decl[key];
+    });
+    issues.push.apply(issues, capabilityArgsIssues_(at, cap.argsSchema, args));
   });
 
   // 3e. hooks inexistentes
   Object.keys(resource.hooks || {}).forEach(function (op) {
     (resource.hooks[op] || []).forEach(function (name, i) {
-      if (!REGISTRY.hooks[name]) {
+      if (!REGISTRY.capabilities.hooks[name]) {
         issues.push(where + '.hooks.' + op + '[' + i + "]: hook inexistente '" + name + "'");
       }
     });

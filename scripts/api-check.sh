@@ -3,7 +3,9 @@
 # de api/mejoras.md §11. Uso: npm run api:check
 #
 #   Regla 1 (§11.1): sin nombres de recurso, ruta ni endpoint concretos en
-#                    core/, engine/ ni primitives/.
+#                    capabilities/, core/ ni engine/.
+#   Regla B1 (refactormotor §B1): registerCapability es la única puerta a
+#                    las capacidades — sin asignaciones directas a los mapas.
 #   Regla 5 (§11.5): schema como fuente única — el registry y los archivos
 #                    de recurso declaran exactamente los mismos ids.
 #   Contract check:  schemas back ↔ front (doc/refactormotor.md §5)
@@ -16,9 +18,9 @@ set -u
 cd "$(dirname "$0")/.."
 ROJO=0
 
-echo "── Regla 1 (§11.1): nombres concretos en core/ engine/ primitives/"
+echo "── Regla 1 (§11.1): nombres concretos en capabilities/ core/ engine/"
 DIRS=""
-for d in api/core api/engine api/primitives; do
+for d in api/capabilities api/core api/engine; do
   [ -d "$d" ] && DIRS="$DIRS $d"
 done
 IDS='categories|products|site|legal|orders'
@@ -28,6 +30,19 @@ HITS=$(grep -rnE "'($IDS)'|$ROUTES" $DIRS 2>/dev/null | grep -vE ':[0-9]+:[[:spa
 if [ -n "$HITS" ]; then
   echo "$HITS"
   echo "✗ ROJO: $(echo "$HITS" | grep -c .) coincidencia(s) — eliminar antes de cerrar la fase"
+  ROJO=1
+else
+  echo "✓ VERDE: 0 hallazgos"
+fi
+
+echo "── Regla B1 (refactormotor §B1): la única puerta es registerCapability"
+# Ningún fichero fuera de capabilities/ (ni los tests, que inyectan dobles)
+# puede escribir directo en los mapas de capacidades.
+PUERTA_HITS=$(grep -rnE "REGISTRY\.(ops|transforms|checks|handlers|hooks|capabilities)[A-Za-z0-9_.]*[[:space:]]*=[^=]" api --include='*.js' 2>/dev/null |
+  grep -v '^api/capabilities/' | grep -v '^api/__tests__/' | grep -vE ':[0-9]+:[[:space:]]*//' || true)
+if [ -n "$PUERTA_HITS" ]; then
+  echo "$PUERTA_HITS"
+  echo "✗ ROJO: $(echo "$PUERTA_HITS" | grep -c .) asignación(es) directa(s) — pasa por registerCapability"
   ROJO=1
 else
   echo "✓ VERDE: 0 hallazgos"

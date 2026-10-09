@@ -1,4 +1,4 @@
-// primitives/ops — Operadores genéricos de consulta (mejoras §5).
+// capabilities/operators — Operadores genéricos de consulta (mejoras §5).
 //
 // Auto-registro en REGISTRY.ops; los interpreta engine/27-views
 // (evalWhere_ resuelve el operando y llama fn(actual, expected)).
@@ -61,7 +61,7 @@ function opInActive_(actual, expected) {
   return truthyCell_(expected[key]);
 }
 
-REGISTRY.ops = {
+var OPERATORS_ = {
   eq: opEq_,
   neq: function (actual, expected) {
     return !opEq_(actual, expected);
@@ -103,3 +103,10 @@ REGISTRY.ops = {
   },
   'in-active': opInActive_,
 };
+
+// Registro por la puerta única (R3.14). argsSchema null: los argumentos de un
+// operador son el `expected` de la condición, que declara la vista y todavía
+// no tiene contrato declarativo (refactormotor.md §B2/R5).
+Object.keys(OPERATORS_).forEach(function (id) {
+  registerCapability('operators', { id: id, since: '1.0', argsSchema: null, run: OPERATORS_[id] });
+});

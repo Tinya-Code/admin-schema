@@ -12,6 +12,6 @@ REGISTRY.endpoints.dashboard = {
   limits: '30/min',
   handler: 'handleDashboard',
   // El id del recurso que alimenta las métricas. El handler lo lee para
-  // evitar hardcodear el nombre en primitives/ (§11.1: sin nombres concretos).
+  // evitar hardcodear el nombre en capabilities/ (§11.1: sin nombres concretos).
   resource: 'orders',
 };

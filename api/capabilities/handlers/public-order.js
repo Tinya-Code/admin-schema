@@ -1,4 +1,4 @@
-// primitives/handlers/public-order — Proyección pública de pedido (Fase 4 §4).
+// capabilities/handlers/public-order — Proyección pública de pedido (Fase 4 §4).
 //
 // Resuelto desde `REGISTRY.endpoints.publicOrder` (/p/orders/:ref).
 // Aplica whitelist estricta: sólo expone campos que el cliente y el autorizado
@@ -55,4 +55,9 @@ function handlePublicOrder(payload, request) {
   return projected;
 }
 
-REGISTRY.handlers.handlePublicOrder = handlePublicOrder;
+registerCapability('handlers', {
+  id: 'handlePublicOrder',
+  since: '1.0',
+  argsSchema: null,
+  run: handlePublicOrder,
+});

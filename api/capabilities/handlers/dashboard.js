@@ -1,4 +1,4 @@
-// primitives/handlers/dashboard — Métricas del panel declarativo (Fase 3 §3.3).
+// capabilities/handlers/dashboard — Métricas del panel declarativo (Fase 3 §3.3).
 //
 // Resuelto desde `REGISTRY.endpoints.dashboard` (schema/endpoints/dashboard).
 // Lee los recursos configurados en `endpointDecl.resource` (string o array de strings),
@@ -58,4 +58,9 @@ function handleDashboard() {
   return result;
 }
 
-REGISTRY.handlers.handleDashboard = handleDashboard;
+registerCapability('handlers', {
+  id: 'handleDashboard',
+  since: '1.0',
+  argsSchema: null,
+  run: handleDashboard,
+});

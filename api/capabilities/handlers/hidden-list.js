@@ -1,4 +1,4 @@
-// primitives/handlers/hidden-list — Escape hatch §6 para la vista
+// capabilities/handlers/hidden-list — Escape hatch §6 para la vista
 // 'hidden-with-reason' de products (R6, spec §7).
 //
 // JUSTIFICACIÓN §6 (no expresable con ops genéricas):
@@ -15,21 +15,26 @@
 // 'missing_health_registry'). Devuelve copias con `reasons`: mutar los
 // ítems de entrada corrompería la caché de listado.
 // Top-level: sólo el auto-registro (la función corre en runtime).
-REGISTRY.handlers.hiddenList = function (items, ctx) {
-  var list = Array.isArray(items) ? items : [];
-  var out = [];
-  list.forEach(function (product) {
-    if (!product || typeof product !== 'object') return;
-    var reasons = [];
-    if (!truthyCell_(product.active)) reasons.push('inactive');
-    if (isEmptyValue_(product.registro_sanitario)) reasons.push('missing_health_registry');
-    if (reasons.length === 0) return;
-    var copy = {};
-    Object.keys(product).forEach(function (key) {
-      copy[key] = product[key];
+registerCapability('handlers', {
+  id: 'hiddenList',
+  since: '1.0',
+  argsSchema: null,
+  run: function (items, ctx) {
+    var list = Array.isArray(items) ? items : [];
+    var out = [];
+    list.forEach(function (product) {
+      if (!product || typeof product !== 'object') return;
+      var reasons = [];
+      if (!truthyCell_(product.active)) reasons.push('inactive');
+      if (isEmptyValue_(product.registro_sanitario)) reasons.push('missing_health_registry');
+      if (reasons.length === 0) return;
+      var copy = {};
+      Object.keys(product).forEach(function (key) {
+        copy[key] = product[key];
+      });
+      copy.reasons = reasons;
+      out.push(copy);
     });
-    copy.reasons = reasons;
-    out.push(copy);
-  });
-  return out;
-};
+    return out;
+  },
+});

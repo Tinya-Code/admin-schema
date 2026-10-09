@@ -1,4 +1,4 @@
-// primitives/handlers/schema — Proyección pública del schema (baseapi §12).
+// capabilities/handlers/schema — Proyección pública del schema (baseapi §12).
 // Resuelto desde `REGISTRY.endpoints.schema` (schema/endpoints/schema), no
 // por código en el router.
 //
@@ -226,3 +226,12 @@ function projectField_(field) {
   // key-value: sin extra — sus claves (sheet, fk, keyColumn…) son internas.
   return out;
 }
+
+// Se registra por la puerta única (R3.14): era de los últimos handlers que
+// el router resolvía sólo por su fallback a globalThis.
+registerCapability('handlers', {
+  id: 'handleSchema',
+  since: '1.0',
+  argsSchema: null,
+  run: handleSchema,
+});

@@ -1,6 +1,8 @@
-// primitives/transforms — Derivados parametrizados (mejoras §6).
+// capabilities/computed — Generadores parametrizados (mejoras §6).
 //
-// REGISTRY.transforms: fn(value, params) → string.
+// Categoría `computed` de REGISTRY.capabilities: fn(value, params) → string.
+// Su proyección legacy es REGISTRY.transforms, que es lo que sigue leyendo
+// engine/24-crud (computeRules_).
 // El motor (engine/24-crud, computeRules_) los invoca desde la declaración
 //   resource.operations.create.computed = [{ field, transform, from, params? }]
 // sólo al CREAR y sólo si el destino viene vacío (ver 24-crud).
@@ -108,7 +110,7 @@ function pinBytes_(n) {
   return tokenBytes_(n);
 }
 
-REGISTRY.transforms = {
+var COMPUTED_ = {
   slugify: function (value, params) {
     var p = params || {};
     var lower = p.lower !== false;
@@ -160,3 +162,33 @@ REGISTRY.transforms = {
     return out;
   },
 };
+
+// Argumentos declarables por generador (lo que puede traer `params` en
+// operations.<op>.computed). validate-registry los juzga al cargar (R3.15).
+var COMPUTED_ARGS_ = {
+  slugify: { lower: { type: 'boolean' }, sep: { type: 'text' }, keep: { type: 'text' } },
+  token: { length: { type: 'number' }, prefix: { type: 'text' } },
+  pin: { length: { type: 'number' } },
+};
+Object.keys(COMPUTED_).forEach(function (id) {
+  registerCapability('computed', {
+    id: id,
+    since: '1.0',
+    argsSchema: COMPUTED_ARGS_[id] || {},
+    run: COMPUTED_[id],
+  });
+});
+
+// now — sello de fecha de las columnas con `field.computed: 'now'`.
+// El sello lo genera nowStamp_() (50-audit.js, raíz): se declara acá para que
+// la validación de carga (validate-registry, R3.15) pueda verificar la
+// referencia. El motor sigue distinguiendo 'now' en 24-crud — §B1 pide
+// «nada nuevo se añade tocando engine/».
+registerCapability('computed', {
+  id: 'now',
+  since: '1.0',
+  argsSchema: {},
+  run: function () {
+    return nowStamp_();
+  },
+});

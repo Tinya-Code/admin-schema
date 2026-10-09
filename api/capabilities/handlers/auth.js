@@ -1,4 +1,4 @@
-// primitives/handlers/auth — Endpoints de sesión (R2.5 — auth.md §4.3).
+// capabilities/handlers/auth — Endpoints de sesión (R2.5 — auth.md §4.3).
 //
 // Sobre de respuesta (§4.5 / D10-5): se CONSERVA el formato existente —
 // JSON plano en éxito, { error: { status, message, code?, errors? } } en
@@ -136,6 +136,16 @@ function authLogout(payload, request) {
 
 // Auto-registro, igual que el resto de handlers del repo: el router los
 // resuelve por `REGISTRY.handlers[name]` (con fallback a `globalThis[name]`).
-REGISTRY.handlers.handleAuthLogin = authLogin;
-REGISTRY.handlers.handleAuthMe = authMe;
-REGISTRY.handlers.handleAuthLogout = authLogout;
+registerCapability('handlers', {
+  id: 'handleAuthLogin',
+  since: '1.0',
+  argsSchema: null,
+  run: authLogin,
+});
+registerCapability('handlers', { id: 'handleAuthMe', since: '1.0', argsSchema: null, run: authMe });
+registerCapability('handlers', {
+  id: 'handleAuthLogout',
+  since: '1.0',
+  argsSchema: null,
+  run: authLogout,
+});

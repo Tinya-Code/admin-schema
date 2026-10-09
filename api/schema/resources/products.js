@@ -91,7 +91,7 @@ REGISTRY.resources.products = {
     // Escape hatch §6: no expresable con where/sort/limit — la población es
     // OR de dos causas (la declaración sólo evalúa AND) y además anota cada
     // ítem con `reasons` (salida enriquecida). Justificación en
-    // primitives/handlers/hidden-list.js.
+    // capabilities/handlers/hidden-list.js.
     'hidden-with-reason': { handler: 'hiddenList' },
   },
   policies: {

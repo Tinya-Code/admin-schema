@@ -2,7 +2,7 @@
 //
 // Es la suite que prueba que el harness de carga funciona: slugify es
 // puro, no toca Google ni la hoja, y su contrato está documentado en
-// api/primitives/transforms.js.
+// api/capabilities/computed.js.
 
 import { beforeAll, describe, expect, it } from 'vitest';
 

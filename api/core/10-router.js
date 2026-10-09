@@ -106,7 +106,7 @@ function routeTable_() {
 // Ruta base efectiva de un recurso (F2-3): `route` como override o
 // /<scope>/<id> con scope por defecto 'admin'. FUENTE ÚNICA de la ruta:
 // la tabla de rutas de acá y la proyección pública de `/admin/schema`
-// (F7-1, primitives/handlers/schema) derivan de esta misma función.
+// (F7-1, capabilities/handlers/schema) derivan de esta misma función.
 function resourceRoute_(resource) {
   return resource.route || '/' + (resource.scope || 'admin') + '/' + resource.id;
 }

@@ -190,5 +190,67 @@ describe('R1.5 — validateRegistry_', () => {
       });
       expect(issues).toContain("resources.orders.hooks.create[0]: hook inexistente 'pinHashh'");
     });
+
+    it('computed de columna que no es un generador declarado', () => {
+      const i = resources_.legal.fields.findIndex((f) => f.computed !== undefined);
+      expect(i).toBeGreaterThanOrEqual(0);
+      const issues = mutate(() => {
+        resources_.legal.fields[i].computed = 'noww';
+      });
+      expect(issues).toContain(`resources.legal.fields[${i}]: computed inexistente 'noww'`);
+    });
+
+    it('computed de columna que no es un string', () => {
+      const i = resources_.legal.fields.findIndex((f) => f.computed !== undefined);
+      const issues = mutate(() => {
+        resources_.legal.fields[i].computed = 42;
+      });
+      expect(issues).toContain(
+        `resources.legal.fields[${i}]: \`computed\` debe ser el id de un generador`,
+      );
+    });
+  });
+
+  describe('4 · args contra argsSchema (R3.15)', () => {
+    it('argumento desconocido en un check', () => {
+      const issues = mutate(() => {
+        resources_.site.checks[0].de_nada = 'x';
+      });
+      expect(issues).toContain("resources.site.checks[0]: argumento desconocido 'de_nada'");
+    });
+
+    it('obligatorio ausente en un check', () => {
+      const issues = mutate(() => {
+        delete resources_.legal.checks[1].pattern;
+      });
+      expect(issues).toContain(
+        "resources.legal.checks[1]: falta el argumento obligatorio 'pattern'",
+      );
+    });
+
+    it('argumento mal tipado en un check', () => {
+      const issues = mutate(() => {
+        resources_.legal.checks[1].negate = 'sí';
+      });
+      expect(issues).toContain("resources.legal.checks[1]: el argumento 'negate' debe ser boolean");
+    });
+
+    it('params de computed mal tipados', () => {
+      const issues = mutate(() => {
+        resources_.orders.operations.create.computed[0].params = { length: 'seis' };
+      });
+      expect(issues).toContain(
+        "resources.orders.operations.create.computed[0].params: el argumento 'length' debe ser number",
+      );
+    });
+
+    it('params de computed con un argumento que el generador no conoce', () => {
+      const issues = mutate(() => {
+        resources_.orders.operations.create.computed[0].params = { sinSentido: 1 };
+      });
+      expect(issues).toContain(
+        "resources.orders.operations.create.computed[0].params: argumento desconocido 'sinSentido'",
+      );
+    });
   });
 });

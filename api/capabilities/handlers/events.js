@@ -1,4 +1,4 @@
-// primitives/handlers/events.js — Escritura de eventos de uso en `_events` (Fase 6).
+// capabilities/handlers/events.js — Escritura de eventos de uso en `_events` (Fase 6).
 //
 // Resuelto desde `REGISTRY.endpoints.events` (POST /admin/events).
 //
@@ -62,4 +62,9 @@ function handleEvents(payload) {
   return { ok: true };
 }
 
-REGISTRY.handlers.handleEvents = handleEvents;
+registerCapability('handlers', {
+  id: 'handleEvents',
+  since: '1.0',
+  argsSchema: null,
+  run: handleEvents,
+});

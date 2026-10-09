@@ -1,4 +1,4 @@
-// primitives/handlers/sheet-drift — Reporte de drift en modo sólo-lectura.
+// capabilities/handlers/sheet-drift — Reporte de drift en modo sólo-lectura.
 //
 // Un solo propósito: exponer `setupDrift({ dryRun: true })` por la ruta
 // declarada en schema/endpoints/sheet-drift. Toda la lógica de comparación
@@ -16,4 +16,9 @@ function handleSheetDrift() {
   return setupDrift({ dryRun: true });
 }
 
-REGISTRY.handlers.handleSheetDrift = handleSheetDrift;
+registerCapability('handlers', {
+  id: 'handleSheetDrift',
+  since: '1.0',
+  argsSchema: null,
+  run: handleSheetDrift,
+});

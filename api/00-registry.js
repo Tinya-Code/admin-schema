@@ -25,11 +25,23 @@ const REGISTRY = {
   checks: {},
   handlers: {},
   hooks: {}, // emisión de eventos post-escritura (refactormotor.md B9)
+  // Capacidades por categoría (refactormotor.md §B1). Las 8 categorías se
+  // declaran acá; se llenan SÓLO con registerCapability (capabilities/).
+  capabilities: {
+    fieldTypes: {},
+    validators: {},
+    checks: {},
+    computed: {},
+    hooks: {},
+    operators: {},
+    handlers: {},
+    adapters: {},
+  },
 };
 
 // Devuelve el schema declarativo del recurso, o null si no existe.
 // Misma firma pública histórica: la consumen core/10-router,
-// engine/23-validate, engine/24-crud, primitives/handlers y setup/*
+// engine/23-validate, engine/24-crud, capabilities/handlers y setup/*
 // sin cambios.
 function getResourceSchema(id) {
   return REGISTRY.resources[id] || null;

@@ -54,7 +54,6 @@ api/
 │                                (sólo nombres, required/secret/source; jamás valores)
 │
 ├── schema/                    ← 🧠 FUENTE ÚNICA (datos declarativos)
-│   ├── 01-types               ← 21 tipos del catálogo (idénticos al front)
 │   ├── 02-enums               ← availability, days, risk_class
 │   ├── 03-resources-*         ← categories, products, site, legal (uno por archivo)
 │   └── 04-registry            ← índice recurso → ruta /admin/{id}
@@ -99,10 +98,15 @@ api/
 │   └── 27-views               ← vistas declarativas where/sort/limit/extends
 │                                + forma efectiva de respuesta (F5)
 │
-├── primitives/                 ← primitivas genéricas (cero dominio)
-│   ├── ops                     ← operadores de consulta (eq/in/gt/contains/…)
-│   ├── transforms              ← derivados parametrizados (slugify: lower/sep/keep)
+├── capabilities/               ← capacidades por categoría (cero dominio)
+│   ├── 00-register             ← registerCapability: la ÚNICA puerta (B1)
+│   ├── fieldTypes              ← 20 tipos del catálogo + metadatos de storage
+│   ├── operators               ← operadores de consulta (eq/in/gt/contains/…)
+│   ├── computed                ← generadores (slugify/token/pin/now)
 │   ├── checks                  ← checks declarados (pattern/mod11/not-in-sheet)
+│   ├── hooks                   ← reacciones post-escritura (pinHash)
+│   ├── validators              ← (vacío) validación declarativa por nombre
+│   ├── adapters                ← (vacío) adaptadores de storage (B5)
 │   └── handlers/               ← handlers no-CRUD (firma Cloudinary, /schema,
 │                                 hidden-list: escape hatch §6 justificado)
 │

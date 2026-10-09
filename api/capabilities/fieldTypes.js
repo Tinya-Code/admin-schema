@@ -1,4 +1,4 @@
-// schema/types/01-types — Catálogo de tipos de campo (idéntico al front:
+// capabilities/fieldTypes — Catálogo de tipos de campo (idéntico al front:
 // base.md §5; baseapi §5) + metadatos de almacenamiento que consume
 // engine/20-storage-map.
 //
@@ -6,7 +6,7 @@
 // acá vive lo estructural. 20 tipos = la unión FieldSchema del front.
 // Top-level: sólo declaraciones (cero referencias a otros archivos al cargar).
 
-var FIELD_TYPES = {
+var FIELD_TYPES_DECL_ = {
   // ── Escalares → una columna ────────────────────────────────────────────
   text: { storage: 'column', sheetFormat: 'text' },
   textarea: { storage: 'column', sheetFormat: 'text' },
@@ -38,6 +38,14 @@ var FIELD_TYPES = {
   'key-value': { storage: 'child-sheet', kv: true }, // 1:N pares clave/valor
 };
 
-// Auto-registro (mejoras §3). Las consumidoras (storage-map, validate,
-// setup, rules) siguen leyendo FIELD_TYPES: misma referencia, sin cambios.
-REGISTRY.types.fieldTypes = FIELD_TYPES;
+// Auto-registro por la puerta única (R3.14): la proyección legacy llena el
+// FIELD_TYPES que siguen leyendo storage-map, validate, setup y rules —
+// misma referencia, sin cambios en ningún consumidor.
+Object.keys(FIELD_TYPES_DECL_).forEach(function (id) {
+  var meta = FIELD_TYPES_DECL_[id];
+  var descriptor = { id: id, since: '1.0', argsSchema: null, run: null };
+  Object.keys(meta).forEach(function (key) {
+    descriptor[key] = meta[key];
+  });
+  registerCapability('fieldTypes', descriptor);
+});

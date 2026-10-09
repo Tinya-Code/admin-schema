@@ -1,4 +1,4 @@
-// primitives/checks — Checks declarados parametrizados (mejoras §6).
+// capabilities/checks — Checks declarados parametrizados (mejoras §6).
 //
 // REGISTRY.checks: fn(scope) → [{ path, message }] (NO lanza; vacío = ok).
 // scope = {
@@ -11,7 +11,7 @@
 // declarativa y acumula en el MISMO 422, en el orden de resource.checks:
 //   resource.checks = [{ check: 'pattern', ... }, { check: 'not-in-sheet' }]
 // Check no registrado o declaración mal formada = 500 (§16: el schema manda).
-REGISTRY.checks = {
+var CHECKS_ = {
   // pattern — test regular sobre params.field con mensaje propio.
   //   negate: true → INVIERTE el match (emite cuando NO calza).
   //   Campo vacío ⇒ [] (el required es de 23-validate).
@@ -187,6 +187,43 @@ REGISTRY.checks = {
     return [];
   },
 };
+
+// Argumentos declarables de cada check: lo que la declaración puede traer
+// además de `check`. validate-registry los juzga contra esto AL CARGAR
+// (R3.15): un argumento desconocido, ausente o mal tipado rompe el
+// arranque/CI en lugar de fallar en runtime.
+var CHECK_ARGS_ = {
+  pattern: {
+    field: { type: 'text', required: true },
+    pattern: { type: 'text', required: true },
+    negate: { type: 'boolean' },
+    message: { type: 'text' },
+  },
+  mod11: {
+    field: { type: 'text', required: true },
+    weights: { type: 'array', required: true },
+    expected: { type: 'number', required: true },
+    message: { type: 'text' },
+  },
+  'not-in-sheet': {
+    sheet: { type: 'text', required: true },
+    column: { type: 'text' },
+    patterns: { type: 'array' },
+  },
+  'history-append-only': {},
+  'no-auth-after-delivered': {},
+};
+
+// Registro por la puerta única (R3.14). La proyección legacy llena
+// REGISTRY.checks, que es lo que sigue leyendo engine/23-validate.
+Object.keys(CHECKS_).forEach(function (id) {
+  registerCapability('checks', {
+    id: id,
+    since: '1.0',
+    argsSchema: CHECK_ARGS_[id] || {},
+    run: CHECKS_[id],
+  });
+});
 
 // Primer match por valor; sólo strings (números/booleanos no son prosa).
 function checkScanValue_(value, path, patterns, errors) {

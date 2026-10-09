@@ -2,7 +2,7 @@
 //
 // Declarado, no cableado: el router deriva su ruta de
 // `REGISTRY.endpoints` (Fase 2). El handler (firma Cloudinary en dos
-// pasos) vive en `primitives/handlers/upload-signature`.
+// pasos) vive en `capabilities/handlers/upload-signature`.
 // `method`/`access`/`limits` son DATOS declarativos: el router resuelve la
 // política de la ruta y aplica el rate-limit genérico (F6, §8) desde
 // `limits`; el handler ya no tiene limitador propio.

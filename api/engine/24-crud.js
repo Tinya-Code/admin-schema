@@ -15,7 +15,7 @@
 //     → computeRules_ (este archivo) deriva valores ANTES de validar;
 //       sólo al crear y sólo si el destino viene vacío (slug es inmutable)
 //   resource.checks = [{ check, …params }]
-//     → REGISTRY.checks (primitives/checks) corre DESPUÉS de los declarativos,
+//     → REGISTRY.checks (capabilities/checks) corre DESPUÉS de los declarativos,
 //       en el orden del array, acumulando en el MISMO 422
 // Ambos toleran payloads rotos y se ejecutan aunque haya errores declarativos
 // para entregar todos los errores en un solo 422.

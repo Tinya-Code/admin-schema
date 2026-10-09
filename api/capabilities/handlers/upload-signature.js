@@ -1,4 +1,4 @@
-// primitives/handlers/upload-signature — Firma de subida a Cloudinary
+// capabilities/handlers/upload-signature — Firma de subida a Cloudinary
 // (baseapi §11). Resuelto desde `REGISTRY.endpoints.uploadSignature`
 // (schema/endpoints/upload-signature), no por código en el router.
 //
@@ -78,3 +78,12 @@ function cloudinarySign_(apiSecret, params) {
     })
     .join('');
 }
+
+// Se registra por la puerta única (R3.14): era de los últimos handlers que
+// el router resolvía sólo por su fallback a globalThis.
+registerCapability('handlers', {
+  id: 'handleUploadSignature',
+  since: '1.0',
+  argsSchema: null,
+  run: handleUploadSignature,
+});
