@@ -23,6 +23,45 @@ Apps Script no expone cabeceras: todo viaja en el cuerpo de un `POST`
 Los `code` de un 422 son `VALIDATION_*` y comparten vocabulario con
 `src/app/core/registry/field-validators.ts` (check 11 de contract-check).
 
+## Listados de recurso (`GET /admin/<recurso>`, R6.4)
+
+Las rutas CRUD de recurso **no** salen de `REGISTRY.endpoints` (no tienen
+`handler` propio): las arma el motor desde el recurso. Éste es el contrato
+que comparten todas las de listado.
+
+### Entrada de paginación — mutuamente excluyente
+
+| Clave    | Forma                       | Cuándo se usa                                |
+| -------- | --------------------------- | -------------------------------------------- |
+| `page`   | `{ size: ≥1, offset?: ≥0 }` | primera página, por posición                 |
+| `cursor` | `<nextCursor>`              | continuación: el token de la página anterior |
+
+Las dos a la vez, un `size`/`offset` no entero, una clave fuera de
+`size`/`offset` o un cursor corrupto ⇒ **422** con `errors[]`. Se valida
+**antes** de leer la hoja.
+
+### Salida — sobre estándar
+
+Cuando la operación declara `shape.envelope: 'list'`, la respuesta es
+SIEMPRE ésta, con y sin página pedida:
+
+```json
+{ "items": [ … ], "nextCursor": "eyJ2IjoxLCJvIjoyfQ", "total": 128 }
+```
+
+| Clave        | Significado                                                   |
+| ------------ | ------------------------------------------------------------- |
+| `items`      | la página pedida; sin paginar, la lista entera                |
+| `nextCursor` | token **opaco** para la página siguiente; `null` en la última |
+| `total`      | filas que coinciden con el filtro/vista **antes** del corte   |
+
+Sin `envelope: 'list'` no hay dónde devolver el cursor, así que **pedir
+página a ese listado responde 422** en vez de cortar en silencio; lo
+mismo con una vista `aggregate` (devuelve UNA fila de resultado). Los
+`code` de éstos y de la paginación son `VALIDATION_PAGE`,
+`VALIDATION_PAGE_SIZE`, `VALIDATION_PAGE_OFFSET`, `VALIDATION_CURSOR` y
+`VALIDATION_PAGINATION`, con `path` relativo al payload.
+
 ## Resumen
 
 | #   | Método | Ruta                      | Acceso  | Límites                                                  | Recurso  | `input` | `output` | `since` |

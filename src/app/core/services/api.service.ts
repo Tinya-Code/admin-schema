@@ -41,10 +41,13 @@ export class ApiService {
 
   /**
    * Listado. El backend envuelve la respuesta cuando la operación declara
-   * `shape.envelope: 'list'` (F5) ⇒ `{ items, total }`; la UI consume `T[]`
-   * en todos lados (F7-3) y este es el ÚNICO punto que habla de listas, así
-   * que el desenvolvimiento vive acá. Un listado sin envelope (arreglo
-   * plano, el contrato histórico) pasa tal cual.
+   * `shape.envelope: 'list'` (F5) ⇒ `{ items, nextCursor, total }` (R6.4);
+   * la UI consume `T[]` en todos lados (F7-3) y este es el ÚNICO punto que
+   * habla de listas, así que el desenvolvimiento vive acá. `nextCursor` es
+   * el token de la página siguiente y `null` en la última — éste servicio
+   * lo descarta hoy porque la lista no pagina todavía (backlog-ui-ux).
+   * Un listado sin envelope (arreglo plano, el contrato histórico) pasa
+   * tal cual.
    */
   list<T>(endpoint: ResourceEndpoints): Observable<T[]> {
     return this.send<unknown>(endpoint.list, 'GET').pipe(map((raw) => unwrapList<T>(raw)));
@@ -113,7 +116,7 @@ export class ApiService {
   }
 }
 
-/** `{ items, total }` (F5) → `T[]`; arreglo plano → tal cual; otro ⇒ []. */
+/** `{ items, nextCursor, total }` (F5/R6.4) → `T[]`; arreglo plano → tal cual; otro ⇒ []. */
 function unwrapList<T>(raw: unknown): T[] {
   if (Array.isArray(raw)) {
     return raw as T[];

@@ -337,13 +337,32 @@ function readPath_(obj, path) {
   return cur;
 }
 
-// envelope 'list' ⇒ { items, total } sobre arreglos YA resueltos; 'plain' o
-// ausente ⇒ tal cual. Sólo envuelve listas: en objetos no hay nada que
-// aplanar (el envoltorio éxito/error de 12-http no se toca, regla 4).
-function shapeEnvelope_(data, shape) {
+// envelope 'list' ⇒ el sobre de listado ESTÁNDAR (R6.4) sobre arreglos YA
+// resueltos; 'plain' o ausente ⇒ tal cual. Sólo envuelve listas: en objetos
+// no hay nada que aplanar (el envoltorio éxito/error de 12-http no se toca,
+// regla 4).
+//
+//   { items, nextCursor, total }
+//
+//   · items      — la página pedida, o la lista entera si no se paginó.
+//   · nextCursor — token opaco para la página siguiente; `null` cuando no
+//                  queda nada o cuando la petición no pidió página. SIEMPRE
+//                  presente: una clave que puede faltar obliga a consumidores
+//                  a adivinar, y una que siempre está no.
+//   · total      — tamaño del conjunto ANTES del corte de página. Sin
+//                  paginar coincide con `items.length`, así el valor que ya
+//                  consumía el front no cambia de significado (regla 5).
+//
+// `meta` lo arma 27-views (el único sitio que sabe si hubo página); sin él
+// el sobre describe una lista sin cortar.
+function shapeEnvelope_(data, shape, meta) {
   if (!shape || shape.envelope !== 'list') return data;
   if (!Array.isArray(data)) return data;
-  return { items: data, total: data.length };
+  return {
+    items: data,
+    nextCursor: meta ? meta.nextCursor : null,
+    total: meta ? meta.total : data.length,
+  };
 }
 
 // Respuesta de una operación NO listada (get/create/update/delete):

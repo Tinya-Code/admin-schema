@@ -20,6 +20,9 @@
 // sigue mapeando con los MISMOS mensajes de error que la versión por
 // nombres; filter aplica sólo el where de la vista (sin sort/limit/handler)
 // y view aplica la vista completa. La base cacheada NUNCA se muta.
+// R6.4 · el payload admite además `page { size, offset? }` o `cursor`
+// (paginación de PETICIÓN, distinta de la `page` declarada en la vista) y
+// la respuesta pasa a ser el sobre estándar { items, nextCursor, total }.
 // Top-level: sólo declaraciones de funciones (se ejecutan en runtime).
 
 // ── Resolución de declaraciones ────────────────────────────────────────────
@@ -209,35 +212,68 @@ function sortItems_(items, sort) {
 // Shape (F5): el resultado se envuelve con el envelope de la forma
 // efectiva (vista con shape > operations.list.shape > 'plain'); las vistas
 // con shape propio acotan campos del base ya proyectado.
+//
+// R6.4 · paginación de PETICIÓN: el payload puede traer `page
+// { size, offset? }` (primera página) o `cursor` (continuación: el
+// `nextCursor` que devolvió la anterior). Es el ÚLTIMO eslabón del pipeline
+//   where ⇒ sort ⇒ page|limit de la vista ⇒ expand ⇒ select ⇒ página
+// y sólo se admite sobre listados con `envelope: 'list'`: sin ese sobre no
+// hay dónde devolver `nextCursor`, así que pedir página responde 422 con una
+// acción clara en vez de cortar la lista en silencio.
 function listWithRules_(ss, resource, map, request) {
-  var base = listCollection_(ss, resource, map);
   var payload = request.payload || {};
   var wantsFilter = payload.filter !== undefined && payload.filter !== null;
   var wantsView = payload.view !== undefined && payload.view !== null;
+  var viewName = wantsView ? String(payload.view) : null;
   // Shape del listado (F5): operations.list.shape; la vista declarada con
   // shape propio lo reemplaza (campos: acotado a lo que el base ya trae —
   // ampliar exigiría releer). Se valida acá aunque la lista esté vacía o
   // venga de caché (el shape por ítem no correría).
   var listShape = resolveListShape_(resource, null);
   if (listShape) validateShape_(resource, listShape);
-  if (!wantsFilter && !wantsView) return shapeEnvelope_(base, listShape);
-  var ctx = readRulesCtx_(ss, resource, map, base, payload);
+  // El shape efectivo se resuelve POR DELANTE de la lectura: contra él se
+  // juzga la paginación, antes de gastar la hoja. Sólo se LEE acá — la
+  // validación del shape de la vista queda donde estaba, para no reordenar
+  // los errores que ya tienen test.
+  var viewShape = wantsView ? resolveListShape_(resource, viewName) : undefined;
+  var effShape = viewShape && viewShape !== listShape ? viewShape : listShape;
+  var page = readRequestPage_(payload);
+  if (page !== null) assertPaginable_(resource, effShape, page, viewName);
+
+  var base = listCollection_(ss, resource, map);
   var items = base;
-  if (wantsFilter) items = applyViewFilter_(resource, String(payload.filter), items, ctx);
-  if (wantsView) items = applyDeclaredView_(resource, String(payload.view), items, ctx);
-  var effShape = listShape;
-  if (wantsView) {
-    var viewShape = resolveListShape_(resource, String(payload.view));
+  if (wantsFilter || wantsView) {
+    var ctx = readRulesCtx_(ss, resource, map, base, payload);
+    if (wantsFilter) items = applyViewFilter_(resource, String(payload.filter), items, ctx);
+    if (wantsView) items = applyDeclaredView_(resource, viewName, items, ctx);
     // applyView*/applyDeclaredView_ ya validaron que la vista existe.
     if (viewShape && viewShape !== listShape) {
       validateShape_(resource, viewShape);
       items = items.map(function (item) {
         return applyShape_(resource, item, viewShape);
       });
-      effShape = viewShape;
     }
   }
-  return shapeEnvelope_(items, effShape);
+  var meta = null;
+  if (page !== null) {
+    if (!Array.isArray(items)) {
+      throw validationError_([
+        {
+          path: page.path,
+          message: 'Este listado no devuelve una lista, así que no se puede paginar.',
+          code: 'VALIDATION_PAGINATION',
+        },
+      ]);
+    }
+    // `total` se cuenta ANTES del corte: es el conjunto que coincide con el
+    // filtro/vista, no el de la página. `nextCursor` sólo existe si queda
+    // algo después — una página finita no promete una siguiente.
+    var total = items.length;
+    var hasta = page.offset + page.size;
+    meta = { total: total, nextCursor: hasta < total ? encodeCursor_(hasta, page.size) : null };
+    items = items.slice(page.offset, hasta);
+  }
+  return shapeEnvelope_(items, effShape, meta);
 }
 
 function applyViewFilter_(resource, name, items, ctx) {
@@ -252,6 +288,234 @@ function applyViewFilter_(resource, name, items, ctx) {
   items.forEach(function (item) {
     if (evalWhere_(conds, item, ctx)) out.push(item);
   });
+  return out;
+}
+
+// ── R6.4 · paginación de petición ──────────────────────────────────────────
+//
+// Dos entradas, MUTUAMENTE EXCLUSIVAS (las dos a la vez ⇒ 422):
+//   page   { size: ≥1, offset?: ≥0 }   primera página, por posición
+//   cursor <nextCursor de la anterior>  continuación opaca
+//
+// Toda la validación es 422 con `errors[]` — la misma forma que la
+// validación de `input` del router, con `path` relativo al payload — porque
+// esto es ENTRADA DEL CLIENTE, no configuración: 500 es para el schema
+// roto (§16), no para lo que manda el navegador. Se valida ANTES de leer la
+// hoja.
+
+// Entero (no NaN, no 2.5, no '3'): los cortes de página son posiciones.
+function isInt_(value) {
+  return typeof value === 'number' && isFinite(value) && Math.floor(value) === value;
+}
+
+// `null` si la petición no paginó (ausente o `null`, igual que
+// filter/view); si paginó, `{ size, offset, path }` o un 422 con todos los
+// problemas que haya.
+function readRequestPage_(payload) {
+  var page = payload.page;
+  var cursor = payload.cursor;
+  var hayPage = page !== undefined && page !== null;
+  var hayCursor = cursor !== undefined && cursor !== null;
+  if (!hayPage && !hayCursor) return null;
+  if (hayPage && hayCursor) {
+    throw validationError_([
+      {
+        path: 'page',
+        message: 'Se pagina con `page` o con `cursor`, no con los dos.',
+        code: 'VALIDATION_PAGINATION',
+      },
+    ]);
+  }
+  return hayPage ? readPageSpec_(page) : readCursor_(cursor);
+}
+
+// page: objeto sin claves fuera de { size, offset }. Las claves desconocidas
+// se RECHAZAN (no se ignoran): `page: { size: 5, ofset: 3 }` con offset
+// silenciosamente 0 sería un corte que nadie pidió.
+function readPageSpec_(page) {
+  var errors = [];
+  if (page === null || typeof page !== 'object' || Array.isArray(page)) {
+    throw validationError_([
+      {
+        path: 'page',
+        message: 'Debe ser un objeto { size, offset? }.',
+        code: 'VALIDATION_PAGE',
+      },
+    ]);
+  }
+  Object.keys(page).forEach(function (key) {
+    if (key !== 'size' && key !== 'offset') {
+      errors.push({
+        path: 'page.' + key,
+        message: 'Clave desconocida: sólo se admiten `size` y `offset`.',
+        code: 'VALIDATION_PAGE',
+      });
+    }
+  });
+  // `size` ≥ 1 y no 0: una página de cero nunca avanza y encadena
+  // `nextCursor` para siempre. `offset` ≥ 0, como en la vista declarada.
+  if (!isInt_(page.size) || page.size < 1) {
+    errors.push({
+      path: 'page.size',
+      message: '`size` debe ser un entero ≥ 1.',
+      code: 'VALIDATION_PAGE_SIZE',
+    });
+  }
+  var offset = page.offset === undefined ? 0 : page.offset;
+  if (!isInt_(offset) || offset < 0) {
+    errors.push({
+      path: 'page.offset',
+      message: '`offset` debe ser un entero ≥ 0.',
+      code: 'VALIDATION_PAGE_OFFSET',
+    });
+  }
+  if (errors.length > 0) throw validationError_(errors);
+  return { size: page.size, offset: offset, path: 'page' };
+}
+
+// cursor: sólo el que emitió el back. Decodifica y valida por dentro; un
+// cursor fabricado o viejo es 422, no un corte mágico.
+function readCursor_(cursor) {
+  var errors = [];
+  if (typeof cursor !== 'string' || cursor === '') {
+    errors.push({
+      path: 'cursor',
+      message: 'Debe ser el `nextCursor` de la página anterior.',
+      code: 'VALIDATION_CURSOR',
+    });
+  } else {
+    var parsed = decodeCursor_(cursor);
+    if (parsed === null) {
+      errors.push({
+        path: 'cursor',
+        message: 'Cursor inválido: no se pudo decodificar.',
+        code: 'VALIDATION_CURSOR',
+      });
+    } else {
+      if (!isInt_(parsed.v) || parsed.v !== CURSOR_VERSION_) {
+        errors.push({
+          path: 'cursor',
+          message: 'Versión de cursor no soportada: pedí la página con `page`.',
+          code: 'VALIDATION_CURSOR',
+        });
+      }
+      if (!isInt_(parsed.o) || parsed.o < 0) {
+        errors.push({
+          path: 'cursor',
+          message: 'Cursor inválido: posición no numérica.',
+          code: 'VALIDATION_CURSOR',
+        });
+      }
+      if (!isInt_(parsed.s) || parsed.s < 1) {
+        errors.push({
+          path: 'cursor',
+          message: 'Cursor inválido: tamaño de página no numérico.',
+          code: 'VALIDATION_CURSOR',
+        });
+      }
+      if (errors.length === 0) return { size: parsed.s, offset: parsed.o, path: 'cursor' };
+    }
+  }
+  throw validationError_(errors);
+}
+
+// ¿Se puede paginar ESTE listado? Dos prohibiciones, ambas accionables:
+//   · sin `envelope: 'list'` no hay dónde devolver el `nextCursor`.
+//   · una vista `aggregate` devuelve UNA fila de resultado: paginarla sería
+//     inventar un corte sobre un número.
+function assertPaginable_(resource, shape, page, viewName) {
+  if (!shape || shape.envelope !== 'list') {
+    throw validationError_([
+      {
+        path: page.path,
+        message:
+          'Este listado no admite paginación: declara `shape.envelope: "list"` en su operación de listado.',
+        code: 'VALIDATION_PAGINATION',
+      },
+    ]);
+  }
+  if (viewName === null) return;
+  var views = resource.views || {};
+  if (!Object.prototype.hasOwnProperty.call(views, viewName)) return;
+  var view = views[viewName];
+  if (view && view.aggregate !== undefined && view.aggregate !== null) {
+    throw validationError_([
+      {
+        path: page.path,
+        message: 'La vista "' + viewName + '" devuelve un agregado, no una lista paginable.',
+        code: 'VALIDATION_PAGINATION',
+      },
+    ]);
+  }
+}
+
+// ── Cursor opaco ───────────────────────────────────────────────────────────
+//
+// `nextCursor` = base64url de `{"v":1,"o":<offset>,"s":<size>}`. Opaco para
+// el consumidor (lo emite el back, no se arma a mano) y versionado por `v`
+// para poder cambiar el formato sin adivinar cursors viejos. NO es una
+// credencial — no lleva firma, sólo una posición — así que el encoder es JS
+// puro: corre igual en Apps Script y en Node sin `Utilities` ni dobles en
+// los tests. El corte en sí no es secreto: quien lo cambie sólo consigue
+// otra página de la misma lista que ya puede leer.
+var CURSOR_VERSION_ = 1;
+var B64URL_CHARS_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+var B64URL_INDEX_ = (function () {
+  var index = {};
+  for (var i = 0; i < B64URL_CHARS_.length; i++) index[B64URL_CHARS_.charAt(i)] = i;
+  return index;
+})();
+
+function encodeCursor_(offset, size) {
+  return b64urlEncode_(JSON.stringify({ v: CURSOR_VERSION_, o: offset, s: size }));
+}
+
+// `null` ante cualquier cosa que no sea un objeto JSON: el que fabrica el
+// error es el caller (422), acá sólo se clasifica.
+function decodeCursor_(cursor) {
+  try {
+    var parsed = JSON.parse(b64urlDecode_(cursor));
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// base64url sin relleno (RFC 4648 §5). Tres bytes ⇒ cuatro caracteres; uno
+// o dos ⇒ se corta donde sobra relleno, que en base64url no se escribe.
+function b64urlEncode_(text) {
+  var out = '';
+  for (var i = 0; i < text.length; i += 3) {
+    var c1 = text.charCodeAt(i);
+    var c2 = i + 1 < text.length ? text.charCodeAt(i + 1) : -1;
+    var c3 = i + 2 < text.length ? text.charCodeAt(i + 2) : -1;
+    out += B64URL_CHARS_.charAt(c1 >> 2);
+    out += B64URL_CHARS_.charAt(((c1 & 3) << 4) | (c2 < 0 ? 0 : c2 >> 4));
+    if (c2 < 0) continue;
+    out += B64URL_CHARS_.charAt(((c2 & 15) << 2) | (c3 < 0 ? 0 : c3 >> 6));
+    if (c3 < 0) continue;
+    out += B64URL_CHARS_.charAt(c3 & 63);
+  }
+  return out;
+}
+
+// Inverso exacto de b64urlEncode_. Un carácter fuera del alfabeto ⇒ throw:
+// el caller lo traduce a 422. El buffer se enmascara a 12 bits para que las
+// operaciones de bitwise (32 bits en JS) nunca se desborden.
+function b64urlDecode_(text) {
+  var out = '';
+  var buffer = 0;
+  var bits = 0;
+  for (var i = 0; i < text.length; i++) {
+    var value = B64URL_INDEX_[text.charAt(i)];
+    if (value === undefined) throw new Error('cursor con carácter fuera de base64url');
+    buffer = ((buffer << 6) | value) & 0xfff;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += String.fromCharCode((buffer >> bits) & 255);
+    }
+  }
   return out;
 }
 

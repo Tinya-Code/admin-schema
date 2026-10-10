@@ -57,6 +57,20 @@ describe('ApiService — desarrollo del envelope de listado (F7-3)', () => {
     expect(await pending).toEqual([{ slug: 'a' }]);
   });
 
+  it('el sobre estándar R6.4 { items, nextCursor, total } desenvuelve sólo los items', async () => {
+    const pending = firstValueFrom(api.list<Row>(ENDPOINTS));
+    http
+      .expectOne('/api')
+      .flush({ items: [{ slug: 'a' }, { slug: 'b' }], nextCursor: 'eyJ2IjoxLCJvIjoyfQ', total: 7 });
+    expect(await pending).toEqual([{ slug: 'a' }, { slug: 'b' }]);
+  });
+
+  it('nextCursor null (última página) desenvuelve igual: nadie tiene que comprobarlo', async () => {
+    const pending = firstValueFrom(api.list<Row>(ENDPOINTS));
+    http.expectOne('/api').flush({ items: [{ slug: 'c' }], nextCursor: null, total: 3 });
+    expect(await pending).toEqual([{ slug: 'c' }]);
+  });
+
   it('arreglo plano (contrato histórico, sin envelope) pasa tal cual', async () => {
     const pending = firstValueFrom(api.list<Row>(ENDPOINTS));
     http.expectOne('/api').flush([{ slug: 'b' }]);

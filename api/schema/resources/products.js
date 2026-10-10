@@ -36,8 +36,10 @@ REGISTRY.resources.products = {
     // pick = campos del listado — incluye la base que evalúan las vistas
     // (active, registro_sanitario, category_slug, featured, images) — más
     // `brand`, que el listProjection legacy no exponía. envelope 'list'
-    // envuelve la salida en { items, total }. Sin esta declaración ⇒
-    // fallback listProjection, salida previa idéntica (F5-2, probado en v12).
+    // envuelve la salida en { items, nextCursor, total } y es lo que
+    // habilita paginar la petición (`page`/`cursor`, R6.4). Sin esta
+    // declaración ⇒ fallback listProjection, salida previa idéntica
+    // (F5-2, probado en v12) y paginar da 422.
     list: {
       shape: {
         pick: [
