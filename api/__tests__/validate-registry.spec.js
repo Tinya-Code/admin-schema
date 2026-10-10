@@ -298,4 +298,96 @@ describe('R1.5 — validateRegistry_', () => {
       );
     });
   });
+
+  // F7 · R7.2 (auth §4.8): `audiences` declara qué viaja a cada frontend y
+  // handlePublicOrder lo LEE — declarar mentira acá es una fuga de datos en
+  // producción, por eso cada familia de fallo tiene su rojo al arranque.
+  describe('5 · audiencias (F7 · R7.2)', () => {
+    it('forma válida: la audiencia pública real pasa limpia', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.public.operations = ['get', 'list'];
+      });
+      expect(issues).toEqual([]);
+    });
+
+    it('audiencia con nombre que no es admin ni public', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.cliente = { operations: ['get'] };
+      });
+      expect(issues).toContain(
+        "resources.orders.audiences.cliente: audiencia desconocida (admite 'admin' y 'public')",
+      );
+    });
+
+    it('clave mal escrita dentro de la audiencia', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.public.listProjectionn = ['ref'];
+      });
+      expect(issues).toContain(
+        "resources.orders.audiences.public: clave desconocida 'listProjectionn'",
+      );
+    });
+
+    it('la audiencia pública no admite operaciones de escritura', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.public.operations = ['get', 'update'];
+      });
+      expect(issues).toContain(
+        "resources.orders.audiences.public: la audiencia 'public' es de sólo lectura ('update')",
+      );
+    });
+
+    it('listProjection de audiencia con un campo que el recurso no tiene', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.public.listProjection = ['ref', 'coste'];
+      });
+      expect(issues).toContain(
+        "resources.orders.audiences.public.listProjection 'coste' no es un campo del recurso",
+      );
+    });
+
+    it('views de audiencia con una vista que el recurso no tiene', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.public.views = ['activos'];
+      });
+      expect(issues).toContain(
+        "resources.orders.audiences.public.views 'activos' no es una vista del recurso",
+      );
+    });
+
+    it('la audiencia no puede prometer una operación apagada en el recurso', () => {
+      const issues = mutate(() => {
+        resources_.orders.audiences.admin = { operations: ['reorder'] };
+      });
+      expect(issues).toContain(
+        "resources.orders.audiences.admin: 'reorder' no está encendida en operations del recurso",
+      );
+    });
+
+    it("la audiencia 'admin' exige exposeToFront: true", () => {
+      const issues = mutate(() => {
+        resources_.site.exposeToFront = false;
+        resources_.site.audiences = { admin: { operations: ['get'] } };
+      });
+      expect(issues).toContain(
+        "resources.site.audiences.admin: la audiencia 'admin' exige exposeToFront: true en el recurso",
+      );
+    });
+
+    it('un recurso interno nunca declara audiencia pública', () => {
+      const issues = mutate(() => {
+        resources_._credenciales = {
+          id: '_credenciales',
+          kind: 'dashboard',
+          sheet: null,
+          operations: { get: true },
+          audiences: { public: { operations: ['get'] } },
+          fields: [],
+        };
+      });
+      expect(issues).toContain(
+        "resources._credenciales: recurso interno '_credenciales' no puede declarar audiencia 'public'",
+      );
+    });
+  });
 });

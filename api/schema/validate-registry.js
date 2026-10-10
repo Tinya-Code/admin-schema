@@ -45,6 +45,10 @@ var KNOWN_RESOURCE_KEYS = [
   'transitions',
   'policies',
   'exposeToFront',
+  // F7 · R7.2 (auth §4.8): qué viaja a CADA frontend. `exposeToFront` es la
+  // audiencia admin; la pública es lista blanca estricta y la leen los
+  // endpoints `/p/*` (p. ej. handlePublicOrder).
+  'audiences',
   'fields',
 ];
 
@@ -487,6 +491,112 @@ function validateOperations_(where, resource, issues) {
   });
 }
 
+// F7 · R7.2 — audiencias (auth §4.8): el recurso declara qué viaja a cada
+// frontend. Dos nombres y nada más; una clave fuera de esta lista es un typo
+// que el motor convertiría en silencio.
+var AUDIENCE_NAMES = ['admin', 'public'];
+var AUDIENCE_DECL_KEYS = ['listProjection', 'views', 'operations'];
+// Lo público viaja SIN sesión ⇒ sólo lectura. Ninguna operación de escritura
+// se acepta en la audiencia pública ni en el registro real.
+var PUBLIC_AUDIENCE_OPERATIONS = ['list', 'get'];
+
+/**
+ * Audiencias de un recurso → ROJO al arranque si la declaración miente.
+ *
+ * Reglas (fail-closed en runtime, ROJO acá):
+ *   · nombre y claves de la lista blanca — un typo no se convierte en nada;
+ *   · `admin` exige `exposeToFront: true` — esa puerta ES la audiencia admin;
+ *   · lo público es de sólo lectura y su `listProjection` sólo puede nombrar
+ *     campos del recurso (así `customer_notes` no puede colarse por typo);
+ *   · una operación de audiencia tiene que estar ENCENDIDA en el recurso:
+ *     prometer `create` con `operations.create: false` es mentira de schema;
+ *   · un recurso interno (`_users`, `_audit`…) nunca declara `public`.
+ */
+function validateAudiences_(id, where, resource, fieldKeys, issues) {
+  if (resource.audiences === undefined || resource.audiences === null) return;
+  if (typeof resource.audiences !== 'object' || Array.isArray(resource.audiences)) {
+    issues.push(where + ".audiences: debe ser un objeto con 'admin' y/o 'public'");
+    return;
+  }
+  if (id.indexOf('_') === 0 && resource.audiences['public'] !== undefined) {
+    issues.push(where + ": recurso interno '" + id + "' no puede declarar audiencia 'public'");
+  }
+
+  var viewNames = Object.keys(resource.views || {});
+  Object.keys(resource.audiences).forEach(function (name) {
+    var at = where + '.audiences.' + name;
+    if (AUDIENCE_NAMES.indexOf(name) === -1) {
+      issues.push(at + ": audiencia desconocida (admite 'admin' y 'public')");
+      return;
+    }
+    var decl = resource.audiences[name];
+    if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+      issues.push(at + ': debe ser un objeto');
+      return;
+    }
+    issues.push.apply(issues, unknownKeys_(at, decl, AUDIENCE_DECL_KEYS));
+
+    if (name === 'admin' && resource.exposeToFront !== true) {
+      issues.push(at + ": la audiencia 'admin' exige exposeToFront: true en el recurso");
+    }
+
+    if (decl.listProjection !== undefined) {
+      if (!Array.isArray(decl.listProjection)) {
+        issues.push(at + '.listProjection: debe ser un array de nombres de campo');
+      } else {
+        decl.listProjection.forEach(function (key) {
+          if (typeof key !== 'string' || !fieldKeys[key]) {
+            issues.push(at + ".listProjection '" + key + "' no es un campo del recurso");
+          }
+        });
+      }
+    }
+
+    if (decl.views !== undefined) {
+      if (!Array.isArray(decl.views)) {
+        issues.push(at + '.views: debe ser un array de nombres de vista');
+      } else {
+        decl.views.forEach(function (view) {
+          if (viewNames.indexOf(view) === -1) {
+            issues.push(at + ".views '" + view + "' no es una vista del recurso");
+          }
+        });
+      }
+    }
+
+    if (decl.operations !== undefined) {
+      if (!Array.isArray(decl.operations)) {
+        issues.push(at + '.operations: debe ser un array de nombres de operación');
+      } else {
+        decl.operations.forEach(function (op) {
+          if (KNOWN_OPERATION_KEYS.indexOf(op) === -1) {
+            issues.push(at + ": operación desconocida '" + op + "'");
+            return;
+          }
+          if (name === 'public' && PUBLIC_AUDIENCE_OPERATIONS.indexOf(op) === -1) {
+            issues.push(at + ": la audiencia 'public' es de sólo lectura ('" + op + "')");
+            return;
+          }
+          var enabled = resource.operations ? resource.operations[op] : undefined;
+          if (!operationEnabledDecl_(op, enabled)) {
+            issues.push(at + ": '" + op + "' no está encendida en operations del recurso");
+          }
+        });
+      }
+    }
+  });
+}
+
+// ¿La operación declarada en `resource.operations[op]` está encendida?
+// Misma verdad que el dispatcher de 24-crud (false/ausente ⇒ 405; remove
+// con mode 'forbidden' también), aquí para que la audiencia no prometa
+// rutas que el motor no sirve.
+function operationEnabledDecl_(op, decl) {
+  if (decl === undefined || decl === null || decl === false) return false;
+  if (op === 'remove' && decl === Object(decl) && decl.mode === 'forbidden') return false;
+  return true;
+}
+
 function validateResource_(id, resource, issues) {
   var where = 'resources.' + id;
 
@@ -506,6 +616,7 @@ function validateResource_(id, resource, issues) {
 
   var fieldKeys = fieldKeySet_(resource);
   validateOperations_(where, resource, issues);
+  validateAudiences_(id, where, resource, fieldKeys, issues);
   validateActions_(where, resource, issues);
   validateTransitions_(where, resource, issues);
 

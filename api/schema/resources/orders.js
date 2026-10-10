@@ -32,6 +32,33 @@ REGISTRY.resources.orders = {
     'auth_state',
     'created_at',
   ],
+  // F7 · R7.2 (auth §4.8): qué viaja a CADA frontend. `exposeToFront`
+  // sigue siendo la audiencia admin (equivalencia declarada en el plan);
+  // la pública es lista blanca estricta y ES la que lee
+  // `handlePublicOrder` — sin esta declaración ese endpoint no sirve nada.
+  // De acá sale también la lista que R7.3 compara contra lo que la app
+  // pública llama.
+  audiences: {
+    public: {
+      listProjection: [
+        'ref',
+        'customer_name',
+        'description',
+        'pickup_date',
+        'status',
+        'reference_photo',
+        'authorized_name',
+        'authorized_photo',
+        'auth_state',
+        'created_at',
+        'updated_at',
+        'history',
+      ],
+      // Sólo lectura (el validador lo exige): el PIN se verifica por el
+      // endpoint propio `pinVerify`, no por un recurso público.
+      operations: ['get'],
+    },
+  },
   // B3 · R5.3: operaciones encendidas (sin declarar ⇒ 405). Los pedidos no
   // se reordenan ni se editan en bloque.
   operations: {

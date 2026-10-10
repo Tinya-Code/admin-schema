@@ -1,27 +1,27 @@
 // capabilities/handlers/public-order — Proyección pública de pedido (Fase 4 §4).
 //
 // Resuelto desde `REGISTRY.endpoints.publicOrder` (/p/orders/:ref).
-// Aplica whitelist estricta: sólo expone campos que el cliente y el autorizado
-// necesitan ver para verificar la recogida.
+// Aplica whitelist estricta: sólo expone los campos que el recurso declaró
+// en su audiencia pública.
 //
-// Oculta explícitamente `customer_notes` y `authorized_notes` (notas internas).
+// F7 · R7.2: la whitelist NO vive acá — la declara el recurso
+// (`audiences.public.listProjection`) y éste es su ÚNICO lector. Ocultar un
+// campo público es cambiar el schema del recurso, con su validación al
+// arranque y sus tests; tocar código del endpoint.
 //
 // Precedente: `handleSchema` (schema.js) y `hiddenList` (hidden-list.js).
 
-var PUBLIC_ORDER_FIELDS_ = [
-  'ref',
-  'customer_name',
-  'description',
-  'pickup_date',
-  'status',
-  'reference_photo',
-  'authorized_name',
-  'authorized_photo',
-  'auth_state',
-  'created_at',
-  'updated_at',
-  'history',
-];
+/**
+ * Campos que la audiencia pública puede ver, o `null` si el recurso no
+ * declara esa audiencia (fail-closed: sin declaración no viaja nada).
+ */
+function publicAudienceFields_(resource) {
+  var audiences = resource.audiences;
+  if (!audiences || typeof audiences !== 'object') return null;
+  var pub = audiences['public'];
+  if (!pub || !Array.isArray(pub.listProjection) || pub.listProjection.length === 0) return null;
+  return pub.listProjection;
+}
 
 function handlePublicOrder(payload, request) {
   var ref =
@@ -41,12 +41,17 @@ function handlePublicOrder(payload, request) {
   var resource = getResourceSchema(resourceId);
   if (!resource) throw apiError_(500, 'Recurso ausente: ' + resourceId);
 
+  var publicFields = publicAudienceFields_(resource);
+  if (publicFields === null) {
+    throw apiError_(500, "El recurso '" + resourceId + "' no declara audiences.public");
+  }
+
   var ss = openSpreadsheet_();
   var map = storageMap_(resource);
   var detail = readDetail_(ss, resource, map, ref);
 
   var projected = {};
-  PUBLIC_ORDER_FIELDS_.forEach(function (field) {
+  publicFields.forEach(function (field) {
     if (detail[field] !== undefined) {
       projected[field] = detail[field];
     }

@@ -157,4 +157,36 @@ describe('Fase 4 — Endpoint público de solo lectura (/p/orders/:ref)', () => 
     expect(res.customer_name).toBe('Juan Pérez');
     expect(res.customer_notes).toBeUndefined();
   });
+
+  // F7 · R7.2: la whitelist NO la decide el handler — la declara el recurso
+  // (`audiences.public.listProjection`). Éstos dos casos prueban que ese es
+  // el ÚNICO lector: cambiar el schema cambia la respuesta, quitar la
+  // declaración el endpoint deja de servir nada.
+  describe('F7 · R7.2 — la whitelist sale de la audiencia pública del recurso', () => {
+    const mockDetail = () => {
+      globalThis.openSpreadsheet_ = () => null;
+      globalThis.readDetail_ = (_ss, _resource, _map, key) => {
+        if (key === 'ORD-789') return { ...MOCK_ORDER };
+        throw globalThis.apiError_(404, 'No existe: ' + key);
+      };
+    };
+    const get = () => REGISTRY.handlers.handlePublicOrder({}, { params: { ref: 'ORD-789' } });
+
+    it('sigue la audiencia declarada: fuera de la lista, fuera de la respuesta', () => {
+      mockDetail();
+      originalOrders = JSON.parse(JSON.stringify(REGISTRY.resources.orders));
+      REGISTRY.resources.orders.audiences.public.listProjection = ['ref', 'status'];
+
+      const res = get();
+      expect(res).toEqual({ ref: 'ORD-789', status: 'PENDIENTE' });
+    });
+
+    it('recurso sin audiencia pública ⇒ 500 (fail-closed, no sirve nada)', () => {
+      mockDetail();
+      originalOrders = JSON.parse(JSON.stringify(REGISTRY.resources.orders));
+      delete REGISTRY.resources.orders.audiences;
+
+      expect(() => get()).toThrowError(/no declara audiences\.public/);
+    });
+  });
 });
