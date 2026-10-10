@@ -2185,13 +2185,53 @@ reorder, bulk }` con cada una encendible/apagable.
     `api:check` **5 VERDE, 0 ROJO** · `build` ✔ · prettier deuda **17** ·
     `api:drift` ✔.
 
-- [ ] **R5.7** — `computed` extensible (B10)
-  - **Registro con `argsSchema`:** `slug(from)`, `sequence(prefix)`, `uuid`,
-    `hash(field)`, `copy(field)`, `now`, `currentUser`,
-    `lookup(resource, field)`.
-  - **Se declara por operación** (`create`/`update`).
+- [x] **R5.7** — `computed` extensible (B10)
+  - **Registro con `argsSchema`:** `slug(from)` (el `slugify` existente, sin
+    duplicar id — D58), `sequence(prefix, pad)`, `uuid`, `hash(field)`,
+    `copy(field)`, `now`, `currentUser`, `lookup(resource, field)`.
+  - **Transforms con contexto:** los nuevos reciben `(value, params, ctx)` con
+    `ctx = { ss, resource, payload, current, user, isNew, field }` —
+    `ctx.ss` para leer hojas (sequence, lookup), `ctx.user` para la identidad
+    AUTENTICADA del request (no la sesión GAS), `ctx.field` para el destino
+    (sequence escanea esa columna).
+  - **Se declara por operación** (`create`/`update`): `computeRules_` corre en
+    el pre-lock y en el en-lock de `updateCollection_`/`updateSingleton_`; en
+    `update` sólo llena destino vacío en la vista fusionada (D59) — un slug ya
+    guardado nunca se rederiva (inmutabilidad de facto de products/categories).
+  - **Semántica de vacío:** `lookup` sin coincidencia ⇒ `''` (el `required` lo
+    pinta) y recurso inexistente ⇒ **500** (D60, el mismo criterio de desajuste
+    de almacén que el resto del motor); `currentUser` sin identidad ⇒ `''`
+    (vacío no llena destino).
+  - **Arranque (`validate-registry` 3c):** itera TODAS las claves de
+    `operations` (incluye `update`) y juzga `transform`, destino, origen y
+    `params` contra `argsSchema` — gratis para `update.computed`.
+  - **Spec:** `api/__tests__/computed-ext.spec.js` (nuevo, 19 tests: registro ·
+    sequence · uuid · hash · copy · currentUser · lookup · update.computed ·
+    validateRegistry_). api pasa de 572 a **591/591**; `write-response.spec.js`
+    (regresión: slug no se recalcula en un PUT mudo sin declaración) sigue verde.
+  - **MAPA.md:** fila de `capabilities/computed.js` + mención a `computeRules_`
+    en `24-crud.js` (declara por operación, no sólo `create`).
+  - **Rojos contados:** **38 fallos de tests en 16 mutaciones** — M1 sequence no
+    incrementa (3) · M2 sequence ignora el prefijo al escanear (2) · M3 uuid
+    constante (1) · M4 hash no distingue entradas (1) · M5 copy nunca copia (1)
+    · M6 currentUser ignora la identidad (1) · M7 lookup nunca encuentra (1) ·
+    M8 lookup sin 500 en recurso roto (1) · M9 `ctx.ss` no se pasa (5) · M10
+    `params` no se pasa (7) · M11 se rederiva un destino ya guardado (1) · M12
+    update ignora su declaración (2) · M13 sin origen fusionado (1) · M14 update
+    calcula sin la fila guardada (1, en write-response) · M15 `ctx.user` no se
+    pasa (1) · M16 arranque no valida los args de `update.computed` (1).
+  - **Gates frescos (6/6):** front **361/361** (48) · api **591/591** (34) ·
+    `api:check` **5 VERDE, 0 ROJO** · `build` ✔ · prettier deuda **17** ·
+    `api:drift` ✔.
 
-- [ ] **R5.8** — Gates de la fase
+- [x] **R5.8** — Gates de la fase
+  - Corrida fresca de los 6 gates con la fase completa aplicada (no relanza
+    ninguna revisión sobre contenido sin cambios): front **361/361**, api
+    **591/591**, `api:check` **5 VERDE**, `build` ✔, prettier deuda **17** (los
+    mismos preexistentes), `api:drift` ✔.
+  - **Fase 5 cierra con 75 rojos contados en total** — R5.5 (transiciones, 22) + R5.6 (bus de eventos, 27) + R5.7 (computed extensible, 38) — todos
+    mutaciones comportamentales verdes en la rama base y rojas sobre el cambio,
+    con la suite restaurada a verde tras cada una.
 
 ---
 
@@ -2509,6 +2549,9 @@ reorder, bulk }` con cada una encendible/apagable.
 | **D55** | `beforeCreate` corre DESPUÉS de la validación declarativa y sus mutaciones no se revalidan; su error SIEMPRE veta (el `onError` no aplica a fases pre)                                                                                                                | R5.6                    | ✅ **resuelta en R5.6** → es código de confianza declarado en el schema, no input de usuario; re-validar daría al hook un duelo con el validador. Y un veto tragado en silencio sería un motor que escribe lo que el schema no autorizó ⇒ la fase pre propaga siempre                                                                                                                                                                                                                                                     |
 | **D56** | El plan nombra `onStatusChange` sin decir cómo detecta el cambio ni qué campo mira                                                                                                                                                                                    | R5.6                    | ✅ **resuelta en R5.6** → no se inventa `statusField`: dispara sólo para campos con máquina en `resource.transitions` (R5.5) cuyo valor CAMBIÓ. Sin `transitions` declarados, la fase queda muda a propósito                                                                                                                                                                                                                                                                                                              |
 | **D57** | `onError: 'compensate'`: ¿qué compensa exactamente si no hay rollback (O4)?                                                                                                                                                                                           | R5.6                    | ✅ **resuelta en R5.6** → los efectos PARCIALES DEL PROPIO HOOK (los que registró con `ctx.onCompensate`), en LIFO y cada uno aislado; la escritura principal jamás se deshace. Con `log`/`ignore` la compensación registrada NO corre                                                                                                                                                                                                                                                                                    |
+| **D58** | El plan llama `slug(from)` al transform del plan, pero el id registrado es `slugify` (réplica de `slugify.ts`): ¿otro id o el mismo?                                                                                                                                  | R5.7                    | ✅ **resuelta en R5.7** → se registra **`slugify`** y `slug(from)` del plan se cumple como su forma declarable; no se duplica el id ni se migra el vocabulario existente                                                                                                                                                                                                                                                                                                                                                  |
+| **D59** | En `update`, el computed rellena el destino vacío usando la fila guardada: ¿con qué vista del dato juzga y cuándo puede escribir?                                                                                                                                     | R5.7                    | ✅ **resuelta en R5.7** → con la **vista fusionada** (entrante ∪ guardado) y sólo si el destino YA GUARDADO está vacío; el destino guardado nunca se rederiva (inmutabilidad de facto de products/categories). El origen se lee del guardado cuando el update no lo trae                                                                                                                                                                                                                                                  |
+| **D60** | `lookup(resource, field)`: ¿qué pasa sin coincidencia, con recurso inexistente, y qué es `currentUser` sin identidad?                                                                                                                                                 | R5.7                    | ✅ **resuelta en R5.7** → sin coincidencia ⇒ `''` (el `required` lo pinta en el 422) y recurso inexistente ⇒ **500** (desajuste de almacén, mismo criterio que `readSheetData_`); `currentUser` sin identidad ⇒ `''` — el vacío no llena destino, así que no inventa un email falso                                                                                                                                                                                                                                       |
 
 ### D17 · R1.7 «Test de contrato del front» — tres premisas
 
