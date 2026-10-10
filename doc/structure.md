@@ -74,11 +74,16 @@ src/
     │   │   └── api.model.ts          # contratos de la API, ApiError, páginas
     │   ├── services/
     │   │   ├── api.service.ts        # CRUD genérico por endpoint del schema
+    │   │   ├── data-source.service.ts    # fuentes declaradas: fetch, caché (TTL 30 s) e interpolación de params (F8 · R6.5)
     │   │   ├── upload.service.ts     # subida de imágenes → URL pública
     │   │   ├── error-mapper.service.ts  # errores 422 → ruta de campo
     │   │   └── notification.service.ts  # toasts / confirmaciones
     │   ├── interceptors/             # HttpInterceptorFn (auth token, manejo de error global)
     │   ├── guards/                   # CanActivateFn
+    │   ├── utils/
+    │   │   ├── clipboard.ts          # copiar al portapapeles
+    │   │   ├── source-options.ts     # filas de una fuente → opciones de select/relation (valueField/labelField/onlyActive)
+    │   │   └── template-interpolator.ts  # `{campo}` ← árbol de valores (params de `source`)
     │   └── tokens.ts                 # InjectionToken (API_URL, etc.)
     │
     ├── shared/                       # REUTILIZABLE y agnóstico de dominio

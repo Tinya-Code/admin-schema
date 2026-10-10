@@ -2338,10 +2338,67 @@ reorder, bulk }` con cada una encendible/apagable.
     `api:check` **VERDE** (5) · `build` ✔ · prettier **17** (deuda
     preexistente, sin subirla).
 
-- [ ] **R6.5** — Fuentes de datos declaradas (F8)
+- [x] **R6.5** — Fuentes de datos declaradas (F8)
   - **Para widgets, relations y selects:**
     `source: { resource, view, params, labelField, valueField }`
   - **Registro de fetchers** + caché por `resource+view+params`.
+  - **Verificado:**
+    - **Una sola palabra, no dos:** el vocabulario entero (relación, select,
+      multiselect, widget) habla **`source`**; los campos planos `resource` /
+      `valueField` / `labelField` **ya no existen** y declararlos es **rojo al
+      arranque** («clave desconocida; usa `source`»). Un mismo objeto sirve
+      para todo, así que una relación y un select pueden apuntar a la misma
+      fuente con la misma forma.
+    - **`select`/`multiselect` son XOR (D62):** `options` fijas **o** `source`,
+      nunca las dos y nunca ninguna («debe declarar `options` o `source`»).
+      Elegir en runtime cuál manda obligaría a mirar el valor para saber qué
+      hace el campo, y el motor no debe tener dos lecturas de una declaración.
+    - **Un solo dueño del `resource` de un widget (D63):**
+      `RecordListWidget.resource` se **elimina**; el listado declara
+      `source: { resource }`. Dos claves para el mismo dato es dos formas de
+      romperse por desincronización.
+    - **Interpolación en `params` (canal propio, no el de filas):**
+      `params: { orden: '{lang}' }` se resuelve con el **árbol de valores del
+      campo** (`DataSourceService`), y lo que se resuelve **vacío se omite**
+      (un parámetro vacío no es «todo»: es mentir al `where`). El back lo
+      recibe en `payload.params` y lo valida **antes de leer la hoja**
+      (422 `VALIDATION_PARAMS` con `path params.<clave>`, límite 10 claves /
+      500 chars por valor).
+    - **Operando `param` fail-closed:** `where: { op: 'param' }` compara el
+      campo contra `ctx.params.<nombre>`; sin el parámetro la condición es
+      **`null` (no resuelve)** y no `false`: el `not` no se aplica sobre un
+      operando que no resolvió (mejor ocultar de más que filtrar de menos).
+    - **Un fetcher, una caché:** `DataSourceService` centraliza la lectura
+      (TTL 30 s por `resource|view|params`, 100 claves máximo), devuelve `[]`
+      ante cualquier respuesta no-array y **no cachea errores**; los errores de
+      `resource.value()` (estado `error`) se miran por `status()` **antes** de
+      leer `value()`, que tira. Los widgets `series`/`status-progress` y
+      `metric-card` aceptan fila-array además del objeto plano (`toCounters`
+      / `valorDeKpi`), que es lo que las fuentes declaradas devuelven.
+    - **Regresión cazada en el camino:** `readRulesCtx_` seguía leyendo
+      `field.resource` y dejaba `ctx` sin el recurso de la relación ⇒ toda
+      vista `ref:` (p. ej. `products.publishable`) habría dejado de poder
+      filtrar por categoría; corregido a `field.source.resource` y cubierto
+      por test.
+    - **Spec:** `api/__tests__/list-params.spec.js` (14) ·
+      `validate-registry.spec.js` (24) ·
+      `src/app/core/services/data-source.service.spec.ts` (17) ·
+      `source-options.spec.ts` (7) · `select.spec.ts` (4) ·
+      `multiselect.spec.ts` (4) · `relation.spec.ts` (+1 params) ·
+      `dashboard.spec.ts` (+1 source-widget).
+    - **Mutacionales: 8/8 detectadas** (ficheros restaurados): validación de
+      `params` salteada; `operand.ok` no fail-closed; validación corrida
+      después de leer la hoja; `ctx[field.resource]`; `interpolateParams` sin
+      omitir vacíos; etiqueta ignorando `labelField`; `esFuente` siempre
+      false; `select` sin el guard del estado de error.
+    - **Gates:** front **401** (53 ficheros) · api **653** (38 ficheros) ·
+      `api:check` **VERDE** (5) · `build` ✔ · prettier **17** (deuda
+      preexistente, sin subirla).
+    - **Timing del suite (no del motor):** `render-registry.spec.ts`
+      resuelve 20 imports dinámicos reales y el default de 10 s se quedaba
+      corto cuando el suite completo compite por el hilo ⇒ timeout
+      explícito de 30 s en ese test. Sólo el reloj cambió: ninguna aserción
+      se aflojó.
 
 - [ ] **R6.6** — Gates de la fase
 
@@ -2634,6 +2691,8 @@ reorder, bulk }` con cada una encendible/apagable.
 | **D60**  | `lookup(resource, field)`: ¿qué pasa sin coincidencia, con recurso inexistente, y qué es `currentUser` sin identidad?                                                                                                                                                 | R5.7                    | ✅ **resuelta en R5.7** → sin coincidencia ⇒ `''` (el `required` lo pinta en el 422) y recurso inexistente ⇒ **500** (desajuste de almacén, mismo criterio que `readSheetData_`); `currentUser` sin identidad ⇒ `''` — el vacío no llena destino, así que no inventa un email falso                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **D9-5** | `aggregates` con `groupBy: 'day(created_at)'`: ¿cuál es el alcance realista de agrupación en Sheets si no existe ningún campo `created_at`?                                                                                                                           | R6.2                    | ✅ **resuelta en R6.2** → `groupBy` es **genérico y agrupa por el valor crudo** del campo, no por expresión: acepta cualquier campo incluida fecha ISO (prefijo de 10 chars), porque el tipo `date` es `sheetFormat: 'text'`. **Sin parser de fechas en el backend** (la capa de datos guarda crudo; el formateo vive en `format-date.ts` del front). `day(created_at)` queda fuera de alcance — se resuelve en el consumidor cuando exista tal campo                                                                                                                                                                                                                                    |
 | **D61**  | R6.4 sólo fija la **salida** `{ items, nextCursor, total? }`: no dice cómo se pide la página, quién puede paginar ni qué pasa cuando no puede                                                                                                                         | R6.4                    | ✅ **resuelta en R6.4** → entrada `page { size ≥1, offset? }` **o** `cursor` (mutuamente excluyentes; claves fuera de `size`/`offset` se rechazan), todo error 422 con `errors[]` y `path` relativo al payload **antes** de leer la hoja. `nextCursor` **siempre presente** (`null` al final: una clave que puede faltar obliga a adivinar) y `total` **antes** del corte (sin paginar = `items.length`, el valor que ya consumía el front no cambia). Sólo se pagina con `shape.envelope: 'list'` y nunca una vista `aggregate` ⇒ ambos **422 accionable**, no corte en silencio. Cursor versionado sin firma (no es credencial) con encoder JS puro para que corra igual en GAS y Node |
+| **D62**  | El plan dice que `select` puede tener `options` o `source`, sin decir qué pasa si declara **ambas** ni si puede declarar **ninguna**                                                                                                                                  | R6.5                    | ✅ **resuelta en R6.5** → **XOR estricto**: las dos claves juntas y ninguna de las dos son **rojo al arranque** («debe declarar `options` o `source`»). Decidirlo en runtime obligaría a mirar el valor para saber qué hace el campo, y una declaración debe leerse sin abrir el dato                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **D63**  | El plan concentra las fuentes en `source`, pero `RecordListWidget` seguía con su propio `resource` de listado: el mismo dato declarado **dos veces**, en dos palabras distintas                                                                                       | R6.5                    | ✅ **resuelta en R6.5** → se **elimina** `RecordListWidget.resource`; el listado declara `source: { resource }` como todo lo demás. Dos claves para el mismo dato son dos formas de desincronizarse sin que nada lo diga                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### D17 · R1.7 «Test de contrato del front» — tres premisas
 

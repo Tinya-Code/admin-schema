@@ -98,8 +98,8 @@ simples sobre otros campos del mismo nivel o del registro raíz
 | `number`        | number         | Input numérico                                                               | `min`, `max`, `step`, `decimals`         |
 | `currency`      | number         | Número con prefijo de moneda; el valor sigue siendo número puro              | `currencyFrom` (de dónde sale la moneda) |
 | `boolean`       | boolean        | Interruptor (switch)                                                         | `trueLabel`, `falseLabel`                |
-| `select`        | string         | Desplegable de un solo valor                                                 | `options` (fijas)                        |
-| `multiselect`   | string[]       | Selección múltiple con chips                                                 | `options`                                |
+| `select`        | string         | Desplegable de un solo valor                                                 | `options` **o** `source` (XOR)           |
+| `multiselect`   | string[]       | Selección múltiple con chips                                                 | `options` **o** `source` (XOR)           |
 | `url`           | string         | Input con validación de URL y botón “abrir”                                  | —                                        |
 | `email`         | string         | Input con validación de correo                                               | —                                        |
 | `phone`         | string         | Input telefónico; guarda siempre el formato esperado (E.164 o solo dígitos)  | `format`                                 |
@@ -109,9 +109,23 @@ simples sobre otros campos del mismo nivel o del registro raíz
 
 ### 5.2 Referencias
 
-| `type`     | Valor                         | Componente                                                                                          | Opciones                                             |
-| ---------- | ----------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `relation` | string (slug de otro recurso) | Desplegable con búsqueda cuyas opciones se cargan desde otro recurso (ej. categoría de un producto) | `resource`, `valueField`, `labelField`, `onlyActive` |
+| `type`     | Valor                         | Componente                                                                                          | Opciones                                               |
+| ---------- | ----------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `relation` | string (slug de otro recurso) | Desplegable con búsqueda cuyas opciones se cargan desde otro recurso (ej. categoría de un producto) | `source` (obligatorio), `secondaryField`, `onlyActive` |
+
+`relation` **no** declara `resource`/`valueField`/`labelField` sueltos: de
+dónde salen las opciones vive dentro de **`source`**, la misma forma que usan
+`select`, `multiselect` y los widgets:
+
+```js
+{ type: 'relation', source: { resource: 'categories', valueField: 'slug', labelField: 'name' } }
+```
+
+`params` del `source` admite interpolación desde el árbol del campo
+(`{ orden: '{lang}' }`); lo que se resuelve vacío **se omite** y nunca viaja
+`''` al motor. `secondaryField` añade un segundo dato a la etiqueta
+(«Juan Pérez · DNI 123») y `onlyActive` descarta las inactivas en el cliente
+(el back ya las excluye con la vista correspondiente).
 
 ### 5.3 Imagen
 
