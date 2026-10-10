@@ -203,6 +203,31 @@ function compareResource(front, back) {
     }
   }
 
+  // 2b. R7.3 · audiencias: este front ES la audiencia admin. El recurso
+  //     tiene que estar en esa audiencia (`exposeToFront`), si no
+  //     `/admin/schema` no lo sirve y el front consume rutas muertas. Y si
+  //     el back declara `audiences.admin` explícita, cada operación que el
+  //     front promete en `endpoint.<op>` tiene que estar en su lista: una
+  //     operación fuera de la audiencia es un botón que el back no sirve.
+  if (back.exposeToFront !== true) {
+    rojo(
+      `${id}: el front declara rutas para '${id}' pero el recurso no está en la ` +
+        'audiencia admin (exposeToFront) — /admin/schema no lo sirve',
+    );
+  }
+  const opsAdmin = back.audiences?.admin?.operations;
+  if (Array.isArray(opsAdmin)) {
+    const permitidas = new Set(opsAdmin);
+    for (const op of Object.keys(ops)) {
+      if (!permitidas.has(op)) {
+        rojo(
+          `${id}: endpoint.${op} del front está fuera de audiences.admin.operations ` +
+            `(${opsAdmin.join(', ')})`,
+        );
+      }
+    }
+  }
+
   // 4. Campos del front → existencia + required + validators en la proyección.
   const proyFields = walkFields(proy.fields);
   // `system` sólo vive en el schema crudo (la proyección no lo publica); se
@@ -378,6 +403,24 @@ for (const resource of Object.values(backend)) {
 }
 for (const endpoint of Object.values(REGISTRY.endpoints ?? {})) {
   anotaServida(endpoint.route, endpoint.method);
+}
+
+// ── Check 12: endpoint público atado a un recurso ⇒ audiencia pública (R7.3)
+//
+// El front público vive en OTRO repo, así que su contrato no se compara
+// acá. Lo que SÍ se vigila es el lado del back: un endpoint `public` que
+// sirve un recurso tiene que salir de `audiences.public` — sin esa lista
+// blanca no hay nada que aplicar (R7.2 hace fail-closed con 500, y este
+// check convierte ese 500 en rojo de CI).
+for (const [epId, ep] of Object.entries(REGISTRY.endpoints ?? {})) {
+  if (ep?.access === 'public' && typeof ep?.resource === 'string') {
+    if (backend[ep.resource]?.audiences?.public === undefined) {
+      rojo(
+        `endpoint '${epId}': acceso público sobre el recurso '${ep.resource}' sin ` +
+          'audiences.public — no hay whitelist que aplicar',
+      );
+    }
+  }
 }
 
 const fronts = await loadFrontend();
