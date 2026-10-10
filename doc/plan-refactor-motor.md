@@ -2246,10 +2246,28 @@ reorder, bulk }` con cada una encendible/apagable.
     `sort` por array, `select` (proyección **por vista**), `page`, `expand`.
   - **Operadores** desde el registro `operators` (compartido con el front).
 
-- [ ] **R6.2** — Agregaciones (B6)
-  - **Declaración:**
-    `aggregates: { ventas_por_dia: { fn: 'sum', field: 'total', groupBy: 'day(created_at)', view: 'entregados' } }`
-  - ⚠️ **D9-5:** definir el alcance realista en Sheets antes de implementar.
+- [x] **R6.1** — Vistas más potentes (`27-views`)
+  - **Ampliar aditivamente** `27-views`: `where` con lenguaje estructurado
+    (`{ all: […] }` / `{ or: […] }` anidables, hojas `{ field, op, value }`),
+    `sort` por array, `select` (proyección **por vista**), `page`, `expand`.
+  - **Operadores** desde el registro `operators` (compartido con el front).
+  - **Pipeline:** `where ⇒ sort ⇒ page|limit ⇒ aggregate` (con `expand`/`select`
+    sólo en listas). `page` pisa a `limit`.
+  - **Verificado:** Parte C en `views.spec.js` + mutacionales (grupos `all`/`or`,
+    `select` con `listProjection`, `page` con `offset`, `expand` con relación).
+
+- [x] **R6.2** — Agregaciones (B6)
+  - **Implementado:** `aggregate: 'count'|'sum'|'avg'` + `groupBy: '<campo>'`
+    ⇒ `[{ group, value }, …]`; sin `groupBy` ⇒ `[{ value: … }]` (compat).
+  - **D9-5 (resuelta):** `groupBy` es **genérico y agrupa por el valor crudo**
+    del campo — acepta fecha ISO por prefijo de 10 chars (el tipo `date` es
+    `sheetFormat: 'text'`), sin parser de fechas en el backend. El formateo
+    de fechas vive en el front (`format-date.ts`): la capa de datos guarda
+    crudo, la representación es del consumidor.
+  - **Verificado:** Parte D en `views.spec.js` + 6 mutacionales (forzar rama
+    única, quitar `field` en `sum`, aceptar `groupBy` no-string, avg por
+    `rows.length` en vez de `n`, ordenar claves en vez de inserción, usar el
+    nombre del campo como clave de grupo).
 
 - [ ] **R6.3** — Widgets alimentados por agregados
   - **Pasos:** `metric-card`, `chart-line`, `bar-chart` leen del agregado;
@@ -2552,6 +2570,7 @@ reorder, bulk }` con cada una encendible/apagable.
 | **D58** | El plan llama `slug(from)` al transform del plan, pero el id registrado es `slugify` (réplica de `slugify.ts`): ¿otro id o el mismo?                                                                                                                                  | R5.7                    | ✅ **resuelta en R5.7** → se registra **`slugify`** y `slug(from)` del plan se cumple como su forma declarable; no se duplica el id ni se migra el vocabulario existente                                                                                                                                                                                                                                                                                                                                                  |
 | **D59** | En `update`, el computed rellena el destino vacío usando la fila guardada: ¿con qué vista del dato juzga y cuándo puede escribir?                                                                                                                                     | R5.7                    | ✅ **resuelta en R5.7** → con la **vista fusionada** (entrante ∪ guardado) y sólo si el destino YA GUARDADO está vacío; el destino guardado nunca se rederiva (inmutabilidad de facto de products/categories). El origen se lee del guardado cuando el update no lo trae                                                                                                                                                                                                                                                  |
 | **D60** | `lookup(resource, field)`: ¿qué pasa sin coincidencia, con recurso inexistente, y qué es `currentUser` sin identidad?                                                                                                                                                 | R5.7                    | ✅ **resuelta en R5.7** → sin coincidencia ⇒ `''` (el `required` lo pinta en el 422) y recurso inexistente ⇒ **500** (desajuste de almacén, mismo criterio que `readSheetData_`); `currentUser` sin identidad ⇒ `''` — el vacío no llena destino, así que no inventa un email falso                                                                                                                                                                                                                                       |
+| **D9-5** | `aggregates` con `groupBy: 'day(created_at)'`: ¿cuál es el alcance realista de agrupación en Sheets si no existe ningún campo `created_at`?                                                                                                                          | R6.2                    | ✅ **resuelta en R6.2** → `groupBy` es **genérico y agrupa por el valor crudo** del campo, no por expresión: acepta cualquier campo incluida fecha ISO (prefijo de 10 chars), porque el tipo `date` es `sheetFormat: 'text'`. **Sin parser de fechas en el backend** (la capa de datos guarda crudo; el formateo vive en `format-date.ts` del front). `day(created_at)` queda fuera de alcance — se resuelve en el consumidor cuando exista tal campo                                                                                                                                                                                                                                                                                     |
 
 ### D17 · R1.7 «Test de contrato del front» — tres premisas
 
