@@ -219,6 +219,72 @@ function sortItems_(items, sort) {
 //   key    → ancla ctx.self con el ítem de esa clave (vistas que excluyen
 //            un producto); clave inexistente → 404
 // El nombre DEBE estar declarado en resource.views; si no → 400.
+// ── C · R7.4c — scope por fila ────────────────────────────────────────────
+//
+//   policies.access.scope = { '<nivel>': [where] }   (niveles de §4.4)
+//
+// Qué filas ve cada rol, con la MISMA gramática where de las vistas. Sin
+// declaración ⇒ sin filtro (compatibilidad total); con declaración, la fila
+// necesita la entrada MÁS ESPECÍFICA que la identidad satisfaga (admin >
+// staff > session > public) y debe pasar el where de esa entrada. Sin
+// entrada que satisfacer ⇒ la fila NO pasa: el scope declara quién ve qué,
+// no quién queda excluido (fail-closed). Las hojas fuera de scope para una
+// operación con clave responden 404 honesto — la fila no existe para esa
+// identidad, sin oráculo de existencia.
+
+var SCOPE_LEVEL_ORDER_ = ['role:admin', 'role:staff', 'session', 'public'];
+
+function scopeDecl_(resource) {
+  var policies = resource.policies;
+  var scope = policies && policies.access ? policies.access.scope : undefined;
+  return scope !== undefined && scope !== null && typeof scope === 'object' ? scope : null;
+}
+
+// Las condiciones de la entrada que corresponde a la identidad, o null
+// (fail-closed: nada ve).
+function scopeCondsFor_(scope, identity) {
+  for (var i = 0; i < SCOPE_LEVEL_ORDER_.length; i++) {
+    var level = SCOPE_LEVEL_ORDER_[i];
+    if (Object.prototype.hasOwnProperty.call(scope, level) && accessAllows_(identity, level)) {
+      return scope[level];
+    }
+  }
+  return null;
+}
+
+// ctx de scope: hechos de relation construidos UNA vez (readRulesCtx_ con
+// lista vacía y payload vacío — sin self ni 404); `self` se re-apunta por
+// ítem, así que una condición `$item.<campo>` puede anclarse en la fila.
+function scopeCtx_(ss, resource, map) {
+  return readRulesCtx_(ss, resource, map, [], {}, {});
+}
+
+// Filtro del listado: la cachea base NUNCA se toca (se devuelve un arreglo
+// nuevo), y sin entrada para la identidad el resultado es vacío.
+function filterRowsByScope_(resource, ss, map, base, identity) {
+  var scope = scopeDecl_(resource);
+  if (scope === null) return base;
+  var conds = scopeCondsFor_(scope, identity);
+  if (conds === null) return [];
+  var ctx = scopeCtx_(ss, resource, map);
+  return base.filter(function (item) {
+    ctx.self = item;
+    return evalWhere_(conds, item, ctx);
+  });
+}
+
+// Fila concreta (get / update / remove): fuera de scope ⇒ 404.
+function assertRowInScope_(resource, ss, map, item, key, identity) {
+  var scope = scopeDecl_(resource);
+  if (scope === null) return;
+  var conds = scopeCondsFor_(scope, identity);
+  var ctx = scopeCtx_(ss, resource, map);
+  ctx.self = item;
+  if (conds === null || evalWhere_(conds, item, ctx) !== true) {
+    throw apiError_(404, 'No existe: ' + key);
+  }
+}
+
 // Declarado con handler ausente de REGISTRY → 500 (el schema manda, §16).
 // Shape (F5): el resultado se envuelve con el envelope de la forma
 // efectiva (vista con shape > operations.list.shape > 'plain'); las vistas
@@ -255,6 +321,15 @@ function listWithRules_(ss, resource, map, request) {
   var reqParams = readRequestParams_(payload);
 
   var base = listCollection_(ss, resource, map);
+  // C · R7.4c — scope por fila: corre ANTES del filter/view del cliente
+  // (nadie amplía su horizonte) y antes de paginar la respuesta.
+  base = filterRowsByScope_(
+    resource,
+    ss,
+    map,
+    base,
+    request.user === undefined ? null : request.user,
+  );
   var items = base;
   if (wantsFilter || wantsView) {
     var ctx = readRulesCtx_(ss, resource, map, base, payload, reqParams);

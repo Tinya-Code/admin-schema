@@ -639,7 +639,7 @@ function accessRank_(level) {
   return ACCESS_RANK[level === 'admin' ? 'role:admin' : level];
 }
 
-function validatePolicyAccess_(where, resource, issues) {
+function validatePolicyAccess_(where, resource, fieldKeys, issues) {
   var policies = resource.policies;
   if (!policies || typeof policies !== 'object') return;
   var access = policies.access;
@@ -649,7 +649,7 @@ function validatePolicyAccess_(where, resource, issues) {
     issues.push(at + ': debe ser un objeto de políticas');
     return;
   }
-  issues.push.apply(issues, unknownKeys_(at, access, ['read', 'write', 'operations']));
+  issues.push.apply(issues, unknownKeys_(at, access, ['read', 'write', 'operations', 'scope']));
 
   // Umbral por grupo. Ausente ⇒ 'admin' (la misma verdad que aplica el
   // router en policyAccess_). Ojo: la clave del rango es `role:admin` — el
@@ -664,6 +664,34 @@ function validatePolicyAccess_(where, resource, issues) {
     }
     thresholds[group] = accessRank_(level);
   });
+
+  // C · R7.4c — scope por fila: entradas por nivel con la MISMA gramática
+  // where de las vistas. Un scope roto silenciaría filas o las dejaría
+  // pasar: rojo al arranque, como todo lo demás de access.
+  var scope = access.scope;
+  if (scope !== undefined && scope !== null) {
+    var atScope = at + '.scope';
+    if (resource.kind === 'singleton') {
+      issues.push(atScope + ': scope no aplica a un singleton (no hay filas que filtrar)');
+    } else if (typeof scope !== 'object' || Array.isArray(scope)) {
+      issues.push(atScope + ': debe ser un mapa nivel ⇒ where');
+    } else {
+      var scopeLevels = Object.keys(scope);
+      if (scopeLevels.length === 0) {
+        // Sin entradas, TODO queda fuera de scope: o es un error, o es un
+        // recurso apagado declarado como políticas — ningún caso sano.
+        issues.push(atScope + ': scope vacío — declara al menos un nivel o quítalo');
+      }
+      scopeLevels.forEach(function (level) {
+        var atLevel = atScope + '.' + level;
+        if (ACCESS_LEVELS.indexOf(level) === -1) {
+          issues.push(atLevel + ": nivel inválido '" + level + "'");
+          return;
+        }
+        validateScopeWhere_(atLevel, scope[level], fieldKeys, issues);
+      });
+    }
+  }
 
   var ops = access.operations;
   if (ops === undefined || ops === null) return;
@@ -708,6 +736,78 @@ function validatePolicyAccess_(where, resource, issues) {
   });
 }
 
+// Where de scope: la MISMA gramática que las vistas (plano, `or`, `all`,
+// con anidamiento libre), acotada a lo que el intérprete conoce — campo del
+// recurso y op registrada. Los operandos no se replican acá: evalWhere_ ya
+// es fail-closed en runtime; esto caza la rotura obvia en el arranque.
+function validateScopeWhere_(where, node, fieldKeys, issues) {
+  // Lista plana (el caso): arreglo de nodos, y cada nodo puede ser una
+  // condición plana o un grupo con UNA sola de or/all.
+  if (Array.isArray(node)) {
+    node.forEach(function (cond, i) {
+      validateScopeNode_(where + '[' + i + ']', cond, fieldKeys, issues);
+    });
+    return;
+  }
+  if (node === null || typeof node !== 'object') {
+    issues.push(where + ': debe ser un arreglo de condiciones (where de vista)');
+    return;
+  }
+  // Un objeto en la raíz sólo puede ser un grupo ({ or: [...] } sin envoltorio).
+  var rootGroup = Object.prototype.hasOwnProperty.call(node, 'or')
+    ? 'or'
+    : Object.prototype.hasOwnProperty.call(node, 'all')
+      ? 'all'
+      : null;
+  if (rootGroup === null || Object.keys(node).length !== 1) {
+    issues.push(where + ": la raíz debe ser un arreglo o UN grupo ('or' | 'all')");
+    return;
+  }
+  if (!Array.isArray(node[rootGroup])) {
+    issues.push(where + '.' + rootGroup + ': debe ser una lista de nodos');
+    return;
+  }
+  node[rootGroup].forEach(function (kid, i) {
+    validateScopeNode_(where + '.' + rootGroup + '[' + i + ']', kid, fieldKeys, issues);
+  });
+}
+
+function validateScopeNode_(where, cond, fieldKeys, issues) {
+  if (cond === null || typeof cond !== 'object' || Array.isArray(cond)) {
+    issues.push(where + ': no es un nodo de where');
+    return;
+  }
+  var hasOr = Object.prototype.hasOwnProperty.call(cond, 'or');
+  var hasAll = Object.prototype.hasOwnProperty.call(cond, 'all');
+  if (hasOr || hasAll) {
+    if (hasOr && hasAll) {
+      issues.push(where + ": 'or' y 'all' no pueden coexistir");
+      return;
+    }
+    var groupKey = hasOr ? 'or' : 'all';
+    var kids = cond[groupKey];
+    if (!Array.isArray(kids)) {
+      issues.push(where + '.' + groupKey + ': debe ser una lista de nodos');
+      return;
+    }
+    kids.forEach(function (kid, j) {
+      validateScopeNode_(where + '.' + groupKey + '[' + j + ']', kid, fieldKeys, issues);
+    });
+    return;
+  }
+  if (typeof cond.field !== 'string' || cond.field === '') {
+    issues.push(where + '.field: debe ser el nombre de un campo');
+    return;
+  }
+  if (!fieldKeys[cond.field]) {
+    issues.push(where + ": campo inexistente '" + cond.field + "'");
+    return;
+  }
+  if (typeof cond.op !== 'string' || !Object.prototype.hasOwnProperty.call(REGISTRY.ops, cond.op)) {
+    issues.push(where + ": op desconocida '" + String(cond.op) + "'");
+  }
+}
+
 function validateResource_(id, resource, issues) {
   var where = 'resources.' + id;
 
@@ -724,9 +824,9 @@ function validateResource_(id, resource, issues) {
       unknownKeys_(where + '.policies', resource.policies, KNOWN_POLICY_KEYS),
     );
   }
-  validatePolicyAccess_(where, resource, issues);
-
   var fieldKeys = fieldKeySet_(resource);
+  validatePolicyAccess_(where, resource, fieldKeys, issues);
+
   validateOperations_(where, resource, issues);
   validateAudiences_(id, where, resource, fieldKeys, issues);
   validateActions_(where, resource, issues);

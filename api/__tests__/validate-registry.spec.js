@@ -501,4 +501,87 @@ describe('R1.5 — validateRegistry_', () => {
       expect(issues).toEqual([]);
     });
   });
+
+  describe('8 · scope por fila (R7.4c)', () => {
+    function setScope(scope) {
+      resources_.orders.policies = {
+        access: { read: 'admin', write: 'admin', scope },
+        lock: false,
+      };
+    }
+
+    it('nivel inválido como clave del scope', () => {
+      const issues = mutate(() => {
+        setScope({ gerente: [] });
+      });
+      expect(issues).toContain(
+        "resources.orders.policies.access.scope.gerente: nivel inválido 'gerente'",
+      );
+    });
+
+    it('scope que no es un mapa', () => {
+      const issues = mutate(() => {
+        setScope([{ field: 'status', op: 'eq', value: 'x' }]);
+      });
+      expect(issues).toContain(
+        'resources.orders.policies.access.scope: debe ser un mapa nivel ⇒ where',
+      );
+    });
+
+    it('scope vacío: todo quedaría fuera de alcance', () => {
+      const issues = mutate(() => {
+        setScope({});
+      });
+      expect(issues).toContain(
+        'resources.orders.policies.access.scope: scope vacío — declara al menos un nivel o quítalo',
+      );
+    });
+
+    it('scope en un singleton no tiene filas que filtrar', () => {
+      const issues = mutate(() => {
+        resources_.site.policies = {
+          access: { read: 'public', write: 'admin', scope: { 'role:admin': [] } },
+        };
+      });
+      expect(issues).toContain(
+        'resources.site.policies.access.scope: scope no aplica a un singleton (no hay filas que filtrar)',
+      );
+    });
+
+    it('condición con campo inexistente', () => {
+      const issues = mutate(() => {
+        setScope({ 'role:admin': [{ field: 'nope', op: 'eq', value: 'x' }] });
+      });
+      expect(issues).toContain(
+        "resources.orders.policies.access.scope.role:admin[0]: campo inexistente 'nope'",
+      );
+    });
+
+    it('condición con op inexistente', () => {
+      const issues = mutate(() => {
+        setScope({ 'role:admin': [{ field: 'status', op: 'zzz', value: 'x' }] });
+      });
+      expect(issues).toContain(
+        "resources.orders.policies.access.scope.role:admin[0]: op desconocida 'zzz'",
+      );
+    });
+
+    it('forma válida: plano y grupo or anidado', () => {
+      const issues = mutate(() => {
+        setScope({
+          'role:admin': [],
+          'role:staff': [
+            { field: 'status', op: 'eq', value: 'pending' },
+            {
+              or: [
+                { field: 'status', op: 'eq', value: 'ready' },
+                { all: [{ field: 'status', op: 'eq', value: 'draft' }] },
+              ],
+            },
+          ],
+        });
+      });
+      expect(issues).toEqual([]);
+    });
+  });
 });

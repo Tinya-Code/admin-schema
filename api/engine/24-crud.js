@@ -295,7 +295,17 @@ function resourceGet_(ss, resource, map, request) {
   if (key === undefined || key === null || String(key) === '') {
     return listWithRules_(ss, resource, map, request);
   }
-  return shapeResponse_(resource, 'get', getOne_(ss, resource, map, String(key)));
+  var detail = getOne_(ss, resource, map, String(key));
+  // C · R7.4c — fuera de scope la fila no existe para esta identidad.
+  assertRowInScope_(
+    resource,
+    ss,
+    map,
+    detail,
+    String(key),
+    request.user === undefined ? null : request.user,
+  );
+  return shapeResponse_(resource, 'get', detail);
 }
 
 // TTL de caché desde policies.cache.ttl (F6-1); ausencia ⇒ default global.
@@ -520,6 +530,15 @@ function updateCollection_(ss, resource, map, request, key) {
   var idx0 = entryIndexOf_(entries0, map.keyField, key);
   if (idx0 === -1) throw apiError_(404, 'No existe: ' + key);
   var current0 = flatToContract_(map, entries0[idx0].flat);
+  // C · R7.4c — si la identidad no la ve, la fila no existe para actualizar.
+  assertRowInScope_(
+    resource,
+    ss,
+    map,
+    current0,
+    key,
+    request.user === undefined ? null : request.user,
+  );
   // Snapshot de hijos guardados ANTES del lock: los checks que comparan
   // contra lo existente deben poder fallar rápido, como los declarativos.
   var currentChildren0 = readChildren_(ss, map, key);
@@ -826,9 +845,19 @@ function resourceDelete_(ss, resource, map, request, declared) {
   return withPolicyLock_(resource, function () {
     var data = readSheetData_(ss, map.sheet);
     var entries = flatEntries_(map, data);
-    if (entryIndexOf_(entries, map.keyField, key) === -1) {
+    var idxScope = entryIndexOf_(entries, map.keyField, key);
+    if (idxScope === -1) {
       throw apiError_(404, 'No existe: ' + key);
     }
+    // C · R7.4c — si la identidad no la ve, la fila no existe para borrar.
+    assertRowInScope_(
+      resource,
+      ss,
+      map,
+      flatToContract_(map, entries[idxScope].flat),
+      key,
+      request.user === undefined ? null : request.user,
+    );
 
     // restrict: nadie puede quedar apuntando a un registro inexistente.
     if (resource.onDelete === 'restrict') {
