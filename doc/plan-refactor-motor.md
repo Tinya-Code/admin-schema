@@ -2430,7 +2430,7 @@ reorder, bulk }` con cada una encendible/apagable.
 
 **Precondición:** Fases 1 y 2.
 
-- [ ] **R7.1** — `contract-check` por consumidor (O1)
+- [x] **R7.1** — `contract-check` por consumidor (O1) ✅ **cerrada 2026-10-10**
   - **Pasos:**
     1. El schema del **back** y el del **front** siguen **independientes**.
     2. `contract-check` vigila **por consumidor**: lo que el back proyecta
@@ -2438,6 +2438,32 @@ reorder, bulk }` con cada una encendible/apagable.
     3. **No** generar `schemas/*.data.ts` desde `/admin/schema`.
   - **Hecho cuando:** `enum`/`required`/`validators`/`default` no pueden
     divergir **sin que falle la verificación** (no por codegen).
+  - **Verificado:**
+    - **El comparando es la proyección, no el schema crudo.** El check
+      compara contra `projectResourceSchema_` — exactamente lo que sirve
+      `/admin/schema` — así que una divergencia entre lo que el back TIENE
+      y lo que ENTREGA también cae. O1 intacto: cero codegen, sólo
+      verificación.
+    - **Nueva clase de rojo (la que el check no veía):** una operación
+      **apagada** (`false` o `remove: {mode:'forbidden'}`) que el front
+      promete en `endpoint.<op>` ⇒ botón que responde **405**. La ruta sólo
+      queda en verde si la sirve un **endpoint declarado** con su método —
+      que es el caso real que obligó a mirar: el panel declara
+      `endpoint.get` y el back la sirve vía `schema/endpoints/dashboard.js`
+      (GET, admin), no vía CRUD. Tres fuentes de verdad, una sola tabla.
+    - **`enum` ya se compara resuelto** (la proyección traduce el nombre
+      interno a valores): un nombre colgado tiene su propio rojo, y el
+      front compara contra el array tal cual va a viajar.
+    - **`backRoute` retirado:** los recursos no pueden declarar `route`
+      (no está en `KNOWN_RESOURCE_KEYS`), así que esa rama era código
+      muerto; la ruta sale de la proyección.
+    - **Mutacionales: 6/6 detectadas** (ficheros restaurados): `remove`
+      apagado · `get` apagado · ruta del front divergente · `enum`
+      nombrado colgado · `default` divergente · `required` bajado en el
+      back. Dos falsos negativos propios quedaron corregidos en el
+      harness de mutación (doble clave en el objeto y comentario antes de
+      la coma) — no en el check.
+    - **Gates:** `api:check` **5 VERDE** · prettier sin subir deuda.
 
 - [ ] **R7.2** — Audiencias en recursos (auth §4.8)
   - **Declaración aditiva** — `exposeToFront` actual equivale a
