@@ -41,6 +41,16 @@
 function dispatchResource_(resource, request) {
   var ss = openSpreadsheet_();
   var map = storageMap_(resource);
+  var op = operationFor_(resource, map, request);
+  var declared = declaredOperation_(resource, op);
+
+  // B3 · R5.3 — fail-closed: una operación que el recurso no declaró (o que
+  // declaró `false`) no existe, aunque el motor sepa ejecutarla. El 405 es la
+  // respuesta honesta: «esto no está encendido en ESTE recurso».
+  if (!operationEnabled_(declared)) {
+    throw apiError_(405, "La operación '" + op + "' no está declarada en '" + resource.id + "'");
+  }
+
   switch (request.method) {
     case 'GET':
       return resourceGet_(ss, resource, map, request);
@@ -50,10 +60,66 @@ function dispatchResource_(resource, request) {
     case 'PATCH':
       return resourcePut_(ss, resource, map, request);
     case 'DELETE':
-      return resourceDelete_(ss, resource, map, request);
+      return resourceDelete_(ss, resource, map, request, declared);
     default:
       throw apiError_(400, 'Método no soportado: ' + request.method);
   }
+}
+
+// Método lógico + forma de la ruta ⇒ nombre de la operación del motor.
+// Los nombres son los de KNOWN_OPERATION_KEYS (validate-registry): list, get,
+// create, update, remove, reorder, bulk. PATCH NO es una operación propia —
+// cae en `update`, el mismo pipeline que PUT.
+function operationFor_(resource, map, request) {
+  switch (request.method) {
+    case 'GET':
+      if (resource.kind !== 'collection') return 'get';
+      return hasKey_(map, resource, request) ? 'get' : 'list';
+    case 'POST':
+      return 'create';
+    case 'PUT':
+    case 'PATCH':
+      if (
+        resource.kind === 'collection' &&
+        !hasKey_(map, resource, request) &&
+        request.payload &&
+        request.payload.reorder !== undefined
+      ) {
+        return 'reorder';
+      }
+      return 'update';
+    case 'DELETE':
+      return 'remove';
+    default:
+      throw apiError_(400, 'Método no soportado: ' + request.method);
+  }
+}
+
+// ¿La ruta trae la clave del registro? (`/<base>/<clave>`).
+function hasKey_(map, resource, request) {
+  if (resource.kind !== 'collection') return false;
+  var key = request.params ? request.params[map.keyField] : undefined;
+  return key !== undefined && key !== null && String(key) !== '';
+}
+
+// Declaración de la operación en `resource.operations`; ausente ⇒ undefined.
+function declaredOperation_(resource, op) {
+  var ops = resource.operations;
+  if (ops === undefined || ops === null || typeof ops !== 'object') return undefined;
+  return ops[op];
+}
+
+// Encendida: cualquier valor salvo ausente/`null`/`false`. `true` = sin tunear.
+function operationEnabled_(declared) {
+  return declared !== undefined && declared !== null && declared !== false;
+}
+
+// Modo de `remove`: hard (borrado real, por defecto) | soft (escribe el
+// `activeField` y conserva la fila). `forbidden` no llega acá: el dispatcher
+// lo frenó con su 405. validate-registry valida el vocabulario al arranque.
+function removeMode_(declared) {
+  if (!declared || typeof declared !== 'object' || declared.mode === undefined) return 'hard';
+  return declared.mode;
 }
 
 // ── Lectura ────────────────────────────────────────────────────────────────
@@ -214,6 +280,13 @@ function resourceCreate_(ss, resource, map, request) {
       throw validationError_([validatorIssue_(map.keyField, 'required')]);
     }
 
+    // FASE PRE (B9 · R5.6): puede MUTAR el payload — fluye a la fila y a
+    // las hijas de abajo — o VETAR con cualquier error, que se propaga:
+    // nada se escribió todavía. Corre DESPUÉS de la validación declarativa:
+    // es código de confianza declarado en el schema; sus mutaciones no se
+    // revalidan (re-validar acá daría al hook un duelo con el validador).
+    emitEvent_(ss, resource, 'beforeCreate', { key: key, payload: payload });
+
     // Fila principal: columnas del payload + posición + campos computados.
     var row = rowValues_(data.headers, contractToFlat_(map, payload));
     if (map.ordering === 'positioned' && map.positionColumn) {
@@ -243,7 +316,7 @@ function resourceCreate_(ss, resource, map, request) {
     var summary = auditSummary_(resource, payload, 'Alta', key);
     auditWrite_(ss, resource, 'create', key, summary);
     cacheInvalidate_(resource.id);
-    emitHook_(ss, resource, 'create', key, payload, summary);
+    emitEvent_(ss, resource, 'afterCreate', { key: key, payload: payload, summary: summary });
     // R1.3: la respuesta sale de la fila escrita, no de una relectura.
     return shapeResponse_(
       resource,
@@ -340,7 +413,10 @@ function updateCollection_(ss, resource, map, request, key) {
     var summary = auditSummary_(resource, payload, 'Edición', key);
     auditWrite_(ss, resource, 'update', key, summary);
     cacheInvalidate_(resource.id);
-    emitHook_(ss, resource, 'update', key, payload, summary);
+    emitEvent_(ss, resource, 'afterUpdate', { key: key, payload: payload, summary: summary });
+    // onStatusChange (R5.6) sólo si el update tocó un campo con máquina
+    // declarada (R5.5) y el valor realmente CAMBIÓ.
+    emitStatusChange_(ss, resource, key, current, payload, summary);
     // R1.3: la respuesta sale de la fila escrita, no de una relectura.
     return shapeResponse_(
       resource,
@@ -395,7 +471,12 @@ function updateSingleton_(ss, resource, map, request) {
     var summary = auditSummary_(resource, payload, 'Edición', resource.id);
     auditWrite_(ss, resource, 'update', resource.id, summary);
     cacheInvalidate_(resource.id);
-    emitHook_(ss, resource, 'update', resource.id, payload, summary);
+    emitEvent_(ss, resource, 'afterUpdate', {
+      key: resource.id,
+      payload: payload,
+      summary: summary,
+    });
+    emitStatusChange_(ss, resource, resource.id, current, payload, summary);
     // R1.3: el detalle sale del flat escrito, no de una relectura del KV.
     return shapeResponse_(resource, 'update', singletonDetail_(ss, resource, map, writtenFlat));
   });
@@ -514,14 +595,18 @@ function reorderCollection_(ss, resource, map, request) {
     var summary = 'Reorden: ' + intent.key;
     auditWrite_(ss, resource, 'reorder', String(intent.key), summary);
     cacheInvalidate_(resource.id);
-    emitHook_(ss, resource, 'reorder', String(intent.key), intent, summary);
+    emitEvent_(ss, resource, 'afterReorder', {
+      key: String(intent.key),
+      payload: intent,
+      summary: summary,
+    });
     return listCollection_(ss, resource, map); // fresco, ya con la caché invalidada
   });
 }
 
 // ── Borrar ─────────────────────────────────────────────────────────────────
 
-function resourceDelete_(ss, resource, map, request) {
+function resourceDelete_(ss, resource, map, request, declared) {
   if (resource.kind === 'singleton') {
     throw apiError_(400, 'Un singleton no se borra');
   }
@@ -531,6 +616,17 @@ function resourceDelete_(ss, resource, map, request) {
     throw apiError_(400, 'Falta la clave del registro en la ruta');
   }
   key = String(key);
+
+  // `forbidden` = declarado pero prohibido: 405 ANTES de tocar la hoja. Sin
+  // ésta rama el `mode` no-`soft` seguía derecho al borrado físico — la
+  // declaración mandaba sobre el vocabulario, no sobre el motor.
+  var mode = removeMode_(declared);
+  if (mode === 'forbidden') {
+    throw apiError_(
+      405,
+      "La operación 'remove' está declarada como 'forbidden' en '" + resource.id + "'",
+    );
+  }
 
   return withPolicyLock_(resource, function () {
     var data = readSheetData_(ss, map.sheet);
@@ -548,6 +644,34 @@ function resourceDelete_(ss, resource, map, request) {
       if (parts.length > 0) {
         throw apiError_(409, 'No se puede borrar: lo referencian ' + parts.join(', '));
       }
+    }
+
+    // soft: la fila se CONSERVA con `activeField = false` — es «baja lógica»,
+    // no desaparición. El front público ya filtra por activeField, así que el
+    // registro sale de circulación sin romper el histórico ni las FK.
+    if (mode === 'soft') {
+      var idx = data.rows.findIndex(function (row) {
+        return String(headerValue_(data.headers, row.values, map.keyField)) === key;
+      });
+      data.rows[idx].values[data.headers.indexOf(resource.activeField)] = false;
+      writeRowsBlock_(
+        data.sheet,
+        data.headers,
+        data.rows.map(function (row) {
+          return row.values;
+        }),
+      );
+
+      var softSummary = 'Baja lógica: ' + key;
+      var record = flatToContract_(map, flatEntries_(map, data)[idx].flat);
+      auditWrite_(ss, resource, 'delete', key, softSummary);
+      cacheInvalidate_(resource.id);
+      emitEvent_(ss, resource, 'afterDelete', {
+        key: key,
+        payload: record,
+        summary: softSummary,
+      });
+      return shapeResponse_(resource, 'remove', { deleted: key, mode: 'soft' });
     }
 
     // Hijas propias: siempre mueren con el padre (no serían "dependientes",
@@ -570,8 +694,11 @@ function resourceDelete_(ss, resource, map, request) {
     gone[map.keyField] = key;
     auditWrite_(ss, resource, 'delete', key, summary);
     cacheInvalidate_(resource.id);
-    emitHook_(ss, resource, 'delete', key, gone, summary);
-    return shapeResponse_(resource, 'delete', { deleted: key });
+    emitEvent_(ss, resource, 'afterDelete', { key: key, payload: gone, summary: summary });
+    // El nombre de la operación es `remove` (KNOWN_OPERATION_KEYS); con
+    // 'delete' el lookup de shape miraba una clave que validate-registry
+    // jamás aceptaría — un `remove.shape` declarado se ignoraba en silencio.
+    return shapeResponse_(resource, 'remove', { deleted: key });
   });
 }
 
@@ -740,9 +867,15 @@ function writeChildren_(ss, child, parentKey, items) {
 
 // Validación declarativa + checks declarados (corren dentro de
 // validatePayload_) → UN SOLO 422 (criterio 8).
+//
+// Las TRANSICIONES (B3 · R5.5) corren DESPUÉS, con su propio 409: el payload
+// puede estar bien formado y aun así pedir un salto de estado prohibido, que
+// es un conflicto con lo guardado, no un error de formulario. Al estar acá
+// cubre las dos pasadas (pre-lock y en-lock) sin repetir la llamada.
 function validateAndThrow_(ss, resource, map, opts) {
   var errors = validatePayload_(ss, resource, map, opts);
   if (errors.length > 0) throw validationError_(errors);
+  assertTransitions_(resource, opts.current, opts.incoming);
 }
 
 // Escribe UNA celda por nombre de cabecera.
@@ -783,49 +916,38 @@ function auditSummary_(resource, payload, prefix, fallback) {
 //
 // Validación EAGER (mismo criterio que validateAndThrow_): una declaración
 // rota tira 500 ANTES del lock y ANTES de escribir, así nada queda a medias
-// y ningún hook corre si el grupo no está completo.
+// y ningún hook corre si el grupo no está completo. R5.6 juzga además el
+// VOCABULARIO del contrato: la fase tiene que existir en HOOK_PHASES_ y
+// cada entrada (nombre u objeto { id, onError }) tiene que ser válida.
 function validateHooks_(resource) {
   var hooks = resource.hooks;
   if (hooks === undefined || hooks === null) return;
   if (typeof hooks !== 'object' || Array.isArray(hooks)) {
     throw apiError_(500, 'hooks debe ser un objeto: ' + resource.id);
   }
-  Object.keys(hooks).forEach(function (action) {
-    if (!Array.isArray(hooks[action])) {
-      throw apiError_(500, 'hooks.' + action + ' debe ser una lista: ' + resource.id);
+  Object.keys(hooks).forEach(function (phase) {
+    if (!HOOK_PHASES_[phase]) {
+      throw apiError_(500, 'Fase de hooks desconocida: ' + phase + ' (' + resource.id + ')');
     }
-    hooks[action].forEach(function (name) {
-      if (!REGISTRY.hooks || typeof REGISTRY.hooks[name] !== 'function') {
-        throw apiError_(500, 'Hook ausente: ' + String(name));
+    if (!Array.isArray(hooks[phase])) {
+      throw apiError_(500, 'hooks.' + phase + ' debe ser una lista: ' + resource.id);
+    }
+    hooks[phase].forEach(function (raw) {
+      var entry = hookEntry_(raw);
+      if (ERROR_POLICIES_.indexOf(entry.onError) === -1) {
+        throw apiError_(
+          500,
+          'hooks.' + phase + ': onError inválido "' + entry.onError + '" (' + resource.id + ')',
+        );
+      }
+      if (!REGISTRY.hooks || typeof REGISTRY.hooks[entry.id] !== 'function') {
+        throw apiError_(500, 'Hook ausente: ' + String(entry.id));
       }
     });
   });
 }
 
-// Post-escritura. Se llama DESPUÉS de cacheInvalidate_ para que un hook
-// jamás la esquive. Los errores del hook no deshacen ni enmascaran el
-// hecho: la escritura ya es irreversible y el hook es REACCIÓN, no la
-// causa — se registran en consola para no ser silenciosos.
-function emitHook_(ss, resource, action, key, payload, summary) {
-  var hooks = resource.hooks;
-  if (!hooks) return;
-  var names = hooks[action];
-  if (!Array.isArray(names) || names.length === 0) return;
-  var ctx = {
-    ss: ss,
-    resource: resource,
-    action: action,
-    key: key,
-    payload: payload,
-    summary: summary,
-  };
-  names.forEach(function (name) {
-    try {
-      REGISTRY.hooks[name](ctx);
-    } catch (err) {
-      console.error(
-        '[hooks] ' + action + ' ' + resource.id + '/' + key + ': ' + ((err && err.message) || err),
-      );
-    }
-  });
-}
+// La emisión ya NO vive acá: el bus único `emitEvent_` (engine/30-events,
+// R5.6) resuelve fases, alias legacy y política onError. Sólo queda el
+// comentario de por qué la llamada va DESPUÉS de cacheInvalidate_: para
+// que un hook jamás la esquive.

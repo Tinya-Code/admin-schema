@@ -440,3 +440,100 @@ function validateChild_(ss, child, items, errors) {
     });
   });
 }
+
+// ── Entrada y salida de endpoints (B2 · R5.1) ─────────────────────────────
+//
+// Mismo vocabulario `FIELD_TYPES` que los campos de un recurso, con una
+// salvedad de ENTRADA: `secret` — no es un tipo de storage sino la marca de
+// «sólo se comprueba la presencia» (la contraseña del login: su contenido lo
+// juzga el handler, que es quien tiene el hash).
+//
+// Forma de la declaración (B2):
+//   input:  { email: { type: 'email' } }              plano ⇒ payload raíz
+//   input:  { params: { ref: { type: 'text' } } }     `params` = la ruta
+//   input:  { query:  { ref: { type: 'text' } } }     el resto = ese bloque
+//                                                     del payload
+//   output: { ok: { type: 'boolean', required: true } }
+//
+// Sólo lo DECLARADO se valida (whitelist, como todo el motor): un endpoint
+// sin `input` no cambia de comportamiento, que es la precondición de R5.1.
+// La validación de la DECLARACIÓN (tipo inexistente, forma rara) vive en
+// schema/validate-registry y rompe el arranque, no la petición.
+
+// ¿Es un campo declarado ({ type: 'text', … }) y no un grupo de campos?
+function isDeclaredField_(decl) {
+  return (
+    !!decl && typeof decl === 'object' && !Array.isArray(decl) && typeof decl.type === 'string'
+  );
+}
+
+// Un campo de la declaración: `required` vacío ⇒ issue; vacío opcional ⇒
+// nada; con valor ⇒ las mismas reglas que un campo de recurso.
+function endpointFieldIssues_(field, value, path, errors) {
+  if (field.required && isEmptyValue_(value)) {
+    errors.push(validatorIssue_(path, 'required'));
+    return;
+  }
+  if (isEmptyValue_(value)) return;
+  validateScalar_(null, field, value, path, errors);
+}
+
+// Valida `input` contra la petición (payload + params de la ruta).
+// Devuelve [{ path, message, code }]; NO lanza por validación — el 422 lo
+// arma el router. Lanza 500 sólo si la DECLARACIÓN está mal formada: el
+// schema manda (§16).
+function validateEndpointInput_(input, payload, params) {
+  var errors = [];
+  if (input === null || input === undefined) return errors;
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw apiError_(500, 'input de endpoint mal declarado (debe ser un objeto)');
+  }
+  Object.keys(input).forEach(function (key) {
+    var decl = input[key];
+    if (isDeclaredField_(decl)) {
+      // Plano: el campo vive en la raíz del payload.
+      endpointFieldIssues_(decl, payload ? payload[key] : undefined, key, errors);
+      return;
+    }
+    if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+      throw apiError_(500, "input de endpoint mal declarado: '" + key + "'");
+    }
+    // Grupo: `params` sale de la ruta, el resto de ese bloque del payload.
+    var source = key === 'params' ? params : payload ? payload[key] : undefined;
+    var sourceIsObject = !!source && typeof source === 'object';
+    Object.keys(decl).forEach(function (sub) {
+      var field = decl[sub];
+      if (!isDeclaredField_(field)) {
+        throw apiError_(500, 'input.' + key + '.' + sub + ': no es un campo declarado');
+      }
+      endpointFieldIssues_(
+        field,
+        sourceIsObject ? source[sub] : undefined,
+        key + '.' + sub,
+        errors,
+      );
+    });
+  });
+  return errors;
+}
+
+// Valida `output` contra lo que devolvió el handler. El router sólo la
+// invoca en dev (B2): en prod el contrato documenta, no frena.
+function validateEndpointOutput_(output, result) {
+  var errors = [];
+  if (output === null || output === undefined) return errors;
+  if (typeof output !== 'object' || Array.isArray(output)) {
+    throw apiError_(500, 'output de endpoint mal declarado (debe ser un objeto)');
+  }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw apiError_(500, 'output declarado, pero el handler no devuelve un objeto');
+  }
+  Object.keys(output).forEach(function (key) {
+    var field = output[key];
+    if (!isDeclaredField_(field)) {
+      throw apiError_(500, 'output.' + key + ': no es un campo declarado');
+    }
+    endpointFieldIssues_(field, result[key], key, errors);
+  });
+  return errors;
+}

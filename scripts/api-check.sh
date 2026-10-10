@@ -69,6 +69,16 @@ else
   ROJO=1
 fi
 
+echo "── Doc de endpoints (R5.2): generada desde el registro"
+if command -v node >/dev/null 2>&1; then
+  if ! node scripts/api-doc.mjs --check; then
+    ROJO=1
+  fi
+else
+  echo "✗ ROJO: node no disponible — la doc de endpoints no se validó"
+  ROJO=1
+fi
+
 echo "── Contract check: schemas back ↔ front"
 if command -v node >/dev/null 2>&1; then
   if ! node scripts/contract-check.mjs; then

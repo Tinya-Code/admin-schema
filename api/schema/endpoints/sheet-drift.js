@@ -21,4 +21,5 @@ REGISTRY.endpoints.sheetDrift = {
   access: 'admin',
   limits: null,
   handler: 'handleSheetDrift',
+  since: '1.0',
 };

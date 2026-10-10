@@ -13,4 +13,5 @@ REGISTRY.endpoints.schema = {
   access: 'admin',
   limits: null,
   handler: 'handleSchema',
+  since: '1.0',
 };

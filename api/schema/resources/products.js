@@ -28,8 +28,10 @@ REGISTRY.resources.products = {
   ],
   listPick: { images: 'primary' }, // en el listado, sólo la imagen position=1
   imageFolder: 'products',
+  // B3 · R5.3: lo que no está acá está APAGADO (405). `ordering: 'none'`
+  // ⇒ reorder apagado; `bulk` el motor no lo implementa todavía.
   operations: {
-    create: { computed: [{ field: 'slug', transform: 'slugify', from: 'name' }] },
+    get: true,
     // F5-4: la forma de la respuesta cambia SÓLO aquí (diff de 1 archivo).
     // pick = campos del listado — incluye la base que evalúan las vistas
     // (active, registro_sanitario, category_slug, featured, images) — más
@@ -53,6 +55,11 @@ REGISTRY.resources.products = {
         envelope: 'list',
       },
     },
+    create: { computed: [{ field: 'slug', transform: 'slugify', from: 'name' }] },
+    update: true,
+    remove: true, // hard (por defecto): `activeField` filtrará en el público
+    reorder: false,
+    bulk: false,
   },
   // Vistas declarativas (mejoras §5): where/sort/limit interpretados por
   // engine/27-views sobre los ítems PROYECTADOS del listado (todo campo que

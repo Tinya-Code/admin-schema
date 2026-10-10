@@ -15,6 +15,16 @@ REGISTRY.resources.pickpass = {
   listProjection: null,
   imageFolder: null,
   checks: [{ check: 'not-in-sheet', sheet: '_placeholders' }],
+  // B3 · R5.3: un singleton sólo se LEE y se ACTUALIZA en su base.
+  // `create`/`remove`/`reorder`/`bulk` apagados: sin declarar ⇒ 405.
+  operations: {
+    get: true,
+    update: true,
+    create: false,
+    remove: false,
+    reorder: false,
+    bulk: false,
+  },
   views: {},
   policies: {
     access: { read: 'admin', write: 'admin' },

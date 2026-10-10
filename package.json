@@ -10,6 +10,7 @@
     "test:api": "vitest run",
     "api:check": "bash scripts/api-check.sh",
     "api:drift": "node scripts/sheet-drift-check.mjs",
+    "api:doc": "node scripts/api-doc.mjs",
     "smoke:login": "node scripts/smoke-auth.mjs login"
   },
   "private": true,

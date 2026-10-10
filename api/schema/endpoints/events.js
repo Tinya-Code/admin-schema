@@ -13,4 +13,6 @@ REGISTRY.endpoints.events = {
   access: 'admin',
   limits: '60/min',
   handler: 'handleEvents',
+  output: { ok: { type: 'boolean', required: true } },
+  since: '1.0',
 };

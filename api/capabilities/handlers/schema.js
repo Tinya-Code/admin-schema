@@ -79,10 +79,16 @@ function projectOperations_(resource) {
   return out;
 }
 
+// Sólo lo ENCENDIDO viaja (B3 · R5.3): una operación que el recurso declaró
+// `false` o no declaró responde 405 en el router, así que publicarla
+// prometería algo que la API niega. `remove: { mode: 'forbidden' }` cuenta
+// como apagada: está declarada, pero prohibida.
 function addOperation_(out, name, method, path, declared) {
+  if (declared === undefined || declared === null || declared === false) return;
   var entry = { method: method, path: path };
-  if (declared && declared.shape !== undefined) {
-    entry.shape = projectShape_(declared.shape);
+  if (typeof declared === 'object') {
+    if (name === 'remove' && declared.mode === 'forbidden') return;
+    if (declared.shape !== undefined) entry.shape = projectShape_(declared.shape);
   }
   out[name] = entry;
 }

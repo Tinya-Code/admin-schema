@@ -13,4 +13,5 @@ REGISTRY.endpoints.uploadSignature = {
   access: 'admin',
   limits: '10/min',
   handler: 'handleUploadSignature',
+  since: '1.0',
 };

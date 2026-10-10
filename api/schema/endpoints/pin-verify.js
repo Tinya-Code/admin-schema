@@ -15,4 +15,6 @@ REGISTRY.endpoints.pinVerify = {
   limits: '5/min',
   handler: 'handlePinVerify',
   resource: 'orders',
+  output: { ok: { type: 'boolean', required: true }, ref: { type: 'text', required: true } },
+  since: '1.0',
 };

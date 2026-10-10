@@ -26,6 +26,16 @@ REGISTRY.resources.legal = {
       message: 'RUC inválido: dígitos repetidos',
     },
   ], // R8 + anti-uniformes (el pattern del campo cubre el formato)
+  // B3 · R5.3: un singleton sólo se LEE y se ACTUALIZA en su base.
+  // `create`/`remove`/`reorder`/`bulk` apagados: sin declarar ⇒ 405.
+  operations: {
+    get: true,
+    update: true,
+    create: false,
+    remove: false,
+    reorder: false,
+    bulk: false,
+  },
   views: {},
   policies: {
     // §8: 11-auth lee `access` (no el prefijo de ruta); TTL de caché y

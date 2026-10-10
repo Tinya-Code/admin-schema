@@ -10,4 +10,5 @@ REGISTRY.endpoints.publicOrder = {
   limits: '60/min',
   handler: 'handlePublicOrder',
   resource: 'orders',
+  since: '1.0',
 };

@@ -48,6 +48,7 @@ function routeTable_() {
   if (ROUTE_TABLE_ !== null) return ROUTE_TABLE_;
   var exact = {}; // ruta completa → entrada (endpoints + singletons)
   var keyed = {}; // base de colección → resource (acepta /<clave> al final)
+  var actions = {}; // base de colección → resource CON acciones declaradas
   var i;
 
   // 1) endpoints declarados (schema/endpoints/*)
@@ -60,6 +61,11 @@ function routeTable_() {
       kind: 'handler',
       handler: endpoint.handler,
       params: {},
+      // Contrato declarativo (B2 · R5.1): el router valida la ENTRADA antes
+      // de llamar al handler y, en dev, la SALIDA después. `null` = sin
+      // declaración ⇒ el endpoint se comporta exactamente como siempre.
+      input: endpoint.input === undefined ? null : endpoint.input,
+      output: endpoint.output === undefined ? null : endpoint.output,
       policy: {
         scope: 'endpoint:' + endpointIds[i],
         access: normalizeAccess_(endpoint.access),
@@ -89,8 +95,19 @@ function routeTable_() {
     if (resource.sheet === null || resource.sheet === undefined) continue;
     var base = resourceRoute_(resource);
     var entry = { resource: resource, policy: policyFor_(resource) };
-    if (resource.kind === 'collection') keyed[base] = entry;
-    else
+    if (resource.kind === 'collection') {
+      keyed[base] = entry;
+      // Acciones de dominio (B3 · R5.4): sólo si el recurso declara `actions`.
+      // Un recurso sin acciones no publica la ruta y responde 404, igual que
+      // el resto de lo no declarado.
+      if (
+        resource.actions &&
+        typeof resource.actions === 'object' &&
+        Object.keys(resource.actions).length > 0
+      ) {
+        actions[base] = { resource: resource, policy: actionsPolicy_(resource, entry.policy) };
+      }
+    } else
       exact[base] = {
         kind: 'resource',
         resource: resource,
@@ -99,8 +116,36 @@ function routeTable_() {
       };
   }
 
-  ROUTE_TABLE_ = { exact: exact, keyed: keyed };
+  ROUTE_TABLE_ = { exact: exact, keyed: keyed, actions: actions };
   return ROUTE_TABLE_;
+}
+
+// Política de la ruta de acciones (B3 · R5.4). El router sólo puede exigir
+// UN nivel por ruta, pero cada acción puede exigir el SUYO: ésta función
+// sólo se asegura de que HAYA identidad que mirar. Si el recurso es público
+// y alguna acción declara `access`, el `write` de la ruta sube a `session`
+// (verifySession_ corre y `request.user` llega); el nivel exacto de cada
+// acción lo aplica `dispatchAction_`. Un recurso NO público conserva su
+// política: ahí ya hay identidad.
+function actionsPolicy_(resource, entryPolicy) {
+  var needsIdentity = Object.keys(resource.actions).some(function (name) {
+    var declared = resource.actions[name];
+    if (!declared || typeof declared !== 'object') return false;
+    return (
+      typeof declared.access === 'string' &&
+      declared.access !== '' &&
+      normalizeAccessLevel_(declared.access) !== 'public'
+    );
+  });
+  // La política del recurso es { scope, access: { read, write }, limits }:
+  // sólo se toca el `write` de ese bloque.
+  var write = entryPolicy.access ? entryPolicy.access.write : undefined;
+  if (!needsIdentity || normalizeAccessLevel_(write) !== 'public') return entryPolicy;
+  return {
+    scope: entryPolicy.scope,
+    access: { read: entryPolicy.access.read, write: 'session' },
+    limits: entryPolicy.limits,
+  };
 }
 
 // Ruta base efectiva de un recurso (F2-3): `route` como override o
@@ -294,6 +339,25 @@ function resolveRoute_(path) {
     };
   }
 
+  // 3) acciones de dominio (B3 · R5.4): <base>/<clave>/actions/<nombre>.
+  //    Se resuelve ANTES que la ruta con clave genérica: esa la cortaría en
+  //    `/…/actions` y devolvería null.
+  var actionMatch = /^(.+)\/([^/]+)\/actions\/([^/]+)$/.exec(path);
+  if (actionMatch) {
+    var actionOwner = table.actions[actionMatch[1]];
+    if (actionOwner !== undefined) {
+      var actionParams = {};
+      actionParams[actionOwner.resource.keyField] = actionMatch[2];
+      return {
+        kind: 'resource',
+        resource: actionOwner.resource,
+        params: actionParams,
+        action: actionMatch[3],
+        policy: actionOwner.policy,
+      };
+    }
+  }
+
   var cut = path.lastIndexOf('/');
   if (cut <= 0) return null;
   var owner = table.keyed[path.slice(0, cut)];
@@ -310,7 +374,14 @@ function resolveRoute_(path) {
   var params = {};
   if (owner.kind === 'handler') {
     params[owner.paramKey] = key;
-    return { kind: 'handler', handler: owner.handler, params: params, policy: owner.policy };
+    return {
+      kind: 'handler',
+      handler: owner.handler,
+      params: params,
+      input: owner.input,
+      output: owner.output,
+      policy: owner.policy,
+    };
   }
   params[owner.resource.keyField] = key; // { slug: 'mi-slug' } según el recurso
   return { kind: 'resource', resource: owner.resource, params: params, policy: owner.policy };
@@ -338,6 +409,16 @@ function dispatchRoute_(route, envelope, session) {
     // normalizada. Los handlers que no la usan no ven diferencia.
     limits: route.policy ? route.policy.limits : null,
   };
+  // Acción de dominio declarada (B3 · R5.4): otro motor, otra entrada.
+  if (route.action !== undefined && route.action !== null) {
+    request.action = route.action;
+    var dispatchAction = globalThis['dispatchAction_'];
+    if (typeof dispatchAction !== 'function') {
+      throw apiError_(500, 'El motor de acciones no está disponible');
+    }
+    return respond_(withRenewal_(dispatchAction(route.resource, request), session));
+  }
+
   if (route.kind === 'handler') {
     // Sólo ejecutables desde el editor de Apps Script (R2.2 / auth.md §4.7).
     // El fallback a globalThis de más abajo significa que basta con que un
@@ -346,12 +427,37 @@ function dispatchRoute_(route, envelope, session) {
     if (EDITOR_ONLY_FNS.indexOf(route.handler) !== -1) {
       throw apiError_(403, 'Función sólo ejecutable desde el editor de Apps Script');
     }
+    // B2 · R5.1: la ENTRADA declarada se valida ANTES de llamar al handler.
+    // Un endpoint sin `input` no cambia; con `input` inválido corta con el
+    // 422 de `errors[]` que pinta el form (base.md §5) y el handler ni se
+    // entera — esa es la garantía de «antes de llamar al handler».
+    var inputErrors = validateEndpointInput_(route.input, envelope.payload, route.params);
+    if (inputErrors.length > 0) throw validationError_(inputErrors);
+
     var handler =
       (REGISTRY.handlers && REGISTRY.handlers[route.handler]) || globalThis[route.handler];
     if (typeof handler !== 'function') {
       throw apiError_(500, 'Función no disponible: ' + route.handler);
     }
-    return respond_(withRenewal_(handler(envelope.payload, request), session));
+    var result = handler(envelope.payload, request);
+
+    // La SALIDA declarada sólo se comprueba en dev (B2): en prod el
+    // contrato documenta, no frena — una discrepancia allí ya llegó al
+    // usuario y frenarla en frío sólo añadiría un 500. En dev es un
+    // fallo RUIDOSO: el handler devolvió algo que su propio contrato niega.
+    if (route.output && Props.isDev()) {
+      var outputErrors = validateEndpointOutput_(route.output, result);
+      if (outputErrors.length > 0) {
+        throw apiError_(
+          500,
+          'Salida fuera de contrato en ' +
+            truncate_(envelope.path) +
+            ': ' +
+            describeIssues_(outputErrors),
+        );
+      }
+    }
+    return respond_(withRenewal_(result, session));
   }
   // Motor genérico (engine/24-crud): dispatchResource_(resource, request)
   var dispatch = globalThis['dispatchResource_'];
@@ -378,6 +484,15 @@ function withRenewal_(result, session) {
 }
 
 // ── Utilidades internas ───────────────────────────────────────────────────
+
+// Los issues de un contrato en una sola línea (mensaje de 500 en dev).
+function describeIssues_(errors) {
+  return errors
+    .map(function (issue) {
+      return issue.path + ': ' + issue.message;
+    })
+    .join('; ');
+}
 
 function truncate_(text) {
   return text.length > 200 ? text.slice(0, 200) + '…' : text;

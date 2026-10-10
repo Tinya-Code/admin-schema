@@ -41,13 +41,41 @@ var KNOWN_RESOURCE_KEYS = [
   'views',
   'checks',
   'hooks',
+  'actions',
+  'transitions',
   'policies',
   'exposeToFront',
   'fields',
 ];
 
+// Claves admitidas en un endpoint (B2 · R5.1): las históricas + el contrato
+// declarativo input/output/cache/since. Un typo acá es un endpoint que el
+// router lee a medias, así que cae en esta lista como cualquier recurso.
+var KNOWN_ENDPOINT_KEYS = [
+  'route',
+  'method',
+  'access',
+  'limits',
+  'handler',
+  'resource',
+  'input',
+  'output',
+  'cache',
+  'since',
+];
+
+// Tipos admitidos en input/output de un endpoint: los de FIELD_TYPES más
+// `secret`, que no es un tipo de storage sino la marca de «sólo presencia»
+// (la contraseña del login).
+var ENDPOINT_EXTRA_TYPES = ['secret'];
+
+// Versión de un endpoint/capabilidad: '1.0', '1.2'…
+var VERSION_PATTERN = /^\d+\.\d+$/;
+
 var KNOWN_POLICY_KEYS = ['access', 'audit', 'cache', 'lock'];
 var KNOWN_OPERATION_KEYS = ['list', 'get', 'create', 'update', 'remove', 'reorder', 'bulk'];
+// Claves del objeto declarativo de cada operación (R5.3 añade `mode`).
+var OPERATION_DECL_KEYS = ['computed', 'shape', 'mode'];
 // collection: filas con su propio key.  singleton: una fila KV (storageMap_).
 // dashboard: descriptor SIN storage (`sheet: null`) que sólo expone datos
 // calculados al front — no tiene filas que validar.
@@ -167,6 +195,25 @@ function walkFields_(where, fields, issues) {
   });
 }
 
+// Tipo de un campo declarado (plano o anidado); `undefined` si no existe.
+function fieldTypeOf_(resource, key) {
+  var found = null;
+  var walk = function (fields) {
+    (fields || []).forEach(function (f) {
+      if (found !== null) return;
+      if (f && f.key === key) {
+        found = f.type;
+        return;
+      }
+      walk(f.fields);
+      walk(f.itemFields);
+      walk(f.extraColumns);
+    });
+  };
+  walk(resource.fields);
+  return found === null ? undefined : found;
+}
+
 function fieldKeySet_(resource) {
   var keys = {};
   var walk = function (fields) {
@@ -180,6 +227,252 @@ function fieldKeySet_(resource) {
   };
   walk(resource.fields);
   return keys;
+}
+
+// B3 · R5.4 — `acciones de dominio`: un cambio con nombre, declarado en el
+// recurso y publicado como POST /<base>/<clave>/actions/<nombre>. Se juzga
+// acá lo que el motor no puede: vocabulario, forma y las exclusiones que
+// hacen falta para que la declaración sea inequívoca.
+var ACTION_DECL_KEYS = ['from', 'set', 'handler', 'hooks', 'access'];
+var ACTION_NAME_RE = /^[A-Za-z0-9_-]+$/;
+// Vocabulario de `11-auth` §4.4, DUPLICADO a propósito: en runtime lo
+// desconocido se convierte en `role:admin` (fail-closed correcto), pero eso
+// esconde un typo en la declaración — acá el typo es ROJO.
+var ACCESS_LEVELS = ['public', 'session', 'admin', 'role:admin', 'role:staff'];
+
+function validateActions_(where, resource, issues) {
+  var actions = resource.actions;
+  if (actions === undefined || actions === null) return;
+  if (typeof actions !== 'object' || Array.isArray(actions)) {
+    issues.push(where + '.actions: debe ser un objeto de acciones');
+    return;
+  }
+  var fieldKeys = fieldKeySet_(resource);
+
+  Object.keys(actions).forEach(function (name) {
+    var at = where + '.actions.' + name;
+    if (!ACTION_NAME_RE.test(name)) {
+      issues.push(at + ": nombre inválido '" + name + "' (letras, dígitos, _ y -)");
+      return;
+    }
+    var decl = actions[name];
+    if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+      issues.push(at + ': debe ser un objeto');
+      return;
+    }
+    issues.push.apply(issues, unknownKeys_(at, decl, ACTION_DECL_KEYS));
+
+    // Dos formas, mutuamente excluyentes: declarativa O escape hatch.
+    var hasSet = decl.set !== undefined;
+    var hasHandler = typeof decl.handler === 'string' && decl.handler !== '';
+    if (hasSet === hasHandler) {
+      issues.push(
+        at + ": necesita 'set' (declarativa) o 'handler' (escape hatch), no ambas ni ninguna",
+      );
+    }
+
+    var setKeys = null;
+    if (hasSet) {
+      setKeys =
+        decl.set && typeof decl.set === 'object' && !Array.isArray(decl.set)
+          ? Object.keys(decl.set)
+          : null;
+      if (setKeys === null || setKeys.length === 0) {
+        issues.push(at + '.set: debe ser un objeto con al menos un campo');
+      } else {
+        setKeys.forEach(function (field) {
+          if (!fieldKeys[field]) issues.push(at + '.set.' + field + ': campo inexistente');
+        });
+      }
+    }
+
+    // `from` se juzga FUERA del bloque de `set`: un `{ handler, from }` no
+    // tiene estado que proteger y ese error quedaba tapado ahí adentro.
+    if (decl.from !== undefined) {
+      if (!Array.isArray(decl.from) || decl.from.length === 0) {
+        issues.push(at + '.from: debe ser un array de valores permitidos');
+      } else if (
+        decl.from.some(function (v) {
+          return v !== null && typeof v === 'object';
+        })
+      ) {
+        issues.push(at + '.from: los valores deben ser escalares');
+      } else if (setKeys === null) {
+        issues.push(at + ": 'from' sin 'set': ¿qué estado protege?");
+      } else if (setKeys.length !== 1) {
+        issues.push(at + ": 'from' sólo aplica con UN campo en set (¿cuál compara?)");
+      }
+    }
+
+    if (decl.handler !== undefined && (typeof decl.handler !== 'string' || decl.handler === '')) {
+      issues.push(at + '.handler: debe ser el nombre de una función registrada');
+    }
+
+    if (decl.access !== undefined) {
+      if (typeof decl.access !== 'string' || ACCESS_LEVELS.indexOf(decl.access.trim()) === -1) {
+        issues.push(at + ": nivel de access inválido '" + String(decl.access) + "'");
+      }
+    }
+
+    if (decl.hooks !== undefined) {
+      if (!Array.isArray(decl.hooks)) {
+        issues.push(at + '.hooks: debe ser un array de nombres');
+      } else {
+        decl.hooks.forEach(function (hookName, i) {
+          if (!REGISTRY.capabilities.hooks[hookName]) {
+            issues.push(at + '.hooks[' + i + "]: hook inexistente '" + hookName + "'");
+          }
+        });
+      }
+    }
+  });
+}
+
+// B3 · R5.5 — `transitions`: máquina de estado por campo. Se juzga al
+// arranque lo que el motor no puede ver: que el campo exista, que cada
+// regla sea «valor actual → lista de permitidos» y que TODOS los valores
+// referenciados estén en el `enum` del campo si el campo lo declara.
+function validateTransitions_(where, resource, issues) {
+  var machines = resource.transitions;
+  if (machines === undefined || machines === null) return;
+  if (typeof machines !== 'object' || Array.isArray(machines)) {
+    issues.push(where + '.transitions: debe ser un objeto de máquinas por campo');
+    return;
+  }
+
+  Object.keys(machines).forEach(function (field) {
+    var at = where + '.transitions.' + field;
+    var declaration = fieldKeySet_(resource)[field] !== undefined;
+    if (!declaration) {
+      issues.push(at + ': campo inexistente');
+      return;
+    }
+    var rules = machines[field];
+    if (!rules || typeof rules !== 'object' || Array.isArray(rules)) {
+      issues.push(at + ': debe ser un mapa de valor actual → permitidos');
+      return;
+    }
+    var states = Object.keys(rules);
+    if (states.length === 0) {
+      issues.push(at + ': máquina vacía (¿para qué declararla?)');
+      return;
+    }
+    states.forEach(function (state) {
+      var allowed = rules[state];
+      if (!Array.isArray(allowed) || allowed.length === 0) {
+        issues.push(at + '.' + state + ': debe ser un array de estados permitidos');
+        return;
+      }
+      if (
+        allowed.some(function (value) {
+          return value !== null && typeof value === 'object';
+        })
+      ) {
+        issues.push(at + '.' + state + ': los estados deben ser escalares');
+      }
+    });
+  });
+
+  // Si el campo declara `enum`, todo valor referenciado (clave o destino)
+  // tiene que vivir ahí: una máquina que habla en un vocabulario que el
+  // campo no acepta nunca se va a cumplir.
+  resource.fields.forEach(function walk(field) {
+    if (field.enum !== undefined && Array.isArray(field.enum)) {
+      var machine = machines[field.key];
+      if (machine && typeof machine === 'object') {
+        Object.keys(machine).forEach(function (state) {
+          if (field.enum.indexOf(state) === -1) {
+            issues.push(
+              where + '.transitions.' + field.key + '.' + state + ': no es un valor del enum',
+            );
+          }
+          var allowed = machine[state];
+          (Array.isArray(allowed) ? allowed : []).forEach(function (target) {
+            if (field.enum.indexOf(target) === -1) {
+              issues.push(
+                where +
+                  '.transitions.' +
+                  field.key +
+                  '.' +
+                  state +
+                  ': destino no declarado en el enum (' +
+                  String(target) +
+                  ')',
+              );
+            }
+          });
+        });
+      }
+    }
+    (field.fields || []).forEach(walk);
+    (field.itemFields || []).forEach(walk);
+    (field.extraColumns || []).forEach(walk);
+  });
+}
+
+// B3 · R5.3 — `operations`: el recurso decide qué tiene encendido; el motor
+// sólo obedece (dispatchResource_ responde 405 a lo no declarado). Acá se
+// juzga la DECLARACIÓN: vocabulario, tipos y los pocos tunings que hoy
+// significa algo (`remove.mode`, `reorder`). Lo que el motor no implementa
+// (`bulk`) no se puede encender: declararlo como activo es un rojo al
+// arranque, no una promesa que nadie cumple.
+var REMOVE_MODES = ['hard', 'soft', 'forbidden'];
+
+function validateOperations_(where, resource, issues) {
+  var ops = resource.operations;
+  if (ops === undefined || ops === null) return;
+  if (typeof ops !== 'object' || Array.isArray(ops)) {
+    issues.push(where + '.operations: debe ser un objeto de operaciones');
+    return;
+  }
+
+  Object.keys(ops).forEach(function (op) {
+    if (KNOWN_OPERATION_KEYS.indexOf(op) === -1) {
+      issues.push(where + ": operación desconocida '" + op + "'");
+      return;
+    }
+    var at = where + '.operations.' + op;
+    var decl = ops[op];
+
+    if (decl === true || decl === false) {
+      if (op === 'bulk' && decl === true) {
+        issues.push(at + ": 'bulk' no está implementado en el motor todavía");
+      }
+      if (op === 'reorder' && decl === true && resource.ordering !== 'positioned') {
+        issues.push(at + ": 'reorder' exige ordering: 'positioned' en el recurso");
+      }
+      return;
+    }
+    if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+      issues.push(at + ": debe ser true, false u objeto (llegó '" + typeof decl + "')");
+      return;
+    }
+
+    issues.push.apply(issues, unknownKeys_(at, decl, OPERATION_DECL_KEYS));
+
+    if (op === 'bulk') {
+      issues.push(at + ": 'bulk' no está implementado en el motor todavía");
+      return;
+    }
+    if (op === 'reorder' && resource.ordering !== 'positioned') {
+      issues.push(at + ": 'reorder' exige ordering: 'positioned' en el recurso");
+    }
+    if (op === 'remove') {
+      var mode = decl.mode === undefined ? 'hard' : decl.mode;
+      if (REMOVE_MODES.indexOf(mode) === -1) {
+        issues.push(at + ": mode inválido '" + mode + "' (hard | soft | forbidden)");
+      } else if (mode === 'soft') {
+        // La baja lógica escribe `activeField`: sin ese campo no hay dónde.
+        if (!resource.activeField) {
+          issues.push(at + ": mode 'soft' exige activeField en el recurso");
+        } else if (fieldTypeOf_(resource, resource.activeField) !== 'boolean') {
+          issues.push(
+            at + ": activeField '" + resource.activeField + "' debe ser un campo boolean",
+          );
+        }
+      }
+    }
+  });
 }
 
 function validateResource_(id, resource, issues) {
@@ -199,23 +492,10 @@ function validateResource_(id, resource, issues) {
     );
   }
 
-  if (resource.operations && typeof resource.operations === 'object') {
-    Object.keys(resource.operations).forEach(function (op) {
-      if (KNOWN_OPERATION_KEYS.indexOf(op) === -1) {
-        issues.push(where + ": operación desconocida '" + op + "'");
-        return;
-      }
-      var decl = resource.operations[op];
-      if (decl && typeof decl === 'object' && !Array.isArray(decl)) {
-        issues.push.apply(
-          issues,
-          unknownKeys_(where + '.operations.' + op, decl, ['computed', 'shape']),
-        );
-      }
-    });
-  }
-
   var fieldKeys = fieldKeySet_(resource);
+  validateOperations_(where, resource, issues);
+  validateActions_(where, resource, issues);
+  validateTransitions_(where, resource, issues);
 
   // 2. referencias rotas
   //
@@ -324,14 +604,141 @@ function validateResource_(id, resource, issues) {
     issues.push.apply(issues, capabilityArgsIssues_(at, cap.argsSchema, args));
   });
 
-  // 3e. hooks inexistentes
+  // 3e. hooks (B9 · R5.6): juzga el VOCABULARIO del contrato — fase
+  // conocida (HOOK_PHASES_, engine/30-events), entradas con forma de nombre
+  // u objeto { id, onError }, política onError dentro de ERROR_POLICIES_ e
+  // id registrado en capabilities.hooks.
   Object.keys(resource.hooks || {}).forEach(function (op) {
-    (resource.hooks[op] || []).forEach(function (name, i) {
-      if (!REGISTRY.capabilities.hooks[name]) {
-        issues.push(where + '.hooks.' + op + '[' + i + "]: hook inexistente '" + name + "'");
+    if (!HOOK_PHASES_[op]) {
+      issues.push(where + '.hooks.' + op + ': fase desconocida');
+      return;
+    }
+    var list = resource.hooks[op];
+    if (!Array.isArray(list)) {
+      issues.push(where + '.hooks.' + op + ': debe ser una lista');
+      return;
+    }
+    list.forEach(function (raw, i) {
+      var at = where + '.hooks.' + op + '[' + i + ']';
+      var isPlain = raw !== null && typeof raw === 'object' && !Array.isArray(raw);
+      var id = typeof raw === 'string' ? raw : isPlain ? raw.id : undefined;
+      if (typeof id !== 'string' || id === '') {
+        issues.push(at + ': debe ser un nombre u objeto { id, onError }');
+        return;
+      }
+      if (isPlain && raw.onError !== undefined && ERROR_POLICIES_.indexOf(raw.onError) === -1) {
+        issues.push(
+          at + ".onError: '" + raw.onError + "' fuera de (" + ERROR_POLICIES_.join(' | ') + ')',
+        );
+      }
+      if (!REGISTRY.capabilities.hooks[id]) {
+        issues.push(at + ": hook inexistente '" + id + "'");
       }
     });
   });
+}
+
+// ¿Es un campo declarado ({ type: 'text', … }) y no un grupo de campos?
+function isDeclaredField_(decl) {
+  return (
+    !!decl && typeof decl === 'object' && !Array.isArray(decl) && typeof decl.type === 'string'
+  );
+}
+
+// Tipo de un campo de contrato: FIELD_TYPES o `secret` (B2 · R5.1).
+function checkEndpointFieldType_(at, field, issues) {
+  if (!field || typeof field !== 'object' || Array.isArray(field)) {
+    issues.push(at + ': debe ser un campo { type, … }');
+    return;
+  }
+  var type = field.type;
+  if (
+    typeof type !== 'string' ||
+    (FIELD_TYPES[type] === undefined && ENDPOINT_EXTRA_TYPES.indexOf(type) === -1)
+  ) {
+    issues.push(at + ": tipo de campo inexistente '" + type + "'");
+  }
+}
+
+// input/output: plano (campo por campo) o por grupos (`params`, `query`, …).
+function validateEndpointFields_(where, decl, issues) {
+  if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+    issues.push(where + ': debe ser un objeto de campos o de grupos de campos');
+    return;
+  }
+  Object.keys(decl).forEach(function (key) {
+    var entry = decl[key];
+    var at = where + '.' + key;
+    if (isDeclaredField_(entry)) {
+      checkEndpointFieldType_(at, entry, issues);
+      return;
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      issues.push(at + ': no es un campo ni un grupo de campos');
+      return;
+    }
+    Object.keys(entry).forEach(function (sub) {
+      checkEndpointFieldType_(at + '.' + sub, entry[sub], issues);
+    });
+  });
+}
+
+// Contrato declarativo de un endpoint (B2 · R5.1).
+function validateEndpoint_(id, endpoint, issues) {
+  var where = 'endpoints.' + id;
+  if (!endpoint || typeof endpoint !== 'object' || Array.isArray(endpoint)) {
+    issues.push(where + ': debe ser un objeto');
+    return;
+  }
+  issues.push.apply(issues, unknownKeys_(where, endpoint, KNOWN_ENDPOINT_KEYS));
+
+  if (typeof endpoint.route !== 'string' || endpoint.route.charAt(0) !== '/') {
+    issues.push(where + ": `route` debe empezar por '/'");
+  }
+  // Referencia rota: el handler resuelve `resource` para leer su schema
+  // (dashboard, pinVerify, publicOrder), así que un id inexistente sólo se
+  // descubre en la petición. Acá muere en el arranque.
+  if (endpoint.resource !== undefined) {
+    if (typeof endpoint.resource !== 'string') {
+      issues.push(where + ': `resource` debe ser el id de un recurso');
+    } else if (REGISTRY.resources[endpoint.resource] === undefined) {
+      issues.push(where + ": resource inexistente '" + endpoint.resource + "'");
+    }
+  }
+  if (endpoint.input !== undefined) {
+    validateEndpointFields_(where + '.input', endpoint.input, issues);
+  }
+  if (endpoint.output !== undefined) {
+    validateEndpointFields_(where + '.output', endpoint.output, issues);
+  }
+  if (
+    endpoint.since !== undefined &&
+    (typeof endpoint.since !== 'string' || !VERSION_PATTERN.test(endpoint.since))
+  ) {
+    issues.push(where + ": `since` debe ser una versión tipo '1.0'");
+  }
+  // `cache` hoy es declaración sin consumidor (R5.1 la admite y la valida);
+  // el que la cuelgue de un handler tendrá la forma ya comprobada acá.
+  if (endpoint.cache !== undefined) {
+    var cache = endpoint.cache;
+    if (!cache || typeof cache !== 'object' || Array.isArray(cache)) {
+      issues.push(where + '.cache: debe ser un objeto { ttl, key }');
+    } else {
+      issues.push.apply(issues, unknownKeys_(where + '.cache', cache, ['ttl', 'key']));
+      if (typeof cache.ttl !== 'number' || !isFinite(cache.ttl) || cache.ttl <= 0) {
+        issues.push(where + '.cache: `ttl` debe ser un número de segundos > 0');
+      }
+      if (
+        !Array.isArray(cache.key) ||
+        cache.key.length === 0 ||
+        cache.key.some(function (k) {
+          return typeof k !== 'string' || k === '';
+        })
+      ) {
+        issues.push(where + '.cache: `key` debe ser un arreglo de nombres de campo');
+      }
+    }
+  }
 }
 
 /** Devuelve TODOS los problemas (no corta en el primero). */
@@ -345,12 +752,14 @@ function validateRegistry_() {
   // auth.md §4.7): el router cae a globalThis[handler], así que declararla
   // bastaría para exponerla por HTTP. Esto la hace fallar en el ARRANQUE.
   Object.keys(REGISTRY.endpoints).forEach(function (id) {
-    var handler = REGISTRY.endpoints[id] && REGISTRY.endpoints[id].handler;
+    var endpoint = REGISTRY.endpoints[id];
+    var handler = endpoint && endpoint.handler;
     if (typeof handler === 'string' && EDITOR_ONLY_FNS.indexOf(handler) !== -1) {
       issues.push(
         'endpoints.' + id + ": handler '" + handler + "' es sólo ejecutable desde el editor",
       );
     }
+    validateEndpoint_(id, endpoint, issues);
   });
 
   return issues;

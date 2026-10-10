@@ -32,13 +32,21 @@ REGISTRY.resources.orders = {
     'auth_state',
     'created_at',
   ],
+  // B3 · R5.3: operaciones encendidas (sin declarar ⇒ 405). Los pedidos no
+  // se reordenan ni se editan en bloque.
   operations: {
+    list: true,
+    get: true,
     create: {
       computed: [
         { field: 'ref', transform: 'token', from: 'customer_name' },
         { field: 'pin', transform: 'pin', from: 'customer_name' },
       ],
     },
+    update: true,
+    remove: true, // hard (por defecto): orders no tiene activeField
+    reorder: false,
+    bulk: false,
   },
   // El PIN en claro se queda en la fila del pedido; el hash lo escribe el
   // hook en `_pin` DESPUÉS de escribir. Si el hook falla, la escritura ya se

@@ -16,8 +16,16 @@ REGISTRY.resources.categories = {
   dependents: ['products'],
   listProjection: ['slug', 'image_url', 'name', 'active', 'position'],
   imageFolder: 'categories', // carpeta Cloudinary del recurso (§11)
+  // B3 · R5.3: lo que no está acá está APAGADO y responde 405. `reorder`
+  // sólo puede encenderse donde hay `ordering: 'positioned'` (validate-registry).
   operations: {
+    list: true,
+    get: true,
     create: { computed: [{ field: 'slug', transform: 'slugify', from: 'name' }] },
+    update: true,
+    remove: true, // hard (por defecto): `mode: 'soft'` baja lógica, no borra
+    reorder: true,
+    bulk: false, // el motor no lo implementa aún: encenderlo es rojo al arranque
   },
   views: {},
   policies: {

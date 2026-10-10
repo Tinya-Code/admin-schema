@@ -17,7 +17,8 @@
 //     handleSchema, handleSheetDrift, handleUploadSignature — 7 de 7).
 //     El nombre es arbitrario; romperlo con tres ficheros es ruido puro.
 //
-// `input` se declara ya (B2); lo consume el validador de Fase 5 (R5.1).
+// `input` lo declara B2 y LO VALIDA el router antes de llamar al handler
+// (R5.1): un email mal formado corta con 422 y la contraseña ni se toca.
 
 // Login: público y con límite — es el endpoint que más conviene frenar
 // (fuerza bruta). `read`/`write` es el umbral GLOBAL de §4.3 (10/min, el más
@@ -40,6 +41,13 @@ REGISTRY.endpoints.authLogin = {
     email: { type: 'email' },
     password: { type: 'secret' },
   },
+  // Sólo la forma: `token` y `user` tienen que venir SÍ o SÍ (el detalle de
+  // `user` es whitelist de publicUser_, no de este contrato).
+  output: {
+    token: { type: 'text', required: true },
+    user: { type: 'group', required: true },
+  },
+  since: '1.0',
 };
 
 // /auth/me y /auth/logout exigen sesión (§4.3). Sin `limits`: §4.3 no les
@@ -49,6 +57,8 @@ REGISTRY.endpoints.authMe = {
   method: 'POST',
   access: 'session',
   handler: 'handleAuthMe',
+  output: { user: { type: 'group', required: true } },
+  since: '1.0',
 };
 
 REGISTRY.endpoints.authLogout = {
@@ -56,6 +66,8 @@ REGISTRY.endpoints.authLogout = {
   method: 'POST',
   access: 'session',
   handler: 'handleAuthLogout',
+  output: { loggedOut: { type: 'boolean', required: true } },
+  since: '1.0',
 };
 
 // /auth/refresh no hace falta: la renovación es deslizante (§3.2).

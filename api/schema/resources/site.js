@@ -18,6 +18,16 @@ REGISTRY.resources.site = {
   listProjection: null, // sin listado
   imageFolder: null, // este recurso no tiene campos image
   checks: [{ check: 'not-in-sheet', sheet: '_placeholders' }], // R8 (mejoras §6)
+  // B3 · R5.3: un singleton sólo se LEE y se ACTUALIZA en su base.
+  // `create`/`remove`/`reorder`/`bulk` apagados: sin declarar ⇒ 405.
+  operations: {
+    get: true,
+    update: true,
+    create: false,
+    remove: false,
+    reorder: false,
+    bulk: false,
+  },
   views: {},
   policies: {
     // §8: 11-auth lee `access` (no el prefijo de ruta); TTL de caché y

@@ -56,6 +56,13 @@ var Props = {
     propsCache_ = null; // la próxima lectura recarga desde el servicio
   },
 
+  // ¿Estamos en desarrollo? (B2 · R5.1: la validación de `output` sólo
+  // corre en dev). Sin propiedad ENV configurada ⇒ dev, igual que hace
+  // setup/01-setup-spreadsheet al leerla.
+  isDev: function () {
+    return Props.get('ENV') !== 'prod';
+  },
+
   // Fuerza la recarga (uso puntual tras escribir por fuera).
   clearCache: function () {
     propsCache_ = null;

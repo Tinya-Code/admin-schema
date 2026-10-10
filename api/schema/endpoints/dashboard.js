@@ -14,4 +14,5 @@ REGISTRY.endpoints.dashboard = {
   // El id del recurso que alimenta las métricas. El handler lo lee para
   // evitar hardcodear el nombre en capabilities/ (§11.1: sin nombres concretos).
   resource: 'orders',
+  since: '1.0',
 };
