@@ -2509,10 +2509,41 @@ reorder, bulk }` con cada una encendible/apagable.
     - **Gates:** front **401/53** · api **664/38** · `api:check` **5 VERDE**
       · build ✔ · prettier sin subir deuda (17).
 
-- [ ] **R7.3** — `contract-check` por audiencia
+- [x] **R7.3** — `contract-check` por audiencia ✅ **cerrada 2026-10-10**
   - **Verifica:** rutas de recursos del front ⊆ audiencia correspondiente del
     back · claves de login del front ⊆ `input` de `/auth/login`.
   - **Prueba:** un token de admin **no** cambia el resultado de `/public/*`.
+  - **Verificado:**
+    - **Lo que ya existía, contado y no duplicado:** el check 10 (R2.11)
+      cubre `loginFields` ↔ `input` de `/auth/login` en **ambas**
+      direcciones.
+    - **Audiencia admin (nuevo, en `compareResource`):** un recurso que el
+      front declara sin `exposeToFront` ⇒ rojo (`/admin/schema` no lo
+      sirve); y si el back declara `audiences.admin`, cada `endpoint.<op>`
+      del front tiene que estar en su lista — una operación fuera de la
+      audiencia es un botón que el back no sirve.
+    - **Audiencia pública (check 12):** todo endpoint `access: 'public'`
+      atado a un recurso exige `audiences.public` en ese recurso. En
+      caliente cazó **dos**: `publicOrder` **y** `pinVerify` (ambos sirven
+      `orders` públicamente). El front público vive en **otro repo**, así
+      que su lado de back queda vigilado acá y la comparación con su
+      contrato queda para cuando R8 lo entregue.
+    - **El token de admin no abre la audiencia pública:**
+      `public-audience.spec.js` con **control** (el token emitido funciona
+      de verdad en `/auth/me` — sin eso, «no cambia nada» no probaría
+      nada) y cuerpo **idéntico** con y sin token en `/p/orders/:ref`,
+      sin notas internas ni `pin`. Es estructural: en rutas `public` el
+      router **ni llama** a `verifySession_` (10-router), el token no
+      llega al handler.
+    - **Mutacionales: 3/3 detectadas** (restauradas): recurso sin
+      `exposeToFront` · `audiences.admin` sin las ops que el front declara
+      (3 rojos) · recurso público **sin** audiencia (2 rojos:
+      `publicOrder` + `pinVerify`).
+    - **Gates:** front **401/53** · api **666/38** · `api:check` **5
+      VERDE** · build ✔ · prettier baseline · drift VERDE. (Nota: `ng
+test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
+      corridas seguidas; ningún spec del front importa archivos de `api/`
+      — flaky ajeno a la fase, a vigilar.)
 
 - [ ] **R7.4** — Políticas más finas (B8)
   - **Por operación:** `policies: { list: 'staff', delete: 'admin' }`.

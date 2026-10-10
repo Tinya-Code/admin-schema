@@ -290,7 +290,9 @@ REGISTRY.resources.products = {
 
 - **Lo público es lista blanca estricta**: solo lectura (`list`/`get`), vistas filtradas
   (`publishable`), sin campos internos (`cost`, `stock`, notas, ids de gestión).
-- Una ruta `public` nunca acepta ni devuelve el token del admin.
+- Una ruta `public` nunca acepta ni devuelve el token del admin
+  (probado de punta a punta en `public-audience.spec.js`: con control de que
+  el token es real, el cuerpo de `/p/orders/:ref` sale idéntico con y sin él).
 - Ningún recurso `_users`/`_audit`/internos tiene audiencia `public`.
 
 **Implementado (F7 · R7.2)**: `validate-registry.js` valida todo esto al arranque
