@@ -2400,7 +2400,27 @@ reorder, bulk }` con cada una encendible/apagable.
       explícito de 30 s en ese test. Sólo el reloj cambió: ninguna aserción
       se aflojó.
 
-- [ ] **R6.6** — Gates de la fase
+- [x] **R6.6** — Gates de la fase ✅ **cerrada 2026-10-10**
+  - Corrida fresca de los 6 gates con la fase completa aplicada (relanza
+    sólo lo que cambió; ninguna revisión sobre contenido sin cambios): front
+    **401/401** (53 ficheros) · api **653/653** (38 ficheros) · `api:check`
+    **5 VERDE** (B1, registry, doc de endpoints, contract check 7
+    recursos/84 campos) · `build` ✔ · prettier deuda **17** (los mismos
+    preexistentes) · **`api:drift` VERDE** — «sin faltantes ni sobrantes».
+  - **Fase 6 cierra con 31 mutacionales detectadas** — R6.1/R6.2 (vistas
+    estructuradas: grupos `all`/`or`, `select`, `page`, `expand` + 6 de
+    agregados) · R6.3 (widgets desde el agregado, 3) · R6.4 (paginación,
+    10/10) · R6.5 (fuentes declaradas, 8/8) — todas comportamentales,
+    verdes en la rama base y rojas sobre el cambio, con la suite
+    restaurada a verde después de cada una.
+  - **Lo que la fase deja funcionando:** widgets sin handler (leen del
+    agregado declarado), vistas estructuradas (`where` anidable, `sort`,
+    `select`, `page`, `expand`, `groupBy`), paginación estándar
+    `{ items, nextCursor, total }` y fuentes declaradas con UN `source`
+    para relaciones, selects y widgets.
+  - **Nota de gate:** `render-registry.spec.ts` (20 imports dinámicos
+    reales) tomó timeout de 10 s con el suite completo cargado ⇒ timeout
+    explícito de 30 s en ese test; sólo el reloj, ninguna aserción.
 
 ---
 
