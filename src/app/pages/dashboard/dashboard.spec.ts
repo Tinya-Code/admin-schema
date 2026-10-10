@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
+import { getSchema } from '../../schemas/registry';
 import { Dashboard } from './dashboard';
 
 /**
@@ -40,6 +42,9 @@ describe('Dashboard', () => {
   const root = (): HTMLElement => fixture.nativeElement as HTMLElement;
   const text = (): string => root().textContent ?? '';
 
+  /** Filas que piden los widgets con `source` (F8 · R6.5). */
+  const listSpy = vi.fn((endpoint?: unknown, payload?: unknown) => of([{ value: 42 }]));
+
   /**
    * Los componentes salen del registro con un `import()`, que `RenderHost`
    * registra como tarea pendiente para que `whenStable()` lo cubra (D28).
@@ -56,6 +61,8 @@ describe('Dashboard', () => {
   };
 
   beforeEach(async () => {
+    listSpy.mockClear();
+    listSpy.mockImplementation(() => of([{ value: 42 }]));
     await TestBed.configureTestingModule({
       imports: [Dashboard],
       providers: [
@@ -63,6 +70,7 @@ describe('Dashboard', () => {
           provide: ApiService,
           useValue: {
             request: () => of(FIXTURE),
+            list: listSpy,
           },
         },
       ],
@@ -88,6 +96,41 @@ describe('Dashboard', () => {
 
     expect(text()).toContain('Pendientes');
     expect(root().querySelector('[data-testid="value"]')?.textContent?.trim()).toBe('3');
+  });
+
+  it('un widget con source pide SUS filas y el de payload sigue leyendo data', async () => {
+    // F8 · R6.5: el panel ya no depende de que un handler arme
+    // `data[widget.key]` — la fuente declarada trae la fila agregada y la
+    // tarjeta lee su `value`.
+    fixture.componentRef.setInput('schema', {
+      ...SCHEMA,
+      widgets: [
+        {
+          key: 'categorias',
+          type: 'metric-card',
+          label: 'Categorías',
+          source: { resource: 'categories', view: 'activos' },
+        },
+        { key: 'pendientes', type: 'metric-card', label: 'Pendientes', hint: 'actualizados hoy' },
+      ],
+    });
+    fixture.componentRef.setInput('data', { pendientes: 7 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // La fuente declarada se pide UNA vez, por el endpoint del recurso…
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy.mock.calls[0][0]).toEqual(getSchema('categories')!.endpoint);
+    expect(listSpy.mock.calls[0][1]).toEqual({ view: 'activos' });
+
+    // …la tarjeta con `source` mide lo que trajeron SUS filas (42) aunque
+    // `data` no traiga la clave `categorias`, y la de payload sigue midiendo
+    // `data` (7): las dos formas conviven en el mismo panel.
+    const valores = Array.from(root().querySelectorAll('[data-testid="value"]')).map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(valores).toEqual(['42', '7']);
   });
 
   it('sin widgets declarados ⇒ estado vacío', () => {

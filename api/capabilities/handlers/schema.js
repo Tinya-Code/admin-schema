@@ -153,6 +153,7 @@ function projectCondition_(cond) {
   if (cond.not !== undefined) out.not = cond.not;
   if (Object.prototype.hasOwnProperty.call(cond, 'value')) out.value = cond.value;
   if (typeof cond.ref === 'string') out.ref = cond.ref;
+  if (typeof cond.param === 'string') out.param = cond.param;
   return out;
 }
 
@@ -213,13 +214,11 @@ function projectField_(field) {
   }
 
   if (field.type === 'relation') {
-    // Aplanado: mismo shape que RelationField del front (§5 de base.md).
-    out.relation = {
-      resource: field.resource,
-      valueField: field.valueField,
-      labelField: field.labelField,
-      onlyActive: field.onlyActive === true,
-    };
+    // F8 · R6.5 (D62): MISMO vocabulario declarado que el front — un objeto
+    // `source`, no un `relation` aplanado aparte (que era ya una copia
+    // divergente: `onlyActive` vivía dentro de la copia y en el front fuera).
+    out.source = Object.assign({}, field.source);
+    out.onlyActive = field.onlyActive === true;
   } else if (field.type === 'group') {
     out.fields = field.fields.map(projectField_);
   } else if (field.type === 'list') {

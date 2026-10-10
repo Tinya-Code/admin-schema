@@ -364,15 +364,23 @@ function enumList_(field) {
 }
 
 // FK: debe existir en el recurso destino (y estar activa si onlyActive).
+// La fuente declarada es `field.source` (F8 · R6.5, D62): `{ resource,
+// valueField? }` — sin `valueField` la clave es el `keyField` del recurso
+// destino, la misma regla que aplican `27-views` y el front.
 function validateRelation_(ss, field, value, path, errors) {
-  var target = getResourceSchema(field.resource);
+  var src = field.source;
+  if (src === undefined || src === null || typeof src !== 'object') {
+    throw apiError_(500, 'Relación sin source: ' + field.key);
+  }
+  var target = getResourceSchema(src.resource);
   if (target === null) {
     // Schema roto (no es error del usuario) → 500 explícito.
-    throw apiError_(500, 'Relación no configurada: ' + field.resource);
+    throw apiError_(500, 'Relación no configurada: ' + src.resource);
   }
   var data = readSheetData_(ss, target.sheet);
-  var idx = data.headers.indexOf(field.valueField);
-  if (idx === -1) throw apiError_(500, 'Columna inexistente: ' + field.valueField);
+  var valueField = src.valueField || target.keyField;
+  var idx = data.headers.indexOf(valueField);
+  if (idx === -1) throw apiError_(500, 'Columna inexistente: ' + valueField);
 
   var found = null;
   var wanted = String(value);

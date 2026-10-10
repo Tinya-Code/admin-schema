@@ -48,9 +48,13 @@ export class ApiService {
    * lo descarta hoy porque la lista no pagina todavía (backlog-ui-ux).
    * Un listado sin envelope (arreglo plano, el contrato histórico) pasa
    * tal cual.
+   *
+   * `payload` sólo lo usa una fuente declarada (F8 · R6.5): `{ view, params }`
+   * pide el listado filtrado por una vista y sus parámetros. Sin él, la
+   * llamada es la de siempre — la lectura llana del recurso.
    */
-  list<T>(endpoint: ResourceEndpoints): Observable<T[]> {
-    return this.send<unknown>(endpoint.list, 'GET').pipe(map((raw) => unwrapList<T>(raw)));
+  list<T>(endpoint: ResourceEndpoints, payload?: Record<string, unknown>): Observable<T[]> {
+    return this.send<unknown>(endpoint.list, 'GET', payload).pipe(map((raw) => unwrapList<T>(raw)));
   }
 
   /** `key` solo aplica a colecciones (`{key}` en la plantilla); los singleton no la llevan. */

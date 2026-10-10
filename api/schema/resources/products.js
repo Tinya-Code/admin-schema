@@ -120,9 +120,9 @@ REGISTRY.resources.products = {
       key: 'category_slug',
       type: 'relation',
       required: true,
-      resource: 'categories',
-      valueField: 'slug',
-      labelField: 'name',
+      // F8 · R6.5 (D62): la fuente de las opciones es UN objeto declarado —
+      // `resource`/`valueField`/`labelField` como claves planas ya no existen.
+      source: { resource: 'categories', valueField: 'slug', labelField: 'name' },
       onlyActive: true,
     },
     { key: 'sku', type: 'text', required: true, unique: true },

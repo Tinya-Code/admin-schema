@@ -129,15 +129,23 @@ export interface BooleanField extends FieldBase<boolean> {
   falseLabel?: string;
 }
 
-export interface SelectField extends FieldBase<string> {
-  type: 'select';
-  options: SelectOption[];
-}
+/**
+ * De dónde salen las opciones de un desplegable: **exactamente una** de las
+ * dos formas (XOR en el tipo, D62).
+ *
+ * - `options` — estáticas en el schema (el caso de las enums: `status`).
+ * - `source` — pedidas al fetcher declarado (F8 · R6.5) para listados que
+ *   viven en otro recurso.
+ *
+ * Ninguna ⇒ un desplegable mudo; las dos ⇒ dos verdades para el mismo campo.
+ * Ambas reglas viven en este tipo, no en un chequeo en runtime.
+ */
+type SelectData =
+  { options: SelectOption[]; source?: never } | { options?: never; source: DataSource };
 
-export interface MultiselectField extends FieldBase<string[]> {
-  type: 'multiselect';
-  options: SelectOption[];
-}
+export type SelectField = FieldBase<string> & { type: 'select' } & SelectData;
+
+export type MultiselectField = FieldBase<string[]> & { type: 'multiselect' } & SelectData;
 
 export interface UrlField extends FieldBase<string> {
   type: 'url';
@@ -174,19 +182,50 @@ export interface ReadonlyTextField extends FieldBase<string> {
 // §5.2 Referencias
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Fuente de datos declarada (F8 · R6.5): UN vocabulario para relations,
+ * selects y widgets en lugar de tres. El fetcher es único
+ * (`DataSourceService`) y la clave de su caché es `resource+view+params`.
+ *
+ * `params` son valores interpolados `{campo}` que el front resuelve contra su
+ * contexto (el registro del formulario o la fila del widget) y manda como
+ * `payload.params`; el back los inyecta en el ctx de las vistas, donde una
+ * condición los lee con el operando `param: '<nombre>'`. Una vista que no
+ * referencia ese parámetro no se ve afectada por él — sólo cambia la clave
+ * de caché.
+ *
+ * Los parámetros llegan del navegador, así que son ENTRADA: sólo filtran
+ * dentro del recurso que la ruta ya autoriza a leer (nunca ensanchan el
+ * acceso) y una vista que pide un parámetro ausente queda fail-closed.
+ */
+export interface DataSource {
+  /** Recurso declarado (`resource.id`): su listado es el de las opciones. */
+  resource: string;
+  /** Vista declarada en `resource.views` (opcional): filtra en el back. */
+  view?: string;
+  /** Valores interpolados para la vista (`{campo}` ← contexto). */
+  params?: Record<string, string>;
+  /** Etiqueta por defecto de las filas (si no, `titleField` del recurso). */
+  labelField?: string;
+  /** Valor por defecto de las filas (si no, `keyField` del recurso). */
+  valueField?: string;
+}
+
 export interface RelationField extends FieldBase<string> {
   type: 'relation';
-  /** Recurso del que se cargan las opciones (id de otro ResourceSchema). */
-  resource: string;
-  valueField?: string;
-  labelField?: string;
+  /**
+   * De dónde salen las opciones (F8 · R6.5): `{ resource, view?, params?, … }`.
+   * Antes eran tres claves planas (`resource`/`labelField`/`valueField`);
+   * D62 las unifica con el resto de consumidores.
+   */
+  source: DataSource;
   /**
    * Segundo dato a mostrar junto a la etiqueta (guía §1: «Juan Pérez ·
    * DNI 123»). Se concatena con « · » y forma parte de la opción, así que
    * también se busca sobre él.
    */
   secondaryField?: string;
-  /** Cargar solo registros activos. */
+  /** Cargar solo registros activos (lo exige además la FK en el back). */
   onlyActive?: boolean;
 }
 
@@ -265,8 +304,21 @@ export interface KeyValueField extends FieldBase<KeyValueItem[]>, ListOptions {
  *
  * Su `key` es además la clave del dato en la respuesta del endpoint del
  * dashboard (`{ key: 'pendientes' }` ↔ `{ pendientes: 3 }`), salvo que el
- * widget declare `source: 'payload'` (abajo).
+ * widget declare otra fuente (F8 · R6.5).
  */
+
+/**
+ * Fuente de datos de un widget: el mismo vocabulario declarado de F8 que usan
+ * relations y selects (D62), más el caso «payload del panel».
+ *
+ * - `DataSource` (`{ resource, view?, params? }`): el widget pide sus filas o
+ *   su agregado al recurso declarado vía `DataSourceService`; deja de depender
+ *   de que un handler haya armado `data[widget.key]`.
+ * - `{ kind: 'payload' }`: lee la respuesta COMPLETA del endpoint del
+ *   dashboard (varias claves a la vez).
+ */
+export type WidgetSource = DataSource | { kind: 'payload' };
+
 export interface WidgetBase {
   key: string;
   label: string;
@@ -274,15 +326,18 @@ export interface WidgetBase {
   /** Ancho en la grilla del panel (1–12), igual que un campo. */
   width?: GridWidth;
   /**
-   * De dónde saca sus datos respecto de la respuesta del endpoint.
+   * De dónde saca sus datos (F8 · R6.5).
    *
-   * - `'key'` (por defecto): `data[widget.key]`. Es el contrato normal.
-   * - `'payload'`: la respuesta COMPLETA. Para widgets que se componen a
-   *   partir de varias claves (p. ej. `status-progress` leyendo
-   *   `pendientes` + `entregados` + `cancelados`) sin que el orquestador
-   *   tenga que saber qué tipo de widget es.
+   * - **ausente** (por defecto): `data[widget.key]`. Es el contrato normal y
+   *   el que usan los KPI (`{ key: 'pendientes' }` ↔ `{ pendientes: 3 }`).
+   * - **`{ kind: 'payload' }`**: la respuesta COMPLETA, para widgets que se
+   *   componen de varias claves (`status-progress` leyendo `pendientes` +
+   *   `entregados` + `cancelados`) sin que el orquestador tenga que saber
+   *   qué tipo de widget es.
+   * - **`DataSource`**: las filas salen del recurso declarado (vista
+   *   incluida), pedidas al fetcher común.
    */
-  source?: 'key' | 'payload';
+  source?: WidgetSource;
 }
 
 /** KPI de una cifra suelta («3 pendientes»). */
@@ -317,9 +372,13 @@ export interface ChartLineWidget extends WidgetBase {
 /** Tabla embebida de registros operativos (ej. pedidos que requieren atención). */
 export interface RecordListWidget extends WidgetBase {
   type: 'record-list';
-  /** Recurso al que pertenecen los registros (ej. `orders`). */
-  resource: string;
-  /** Claves de columnas a mostrar en la tabla compacta. */
+  /**
+   * Claves de columnas a mostrar en la tabla compacta.
+   *
+   * No lleva `resource`: si las filas vienen declaradas, ese recurso ya está
+   * en `source.resource` (D63 retira la clave duplicada — estaba declarada y
+   * nadie la leía).
+   */
   columns: string[];
   /** Acción de navegación por fila. */
   action?: {

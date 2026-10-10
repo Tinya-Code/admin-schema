@@ -55,12 +55,15 @@ describe('render-registry', () => {
     }
   });
 
+  // Son 20 imports dinámicos de componentes reales: con el suite completo
+  // compitiendo por el hilo, el default de 10 s se queda corto y el gate se
+  // pone rojo por reloj, no por código.
   it('los 20 tipos de campo resuelven su componente real', async () => {
     for (const type of CAMPOS) {
       const component = await resolve('field', type, SinRenderizador);
       expect(component, `"${type}" resolvió el fallback`).not.toBe(SinRenderizador);
     }
-  });
+  }, 30_000);
 
   it('devuelve el fallback cuando el tipo no está registrado', async () => {
     await expect(resolve('field', 'no-existe', SinRenderizador)).resolves.toBe(SinRenderizador);

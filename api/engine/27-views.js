@@ -90,7 +90,18 @@ function resolveViewOperand_(cond, ctx) {
     if (!facts || typeof facts !== 'object') return { ok: false, value: undefined };
     return { ok: true, value: facts };
   }
-  throw apiError_(500, 'Condición sin operando (value|from|ref): ' + (cond.field || '?'));
+  if (typeof cond.param === 'string') {
+    // F8 · R6.5: valor que el cliente mandó en `payload.params` para esta
+    // vista. Sin objeto `params` o sin esa clave ⇒ fail-closed, igual que
+    // `ref`/`from` (la vista se declara pidiendo un dato que no llegó).
+    var params = ctx && typeof ctx === 'object' ? ctx.params : null;
+    if (!params || typeof params !== 'object') return { ok: false, value: undefined };
+    if (!Object.prototype.hasOwnProperty.call(params, cond.param)) {
+      return { ok: false, value: undefined };
+    }
+    return { ok: true, value: params[cond.param] };
+  }
+  throw apiError_(500, 'Condición sin operando (value|from|ref|param): ' + (cond.field || '?'));
 }
 
 // Ops unarias: no llevan operando (value|from|ref); el intérprete las
@@ -141,7 +152,7 @@ function evalGroup_(key, conds, item, ctx) {
   return key === 'all' ? true : false;
 }
 
-// Condición plana: field + op + operando (value|from|ref), con `not`.
+// Condición plana: field + op + operando (value|from|ref|param), con `not`.
 // Devuelve true/false, o null si el operando no resuelve (fail-closed).
 function evalLeaf_(cond, item, ctx) {
   if (typeof cond.field !== 'string' || typeof cond.op !== 'string') {
@@ -239,11 +250,14 @@ function listWithRules_(ss, resource, map, request) {
   var effShape = viewShape && viewShape !== listShape ? viewShape : listShape;
   var page = readRequestPage_(payload);
   if (page !== null) assertPaginable_(resource, effShape, page, viewName);
+  // Entrada de cliente validada acá, junto a la paginación y por la misma
+  // razón: antes de gastar la hoja (F8 · R6.5).
+  var reqParams = readRequestParams_(payload);
 
   var base = listCollection_(ss, resource, map);
   var items = base;
   if (wantsFilter || wantsView) {
-    var ctx = readRulesCtx_(ss, resource, map, base, payload);
+    var ctx = readRulesCtx_(ss, resource, map, base, payload, reqParams);
     if (wantsFilter) items = applyViewFilter_(resource, String(payload.filter), items, ctx);
     if (wantsView) items = applyDeclaredView_(resource, viewName, items, ctx);
     // applyView*/applyDeclaredView_ ya validaron que la vista existe.
@@ -327,6 +341,58 @@ function readRequestPage_(payload) {
     ]);
   }
   return hayPage ? readPageSpec_(page) : readCursor_(cursor);
+}
+
+// F8 · R6.5 · parámetros de vista: el navegador manda `{ <nombre>: <valor> }`
+// y una condición `where: [{ param: '<nombre>', … }]` lo lee desde
+// `ctx.params`. Es ENTRADA ⇒ la misma disciplina que `page`/`cursor`: 422 con
+// `errors[]` y `path` relativo al payload, ANTES de leer la hoja. El tope
+// (10 claves de 500 caracteres) no es una regla de negocio: es lo que una
+// vista puede llegar a nombrar.
+//
+// Un parámetro NUNCA ensancha el acceso: sólo filtra dentro del recurso que
+// la ruta ya autoriza a leer, y una vista que pide uno que no llegó queda
+// fail-closed en `resolveViewOperand_` (mejor ocultar de más que filtrar de
+// menos). `params` y `self` son claves reservadas del ctx.
+function readRequestParams_(payload) {
+  var params = payload.params;
+  if (params === undefined || params === null) return null;
+  if (typeof params !== 'object' || Array.isArray(params)) {
+    throw validationError_([
+      {
+        path: 'params',
+        message: 'params debe ser un objeto { nombre: valor }.',
+        code: 'VALIDATION_PARAMS',
+      },
+    ]);
+  }
+  var names = Object.keys(params);
+  var errors = [];
+  if (names.length > 10) {
+    errors.push({
+      path: 'params',
+      message: 'Se admiten como máximo 10 parámetros.',
+      code: 'VALIDATION_PARAMS',
+    });
+  }
+  names.forEach(function (name) {
+    var value = params[name];
+    if (typeof value !== 'string') {
+      errors.push({
+        path: 'params.' + name,
+        message: 'El valor de un parámetro es texto.',
+        code: 'VALIDATION_PARAMS',
+      });
+    } else if (value.length > 500) {
+      errors.push({
+        path: 'params.' + name,
+        message: 'Un parámetro no supera los 500 caracteres.',
+        code: 'VALIDATION_PARAMS',
+      });
+    }
+  });
+  if (errors.length > 0) throw validationError_(errors);
+  return params;
 }
 
 // page: objeto sin claves fuera de { size, offset }. Las claves desconocidas
@@ -708,12 +774,15 @@ function applyViewExpand_(resource, item, expand, ctx, name) {
   for (var i = 0; i < expand.length; i++) {
     var key = expand[i];
     var field = byKey[key];
-    if (!field || field.type !== 'relation' || !field.resource) {
+    if (!field || field.type !== 'relation' || !field.source) {
       throw apiError_(500, 'expand: ' + String(key) + ' no es relación en ' + name);
     }
-    var facts = ctx && ctx[field.resource];
+    var facts = ctx && ctx[field.source.resource];
     if (!facts || typeof facts !== 'object') {
-      throw apiError_(500, 'expand: relación ' + field.resource + ' sin contexto en ' + name);
+      throw apiError_(
+        500,
+        'expand: relación ' + field.source.resource + ' sin contexto en ' + name,
+      );
     }
     var flat = item[key];
     if (flat === undefined || flat === null || flat === '') continue;
@@ -728,23 +797,30 @@ function applyViewExpand_(resource, item, expand, ctx, name) {
 // motor NO nombra entidades: lee los ids desde el schema (una condición
 // `ref: 'categories'` consume ctx.categories). Si el payload trae `key`,
 // ctx.self es el ítem de la lista con esa clave (ancla de vistas tipo
-// "relacionados"; `from: '$item.x'` lo lee).
-function readRulesCtx_(ss, resource, map, items, payload) {
-  var ctx = {};
+// "relacionados"; `from: '$item.x'` lo lee). `ctx.params` son los
+// parámetros que el cliente mandó (F8 · R6.5): una condición `param:
+// '<nombre>'` los lee; `params` y `self` son claves reservadas.
+function readRulesCtx_(ss, resource, map, items, payload, params) {
+  var ctx = { params: params === null || params === undefined ? {} : params };
   (resource.fields || []).forEach(function (field) {
-    if (field.type !== 'relation' || !field.resource) return;
-    var target = getResourceSchema(field.resource);
-    if (target === null) throw apiError_(500, 'Relación no configurada: ' + field.resource);
+    if (field.type !== 'relation' || !field.source) return;
+    var target = getResourceSchema(field.source.resource);
+    if (target === null) throw apiError_(500, 'Relación no configurada: ' + field.source.resource);
     var data = readSheetData_(ss, target.sheet);
-    var valueIdx = data.headers.indexOf(field.valueField);
-    if (valueIdx === -1) throw apiError_(500, 'Columna inexistente: ' + field.valueField);
+    // Sin `valueField`, la clave del mapa es el `keyField` del destino
+    // (misma regla que 23-validate y el front — F8 · R6.5).
+    var valueField = field.source.valueField || target.keyField;
+    var valueIdx = data.headers.indexOf(valueField);
+    if (valueIdx === -1) throw apiError_(500, 'Columna inexistente: ' + valueField);
     var activeIdx = target.activeField ? data.headers.indexOf(target.activeField) : -1;
     var facts = {};
     data.rows.forEach(function (row) {
       facts[String(row.values[valueIdx])] =
         activeIdx === -1 ? true : truthyCell_(row.values[activeIdx]);
     });
-    ctx[field.resource] = facts;
+    // La clave del ctx es el recurso destino (no el campo): una condición
+    // `ref: 'categories'` consume `ctx.categories` — F8 · R6.5.
+    ctx[field.source.resource] = facts;
   });
   if (payload.key !== undefined && payload.key !== null && payload.key !== '') {
     var wanted = String(payload.key);

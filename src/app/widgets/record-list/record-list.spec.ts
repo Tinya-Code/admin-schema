@@ -12,7 +12,6 @@ describe('RecordList', () => {
     type: 'record-list',
     key: 'pedidos_pendientes',
     label: 'Pedidos que Requieren Atención',
-    resource: 'orders',
     columns: ['ref', 'customer_name', 'status'],
     action: {
       label: 'Ver Ficha',

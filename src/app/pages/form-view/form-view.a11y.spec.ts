@@ -340,7 +340,12 @@ describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
       },
       { key: 'f_stringlist', label: 'Cadenas', type: 'string-list' },
       { key: 'f_keyvalue', label: 'Clave/valor', type: 'key-value' },
-      { key: 'f_relation', label: 'Relación', type: 'relation', resource: 'categories' },
+      {
+        key: 'f_relation',
+        label: 'Relación',
+        type: 'relation',
+        source: { resource: 'categories' },
+      },
       { key: 'f_image', label: 'Imagen', type: 'image' },
     ],
   };

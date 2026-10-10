@@ -1,12 +1,12 @@
 import { Component, computed, inject, input, resource, signal } from '@angular/core';
 import { FormField } from '@angular/forms/signals';
-import { firstValueFrom } from 'rxjs';
 
 import { LucidePlus } from '@lucide/angular';
 
 import type { RelationField, SelectOption } from '../../core/models/schema.model';
-import { ApiService } from '../../core/services/api.service';
+import { DataSourceService, dataSourceKey } from '../../core/services/data-source.service';
 import { RelationDrawerService } from '../../core/services/relation-drawer.service';
+import { optionsFromRows } from '../../core/utils/source-options';
 import { Button } from '../../shared/components/button/button';
 import { getSchema } from '../../schemas/registry';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
@@ -15,18 +15,19 @@ import { childTree, type RootTree } from '../field-node';
 
 /**
  * Referencia a otro recurso (base.md §5.2): `<select>` con opciones del
- * listado del recurso destino, cargadas con `resource`.
+ * listado del recurso destino, cargadas desde `field.source` (F8 · R6.5).
+ *
+ * La vuelta no la arma este componente: pasa por `DataSourceService`, que
+ * centraliza la caché por `resource+view+params`. El `resource()` de Angular
+ * de acá sólo aporta el estado (loading/error/recarga), y su `params` es la
+ * clave de la fuente ya interpolada — así una relación con `params`
+ * dependientes del formulario se recarga cuando cambia el dato, y una sin
+ * `params` no se entera de las teclas.
  *
  * Más de 7 opciones → búsqueda encima del select (plan 6.1, guía §1). Se
  * filtra un `<select>` nativo y no se construye un combobox propio: conserva
  * la navegación con teclado del navegador, el valor seleccionado visible y
  * la lista de opciones accesible sin gestionar `aria-activedescendant`.
- *
- * `params` lee el input en la construcción del recurso (antes de que Angular
- * asigne los inputs): `resource` captura esa primera excepción como estado
- * `error` y la reevalúa cuando el input cambia — verificado en
- * `_resource-chunk.mjs` (`extRequest`/`rethrowFatalErrors`, sólo el código
- * 992 se relanza).
  */
 @Component({
   selector: 'app-field-relation',
@@ -102,7 +103,7 @@ export class FieldRelation {
   readonly field = input.required<RelationField>();
   readonly tree = input.required<RootTree>();
 
-  private readonly api = inject(ApiService);
+  private readonly ds = inject(DataSourceService);
   private readonly drawer = inject(RelationDrawerService);
 
   protected readonly node = computed(() => childTree<string>(this.tree(), this.field().key));
@@ -111,7 +112,7 @@ export class FieldRelation {
   /** Texto escrito en el buscador (sólo se usa si supera el umbral). */
   protected readonly query = signal('');
 
-  protected readonly targetSchema = computed(() => getSchema(this.field().resource));
+  protected readonly targetSchema = computed(() => getSchema(this.field().source.resource));
 
   protected readonly canCreate = computed(() => this.targetSchema()?.permissions?.create !== false);
 
@@ -164,8 +165,11 @@ export class FieldRelation {
    * confirmarse la creación, recarga las opciones y preselecciona la clave.
    */
   protected requestCreate(): void {
-    const resource = this.field().resource;
+    const resource = this.field().source.resource;
     this.drawer.open(resource, (key) => {
+      // La fila nueva todavía no está en la caché compartida: sin este
+      // `invalidate` la recarga devolvería la lista vieja (F8 · R6.5).
+      this.ds.invalidate(resource);
       this.optionsResource.reload();
       // Se setea DESPUÉS de pedir la recarga: si la opción todavía no está
       // en el DOM el select mostraría vacío, y al llegar se reengancha sola
@@ -174,58 +178,47 @@ export class FieldRelation {
     });
   }
 
+  /**
+   * Registro del formulario, sólo para resolver `{campo}` en `source.params`.
+   *
+   * Si la fuente no declara parámetros el registro NO se lee: la relación
+   * no depende del formulario y no se recalcula con cada tecla.
+   */
+  private readonly registro = computed<Record<string, unknown> | undefined>(() =>
+    this.field().source.params === undefined ? undefined : this.tree()().value(),
+  );
+
+  /** Clave de la fuente ya interpolada: es lo que `resource` compara. */
+  private readonly claveFuente = computed(() =>
+    dataSourceKey(this.field().source, this.registro()),
+  );
+
+  /**
+   * Carga de las opciones. `resource()` sólo aporta estado (loading/error/
+   * recarga): la vuelta y la caché son del `DataSourceService`, que así
+   * comparte filas con el resto de consumidores de la misma fuente.
+   */
   private readonly optionsResource = resource({
-    params: () => this.field().resource,
-    loader: async ({ params: resourceId }) => {
-      const target = getSchema(resourceId);
-      if (!target) {
-        throw new Error(`Recurso desconocido: ${resourceId}`);
-      }
-      const rows = await firstValueFrom(this.api.list<Record<string, unknown>>(target.endpoint));
-      return Array.isArray(rows) ? rows : [];
-    },
+    params: () => this.claveFuente(),
+    loader: async () => this.ds.rows(this.field().source, this.registro()),
   });
 
-  /** Opciones filtradas (`onlyActive`) y tipadas según el schema destino. */
-  protected readonly options = computed<SelectOption[]>(() => {
-    const rows = this.optionsResource.value() ?? [];
-    const field = this.field();
-    const target = getSchema(field.resource);
-    const valueKey = field.valueField ?? target?.keyField ?? 'id';
-    const labelKey = field.labelField ?? target?.titleField ?? valueKey;
-    const options: SelectOption[] = [];
-    for (const row of rows) {
-      if (field.onlyActive && row['active'] === false) {
-        continue;
-      }
-      const value = row[valueKey];
-      if (value === undefined || value === null || value === '') {
-        continue;
-      }
-      const label = row[labelKey];
-      const primary = typeof label === 'string' && label !== '' ? label : String(value);
-      options.push({ value: String(value), label: withSecondary(primary, row, field) });
-    }
-    return options;
-  });
-}
-
-/**
- * Dato secundario junto a la etiqueta (plan 6.3, guía §1:
- * «Juan Pérez · DNI 123»). Sin `secondaryField` devuelve la etiqueta tal cual.
- */
-function withSecondary(
-  primary: string,
-  row: Record<string, unknown>,
-  field: RelationField,
-): string {
-  const key = field.secondaryField;
-  if (key === undefined) {
-    return primary;
-  }
-  const secondary = row[key];
-  if (secondary === undefined || secondary === null || secondary === '') {
-    return primary;
-  }
-  return `${primary} · ${String(secondary)}`;
+  /**
+   * Opciones (F8): filas de la fuente declarada → `SelectOption`.
+   *
+   * El `@switch` del template sólo entra en `default` cuando no hubo fallo,
+   * pero el estado se mira acá también: `value()` del resource TIRA en
+   * estado error (contract de Angular) y un computed que se evalúe por otra
+   * vía tiraría el render entero.
+   */
+  protected readonly options = computed<SelectOption[]>(() =>
+    this.optionsResource.status() === 'error'
+      ? []
+      : optionsFromRows(this.optionsResource.value() ?? [], {
+          source: this.field().source,
+          target: this.targetSchema(),
+          onlyActive: this.field().onlyActive,
+          secondaryField: this.field().secondaryField,
+        }),
+  );
 }

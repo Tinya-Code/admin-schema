@@ -76,7 +76,6 @@ describe('WidgetHost', () => {
       type: 'record-list',
       key: 'pedidos',
       label: 'Pedidos Activos',
-      resource: 'orders',
       columns: ['ref', 'status'],
     });
     fixture.componentRef.setInput('data', [{ ref: 'ORD-10', status: 'PENDIENTE' }]);

@@ -130,12 +130,57 @@ describe('R1.5 — validateRegistry_', () => {
       const key = resources_.products.fields[idx].key;
 
       const issues = mutate(() => {
-        resources_.products.fields[idx].resource = 'fantasma';
+        resources_.products.fields[idx].source.resource = 'fantasma';
       });
       expect(issues).toContain(
         `resources.products.fields[${idx}]: relation '${key}' apunta al recurso ` +
           "'fantasma', que no existe",
       );
+    });
+
+    it('relation exige UN objeto `source` (F8 · R6.5)', () => {
+      // La única relación real: products.category_slug → categories.
+      const idx = resources_.products.fields.findIndex((f) => f.type === 'relation');
+      const at = `resources.products.fields[${idx}]`;
+      const key = resources_.products.fields[idx].key;
+
+      expect(
+        mutate(() => {
+          delete resources_.products.fields[idx].source;
+        }),
+      ).toContain(`${at}: relation '${key}' sin source declarado`);
+
+      expect(
+        mutate(() => {
+          resources_.products.fields[idx].source = 'categories';
+        }),
+      ).toContain(`${at}: \`source\` debe ser un objeto { resource, view?, params? }`);
+
+      expect(
+        mutate(() => {
+          resources_.products.fields[idx].source = { view: 'activos' };
+        }),
+      ).toContain(`${at}: \`source.resource\` debe ser el id de un recurso`);
+    });
+
+    it('el vocabulario viejo de relación (claves planas) ya no es válido', () => {
+      const idx = resources_.products.fields.findIndex((f) => f.type === 'relation');
+
+      // `resource`, `valueField` y `labelField` dejaron de ser claves de
+      // field: viven dentro de `source`. Que la clave vieja se reporte como
+      // DESCONOCIDA es lo que impide convivir con las dos formas.
+      const issues = mutate(() => {
+        const field = resources_.products.fields[idx];
+        field.resource = 'categories';
+        field.valueField = 'slug';
+        field.labelField = 'name';
+      });
+      expect(issues).toContain(`resources.products.fields[${idx}]: clave desconocida 'resource'`);
+      expect(issues).toContain(`resources.products.fields[${idx}]: clave desconocida 'valueField'`);
+      expect(issues).toContain(`resources.products.fields[${idx}]: clave desconocida 'labelField'`);
+      // Con `source` válido, la única queja es la clave vieja (no un
+      // «sin source»): las dos formas no se aceptan a la vez.
+      expect(issues.filter((i) => i.includes('sin source')).length).toBe(0);
     });
 
     it('un SINGLETÓN compara keyField contra kvColumns, no contra fields', () => {

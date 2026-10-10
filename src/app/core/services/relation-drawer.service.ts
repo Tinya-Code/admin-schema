@@ -2,7 +2,7 @@ import { Service, signal } from '@angular/core';
 
 /** Pedido de «Crear nuevo» lanzado desde el dropdown de una relación. */
 export interface RelationCreateRequest {
-  /** Recurso a crear (el `resource` de la relación). */
+  /** Recurso a crear (el `source.resource` de la relación). */
   resource: string;
   /**
    * Se invoca con la clave recién creada. Vive en la relación porque es ella

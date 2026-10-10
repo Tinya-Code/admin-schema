@@ -38,7 +38,6 @@ export const dashboardSchema: ResourceSchema = {
       type: 'record-list',
       key: 'pendientes_recientes',
       label: 'Pedidos que Requieren Atención',
-      resource: 'orders',
       columns: ['ref', 'customer_name', 'pickup_date', 'auth_state'],
       // Ruta real del router (shell.routes: `/:id/:key` abre el detalle de
       // cualquier colección con `detail.enabled`). Antes apuntaba a
@@ -53,7 +52,7 @@ export const dashboardSchema: ResourceSchema = {
       label: 'Pipeline de Cumplimiento',
       // Compuesto: lee pendientes/entregados/cancelados, claves sueltas de
       // la respuesta — no existe una vista `pipeline_entregas`.
-      source: 'payload',
+      source: { kind: 'payload' },
       segments: [
         { key: 'pendientes', label: 'Pendientes', color: 'warning' },
         { key: 'entregados', label: 'Entregados', color: 'success' },

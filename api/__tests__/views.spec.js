@@ -487,7 +487,7 @@ describe('R6.1 · expand (expansión de relaciones)', () => {
     return { id: 'demo', fields, views };
   }
   const CATS = [
-    { key: 'category', type: 'relation', resource: 'categories', valueField: 'slug' },
+    { key: 'category', type: 'relation', source: { resource: 'categories', valueField: 'slug' } },
     { key: 'ref', type: 'text' },
   ];
 

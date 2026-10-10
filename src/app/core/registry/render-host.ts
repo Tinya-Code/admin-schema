@@ -190,6 +190,7 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
               [id]="name()"
               [field]="multiselectCfg()"
               [formField]="multiselectNode()"
+              [tree]="ctx().tree"
             />
           } @else if (type() === 'image') {
             <app-field-image

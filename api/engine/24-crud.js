@@ -741,12 +741,13 @@ function dependentCounts_(ss, resource, map, key) {
     var dep = getResourceSchema(depId);
     if (dep === null) return;
     var depMap = storageMap_(dep);
+    // `source` declara la fuente de la relación (F8 · R6.5); sin
+    // `valueField` el destino usa su `keyField`, que es esta clave ⇒ apunta.
     var refs = depMap.columns.filter(function (col) {
-      return (
-        col.field.type === 'relation' &&
-        col.field.resource === resource.id &&
-        col.field.valueField === map.keyField
-      );
+      if (col.field.type !== 'relation' || !col.field.source) return false;
+      var src = col.field.source;
+      if (src.resource !== resource.id) return false;
+      return !src.valueField || src.valueField === map.keyField;
     });
     if (refs.length === 0) return;
 

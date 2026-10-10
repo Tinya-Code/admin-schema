@@ -79,9 +79,8 @@ export const productsSchema: ResourceSchema = {
       key: 'category_slug',
       label: 'Categoría',
       required: true,
-      resource: 'categories',
-      valueField: 'slug',
-      labelField: 'name',
+      // F8 · R6.5 (D62): UN objeto `source` para todas las fuentes.
+      source: { resource: 'categories', valueField: 'slug', labelField: 'name' },
       onlyActive: true,
       section: 'general',
       width: 6,

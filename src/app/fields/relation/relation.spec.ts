@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 
 import type { RelationField } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
+import { DataSourceService } from '../../core/services/data-source.service';
 import { RelationDrawerService } from '../../core/services/relation-drawer.service';
 import { type RootTree } from '../field-node';
 import { FieldRelation } from './relation';
@@ -32,11 +33,11 @@ describe('Campo relación', () => {
     }).compileComponents();
   });
 
-  async function create(field: RelationField, value = '') {
+  async function create(field: RelationField, value = '', extra: Record<string, unknown> = {}) {
     const fixture = TestBed.createComponent(FieldRelation);
     // Un objeto literal no sirve: `childTree` espera un FieldTree real
     // (el nodo es invocable y devuelve el estado del campo).
-    const model = signal<Record<string, unknown>>({ category_slug: value });
+    const model = signal<Record<string, unknown>>({ category_slug: value, ...extra });
     // `form()` inyecta en el arranque: fuera de un contexto hay que pasarle
     // el injector, igual que hace form-view.
     const tree = form(model, () => {}, {
@@ -45,14 +46,14 @@ describe('Campo relación', () => {
     fixture.componentRef.setInput('field', field);
     fixture.componentRef.setInput('tree', tree);
     fixture.detectChanges();
-    return { fixture, tree };
+    return { fixture, tree, model };
   }
 
   const categoryField = (): RelationField => ({
     key: 'category_slug',
     label: 'Categoría',
     type: 'relation',
-    resource: 'categories',
+    source: { resource: 'categories' },
   });
 
   const findButton = (fixture: { nativeElement: HTMLElement }, text: string): HTMLButtonElement => {
@@ -95,12 +96,39 @@ describe('Campo relación', () => {
     expect(options(fixture)[1].textContent?.trim()).toBe('Categoría 0 · Descripción 0');
   });
 
+  it('source.params se resuelven del formulario y la fuente recarga al cambiar', async () => {
+    // F8 · R6.5: `{lang}` se interpola contra el registro y el resultado
+    // entra en la clave de caché — mismo recurso, otra petición.
+    const field: RelationField = {
+      ...categoryField(),
+      source: { resource: 'categories', params: { orden: '{lang}' } },
+    };
+    const { fixture, model } = await create(field, '', { lang: 'es' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy.mock.calls[0][1]).toEqual({ params: { orden: 'es' } });
+
+    model.set({ category_slug: '', lang: 'en' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(listSpy).toHaveBeenCalledTimes(2);
+    expect(listSpy.mock.calls[1][1]).toEqual({ params: { orden: 'en' } });
+    expect(options(fixture)).toHaveLength(10); // sigue habiendo opciones tras la recarga
+  });
+
   it('con más de 7 opciones aparece el buscador y con menos no', async () => {
     const { fixture: withSearch } = await create(categoryField());
     await withSearch.whenStable();
     withSearch.detectChanges();
     expect(withSearch.nativeElement.querySelector('input[type="search"]')).not.toBeNull();
 
+    // El servicio cachea por clave de fuente (30 s): sin invalidar, el segundo
+    // formulario heredaría las 9 filas del primero y el umbral no se vería.
+    TestBed.inject(DataSourceService).invalidate();
     listSpy.mockImplementation(() => of(rows(4)));
     const { fixture: withoutSearch } = await create(categoryField());
     await withoutSearch.whenStable();

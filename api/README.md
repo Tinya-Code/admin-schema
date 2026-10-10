@@ -168,6 +168,17 @@ hoja. Un listado sin `envelope: 'list'` o una vista `aggregate` no admiten
 página ⇒ mismo 422, accionable. Contrato completo en
 `doc/api-endpoints.md` (sección «Listados de recurso»).
 
+**Parámetros de vista (R6.5):** una vista que declara un operando `param`
+compara el campo contra `payload.params.<nombre>` — el canal por el que un
+consumidor (relación, select, widget) le pide al back un filtro concreto sin
+declarar una vista por cada combinación. `params` es un objeto plano de
+strings: claves desconocidas al esquema, valores no-texto, más de 10 claves
+o un valor de más de 500 caracteres ⇒ **422 `VALIDATION_PARAMS`** con
+`errors[].path` relativo (`params.<clave>`), validado **antes** de leer la
+hoja. Si la vista pide un parámetro que no llegó, la condición es
+**fail-closed** (`null` = no resuelve, no `false`): el `not` no se aplica
+sobre un operando que no se resolvió.
+
 **Contrato legible (D1):** `/admin/schema` expone por recurso `operations`
 (métodos, rutas y forma pública de la respuesta), `views` (metadatos
 declarativos; vistas con `handler` ⇒ `{custom:true}`) y `policies.access`.

@@ -109,9 +109,11 @@ var KNOWN_FIELD_KEYS = [
   'extraColumns',
   'primaryFirst',
   'relation',
-  'resource',
-  'valueField',
-  'labelField',
+  // F8 · R6.5 (D62): la fuente declarada de un `relation` (o de un select
+  // con datos remotos) es un ÚNICO objeto `{ resource, view?, params?, … }`.
+  // Las claves planas antiguas (`resource`/`valueField`/`labelField`) se
+  // retiraron: un schema viejo choca acá contra la lista, no en runtime.
+  'source',
   'onlyActive',
   'sheet',
   'fk',
@@ -175,15 +177,25 @@ function walkFields_(where, fields, issues) {
     // "cosa que 23-validate sabe comprobar".
 
     // 2b. relación externa — acá, dentro del recorrido, para que también
-    // aplique a un `relation` anidado dentro de un group o un list.
-    if (field.type === 'relation' && typeof field.resource === 'string') {
-      if (!Object.prototype.hasOwnProperty.call(REGISTRY.resources, field.resource)) {
+    // aplique a un `relation` anidado dentro de un group o un list. La
+    // fuente vive en `field.source.resource` (F8 · R6.5); sin objeto o sin
+    // recurso no hay nada que comprobar (lo levanta 23-validate en la
+    // escritura y `walkFields_` no debe duplicar ese error).
+    if (field.type === 'relation') {
+      var src = field.source;
+      if (src === undefined || src === null) {
+        issues.push(at + ": relation '" + field.key + "' sin source declarado");
+      } else if (typeof src !== 'object' || Array.isArray(src)) {
+        issues.push(at + ': `source` debe ser un objeto { resource, view?, params? }');
+      } else if (typeof src.resource !== 'string' || src.resource === '') {
+        issues.push(at + ': `source.resource` debe ser el id de un recurso');
+      } else if (!Object.prototype.hasOwnProperty.call(REGISTRY.resources, src.resource)) {
         issues.push(
           at +
             ": relation '" +
             field.key +
             "' apunta al recurso '" +
-            field.resource +
+            src.resource +
             "', que no existe",
         );
       }
