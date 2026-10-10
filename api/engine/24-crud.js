@@ -244,7 +244,11 @@ function resourceCreate_(ss, resource, map, request) {
     throw apiError_(400, 'Un singleton no se crea: usa PUT /admin/' + resource.id);
   }
   validateHooks_(resource); // falla rápido: antes del lock y de leer filas
-  var payload = preparePayload_(resource, request.payload, { isNew: true });
+  var payload = preparePayload_(resource, request.payload, {
+    isNew: true,
+    ss: ss,
+    user: request && request.user ? request.user : null,
+  });
 
   // Validar ANTES del lock: falla rápido sin retener el recurso (§8).
   var data0 = readSheetData_(ss, map.sheet);
@@ -356,6 +360,14 @@ function updateCollection_(ss, resource, map, request, key) {
   // Snapshot de hijos guardados ANTES del lock: los checks que comparan
   // contra lo existente deben poder fallar rápido, como los declarativos.
   var currentChildren0 = readChildren_(ss, map, key);
+  // Derivados de update (R5.7): ANTES de validar, para que el valor
+  // derive pase por el mismo 422 que el resto del payload.
+  computeRules_(resource, payload, {
+    isNew: false,
+    ss: ss,
+    user: request && request.user ? request.user : null,
+    current: current0,
+  });
   validateAndThrow_(ss, resource, map, {
     isNew: false,
     key: key,
@@ -377,6 +389,14 @@ function updateCollection_(ss, resource, map, request, key) {
     var children = readChildren_(ss, map, key);
     var merged = mergeContract_(map, current, payload);
     var effective = effectiveChildren_(map, children, payload);
+    // Re-derivar contra el estado FRESCO: si el valor ya salió en la
+    // pasada pre-lock, el destino viene lleno y esto no hace nada.
+    computeRules_(resource, payload, {
+      isNew: false,
+      ss: ss,
+      user: request && request.user ? request.user : null,
+      current: current,
+    });
     validateAndThrow_(ss, resource, map, {
       isNew: false,
       key: key,
@@ -432,6 +452,12 @@ function updateSingleton_(ss, resource, map, request) {
   var data0 = readSheetData_(ss, map.sheet);
   var current0 = flatToContract_(map, kvRowsToFlat_(data0));
   var currentChildren0 = readChildren_(ss, map, null);
+  computeRules_(resource, payload, {
+    isNew: false,
+    ss: ss,
+    user: request && request.user ? request.user : null,
+    current: current0,
+  });
   validateAndThrow_(ss, resource, map, {
     isNew: false,
     key: null,
@@ -449,6 +475,12 @@ function updateSingleton_(ss, resource, map, request) {
     var children = readChildren_(ss, map, null);
     var merged = mergeContract_(map, current, payload);
     var effective = effectiveChildren_(map, children, payload);
+    computeRules_(resource, payload, {
+      isNew: false,
+      ss: ss,
+      user: request && request.user ? request.user : null,
+      current: current,
+    });
 
     validateAndThrow_(ss, resource, map, {
       isNew: false,
@@ -757,21 +789,35 @@ function preparePayload_(resource, raw, opts) {
     }
   });
 
-  computeRules_(resource, payload, { isNew: isNew });
+  // Update: los derivados se calculan FUERA (updateCollection_ /
+  // updateSingleton_), donde ya se conoce la fila guardada — el destino se
+  // juzga contra la vista mergeada, nunca a ciegas (R5.7).
+  if (isNew) computeRules_(resource, payload, opts);
   return payload;
 }
 
-// Derivados declarados (F4, mejoras §6):
-//   resource.operations.create.computed = [{ field, transform, from, params? }]
-// Sólo al crear (los campos immutables tipo slug no se rederivan en update) y
-// sólo si el destino viene vacío (un valor entrante se respeta; si el origen
-// está vacío, no deriva y el required declarativo lo dice 23-validate).
-// Transform no registrado o declaración mal formada = 500 (§16).
+// Derivados declarados (F4, mejoras §6, R5.7):
+//   resource.operations.<create|update>.computed =
+//     [{ field, transform, from, params? }]
+// Se declara POR OPERACIÓN: create rellena el destino vacío desde el
+// payload; update sólo lo rellena si la fila guardada TAMBIÉN lo tiene
+// vacío (un slug ya escrito no se rederiva nunca — la inmutabilidad de
+// facto que products/categories necesitan) y usa el origen fusionado
+// (entrante ∪ guardado). Si el origen está vacío, no deriva y el required
+// declarativo lo dice 23-validate. Transform no registrado o declaración
+// mal formada = 500 (§16).
+//
+// Los transforms reciben (value, params, ctx) — ctx = { ss, resource,
+// payload, current, user, isNew, field } (R5.7): sequence/lookup leen
+// hojas vía ctx.ss y currentUser usa la identidad autenticada, nunca la
+// sesión de Apps Script.
 function computeRules_(resource, payload, opts) {
-  if (!opts || !opts.isNew) return;
+  var isNew = !!(opts && opts.isNew);
   var ops = resource.operations;
-  var computed = ops && ops.create && ops.create.computed;
+  var opName = isNew ? 'create' : 'update';
+  var computed = ops && ops[opName] && ops[opName].computed;
   if (!Array.isArray(computed)) return;
+  var current = (opts && opts.current) || null;
   computed.forEach(function (decl) {
     if (
       !decl ||
@@ -786,9 +832,20 @@ function computeRules_(resource, payload, opts) {
       throw apiError_(500, 'Transform no registrado: ' + decl.transform);
     }
     if (!isEmptyValue_(payload[decl.field])) return; // el caller definió el valor
+    if (!isNew && current && !isEmptyValue_(current[decl.field])) return; // ya guardado
+    // Origen: entrante ∪ guardado (en create sólo hay entrante).
     var source = payload[decl.from];
+    if (isEmptyValue_(source) && current) source = current[decl.from];
     if (isEmptyValue_(source)) return; // sin origen ⇒ que lo diga 23-validate
-    var out = fn(String(source), decl.params);
+    var out = fn(String(source), decl.params, {
+      ss: (opts && opts.ss) || null,
+      resource: resource,
+      payload: payload,
+      current: current,
+      user: (opts && opts.user) || null,
+      isNew: isNew,
+      field: decl.field,
+    });
     if (typeof out === 'string' && out !== '') payload[decl.field] = out;
   });
 }

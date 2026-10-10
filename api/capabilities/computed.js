@@ -179,6 +179,188 @@ Object.keys(COMPUTED_).forEach(function (id) {
   });
 });
 
+// ── R5.7 (B10) — el set del plan, con argsSchema ──────────────────────────
+//
+// `slug(from)` del plan = el `slugify` de arriba (mismo transform, otro
+// nombre: no se duplica el id — D58). `now` ya existía. Los NUEVOS son
+// sequence · uuid · hash · copy · currentUser · lookup, y todos reciben un
+// tercer argumento `ctx` que el motor arma en computeRules_:
+//
+//   ctx = { ss, resource, payload, current, user, isNew, field }
+//
+// `ctx.field` es el CAMPO DESTINO de la declaración — sequence escanea esa
+// misma columna para saber el próximo número. `ctx.user` es la identidad
+// YA autenticada del request (router: request.user), no el usuario de
+// Apps Script (que en GAS siempre es el dueño del despliegue).
+
+// SHA-256 en GAS vía la plataforma; en Node (tests) Utilities está stubbeado
+// con un Proxy — computeDigest devuelve un proxy SIN .length numérico, y
+// pasarlo por .map produciría basura determinista con cara de hash. Ese
+// proxy se detecta y se cae al fallback FNV-1a (NO criptográfico: sólo
+// prueba el transform; en GAS corre el SHA-256 real).
+function hashHex_(text) {
+  if (
+    typeof Utilities !== 'undefined' &&
+    Utilities &&
+    typeof Utilities.computeDigest === 'function'
+  ) {
+    var bytes = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.SHA_256,
+      String(text),
+      Utilities.Charset.UTF_8,
+    );
+    if (bytes && typeof bytes.length === 'number' && bytes.length > 0) {
+      return Array.prototype.map
+        .call(bytes, function (b) {
+          return ((b + 256) % 256).toString(16).slice(-2);
+        })
+        .join('');
+    }
+  }
+  var h1 = 0x811c9dc5;
+  var h2 = 0x9e3779b9;
+  var s = String(text);
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    h1 = ((h1 ^ c) * 0x01000193) >>> 0;
+    h2 = (h2 + c * (i + 1)) >>> 0;
+    h2 = (h2 ^ (h2 << 13)) >>> 0;
+  }
+  return ('00000000' + h1.toString(16)).slice(-8) + ('00000000' + h2.toString(16)).slice(-8);
+}
+
+registerCapability('computed', {
+  id: 'sequence',
+  since: '1.1',
+  argsSchema: { prefix: { type: 'text' }, pad: { type: 'number' } },
+  // Próximo número sobre la MISMA columna destino (ctx.field): escanea los
+  // valores existentes con el prefijo declarado y toma el máximo + 1.
+  // La unicidad NO la garantiza este transform (dos creates concurrentes
+  // leen el mismo max): la garantiza `unique` en 23-validate, como token.
+  run: function (value, params, ctx) {
+    var p = params || {};
+    var prefix = p.prefix === undefined || p.prefix === null ? '' : String(p.prefix);
+    var pad = parseInt(p.pad, 10);
+    if (!(pad > 0)) pad = 4;
+    else if (pad > 12) pad = 12;
+    if (!ctx || !ctx.ss || !ctx.resource || !ctx.field) return '';
+    var data = readSheetData_(ctx.ss, ctx.resource.sheet);
+    var idx = data.headers.indexOf(ctx.field);
+    var max = 0;
+    if (idx !== -1) {
+      data.rows.forEach(function (row) {
+        var raw =
+          row.values[idx] === undefined || row.values[idx] === null ? '' : String(row.values[idx]);
+        if (raw.indexOf(prefix) !== 0) return;
+        var n = parseInt(raw.slice(prefix.length), 10);
+        if (isFinite(n) && n > max) max = n;
+      });
+    }
+    var digits = String(max + 1);
+    while (digits.length < pad) digits = '0' + digits;
+    return prefix + digits;
+  },
+});
+
+registerCapability('computed', {
+  id: 'uuid',
+  since: '1.1',
+  argsSchema: {},
+  // En GAS, el CSPRNG de la plataforma (Utilities.getUuid). En Node (tests)
+  // esa global no da strings reales y se cae a 32 hex de tokenBytes_ — el
+  // mismo criterio que pinBytes_.
+  run: function () {
+    if (typeof Utilities !== 'undefined' && Utilities && typeof Utilities.getUuid === 'function') {
+      var u = Utilities.getUuid();
+      if (typeof u === 'string' && u.length >= 32) return u;
+    }
+    var out = '';
+    var bytes = tokenBytes_(16);
+    for (var i = 0; i < bytes.length; i++) out += ('0' + bytes[i].toString(16)).slice(-2);
+    return out;
+  },
+});
+
+registerCapability('computed', {
+  id: 'hash',
+  since: '1.1',
+  argsSchema: { field: { type: 'text' } },
+  // SHA-256 del campo declarado en params.field, o del `from` si no hay
+  // params. Útil para no guardar en claro lo que sólo se compara (ver
+  // pinHash en capabilities/hooks: mismo criterio).
+  run: function (value, params, ctx) {
+    var p = params || {};
+    var source = value;
+    if (p.field && ctx && ctx.payload && ctx.payload[p.field] !== undefined) {
+      source = ctx.payload[p.field];
+    }
+    if (source === undefined || source === null) return '';
+    return hashHex_(String(source));
+  },
+});
+
+registerCapability('computed', {
+  id: 'copy',
+  since: '1.1',
+  argsSchema: { field: { type: 'text' } },
+  // Copia VERBATIM otro campo del payload — sin slugify ni formato. Es el
+  // `from` clásico pero apuntando a un campo que NO es el trigger.
+  run: function (value, params, ctx) {
+    var p = params || {};
+    if (!p.field || !ctx || !ctx.payload) return '';
+    var v = ctx.payload[p.field];
+    if (v === undefined || v === null) return '';
+    return String(v);
+  },
+});
+
+registerCapability('computed', {
+  id: 'currentUser',
+  since: '1.1',
+  argsSchema: {},
+  // La identidad autenticada del request (ctx.user), nunca Session de Apps
+  // Script — en GAS eso siempre es el dueño del despliegue. Sin identidad
+  // ⇒ '' ⇒ el valor no se escribe (mismo criterio que el resto: vacío no
+  // llena destino).
+  run: function (value, params, ctx) {
+    var user = ctx && ctx.user;
+    if (!user) return '';
+    if (user.email !== undefined && user.email !== null && String(user.email) !== '') {
+      return String(user.email);
+    }
+    return user.id === undefined || user.id === null ? '' : String(user.id);
+  },
+});
+
+registerCapability('computed', {
+  id: 'lookup',
+  since: '1.1',
+  argsSchema: {
+    resource: { type: 'text', required: true },
+    field: { type: 'text', required: true },
+  },
+  // El `from` es la CLAVE del registro destino (keyField del otro recurso)
+  // y params.field la columna a traer. Sin coincidencia ⇒ '' ⇒ el destino
+  // queda vacío y `required` lo dice en el 422. Recurso inexistente ⇒ 500
+  // (§16: el schema manda, y una referencia rota es desajuste de almacén).
+  run: function (value, params, ctx) {
+    var p = params || {};
+    if (typeof p.resource !== 'string' || typeof p.field !== 'string') return '';
+    if (!ctx || !ctx.ss) return '';
+    var target = getResourceSchema(p.resource);
+    if (!target) throw apiError_(500, 'lookup: recurso inexistente "' + p.resource + '"');
+    var map = storageMap_(target);
+    var entries = flatEntries_(map, readSheetData_(ctx.ss, map.sheet));
+    for (var i = 0; i < entries.length; i++) {
+      var contract = flatToContract_(map, entries[i].flat);
+      if (String(contract[map.keyField]) !== String(value)) continue;
+      var out = contract[p.field];
+      return out === undefined || out === null ? '' : String(out);
+    }
+    return '';
+  },
+});
+
 // now — sello de fecha de las columnas con `field.computed: 'now'`.
 // El sello lo genera nowStamp_() (50-audit.js, raíz): se declara acá para que
 // la validación de carga (validate-registry, R3.15) pueda verificar la
