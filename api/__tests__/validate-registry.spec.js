@@ -454,4 +454,51 @@ describe('R1.5 — validateRegistry_', () => {
       expect(issues).toContain("resources.orders.policies.access.read: nivel inválido 'gerente'");
     });
   });
+
+  describe('7 · access por campo (R7.4b)', () => {
+    // walkFields_ numera por índice (el nombre del campo no viaja en `at`).
+    function at() {
+      const i = resources_.orders.fields.findIndex((f) => f.key === 'customer_notes');
+      return `resources.orders.fields[${i}].access`;
+    }
+
+    function fieldNamed(key) {
+      return resources_.orders.fields.find((f) => f.key === key);
+    }
+
+    it('clave typo en access', () => {
+      const issues = mutate(() => {
+        fieldNamed('customer_notes').access = { reed: 'role:admin' };
+      });
+      expect(issues).toContain(`${at()}: clave desconocida 'reed'`);
+    });
+
+    it('nivel inválido en read', () => {
+      const issues = mutate(() => {
+        fieldNamed('customer_notes').access = { read: 'gerente' };
+      });
+      expect(issues).toContain(`${at()}.read: nivel inválido 'gerente'`);
+    });
+
+    it('access que no es objeto', () => {
+      const issues = mutate(() => {
+        fieldNamed('customer_notes').access = 'role:admin';
+      });
+      expect(issues).toContain(`${at()}: debe ser un objeto { read?, write? }`);
+    });
+
+    it('forma válida: read y write con alias admin', () => {
+      const issues = mutate(() => {
+        fieldNamed('customer_notes').access = { read: 'role:admin', write: 'admin' };
+      });
+      expect(issues).toEqual([]);
+    });
+
+    it('access asimétrico: sólo write', () => {
+      const issues = mutate(() => {
+        fieldNamed('customer_notes').access = { write: 'role:admin' };
+      });
+      expect(issues).toEqual([]);
+    });
+  });
 });

@@ -64,19 +64,158 @@ function dispatchResource_(resource, request) {
     requireAccess_(request.user === undefined ? null : request.user, accessOverride);
   }
 
+  // B8 · R7.4b — write: un campo que la identidad no puede escribir no se
+  // descarta en silencio (eso esconde el intento): 422 con su ruta, por la
+  // misma familia que la validación declarativa. Antes de tocar la hoja.
+  if (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') {
+    assertWritableFields_(
+      resource,
+      request.payload,
+      request.user === undefined ? null : request.user,
+    );
+  }
+
+  var result;
   switch (request.method) {
     case 'GET':
-      return resourceGet_(ss, resource, map, request);
+      result = resourceGet_(ss, resource, map, request);
+      break;
     case 'POST':
-      return resourceCreate_(ss, resource, map, request);
+      result = resourceCreate_(ss, resource, map, request);
+      break;
     case 'PUT':
     case 'PATCH':
-      return resourcePut_(ss, resource, map, request);
+      result = resourcePut_(ss, resource, map, request);
+      break;
     case 'DELETE':
-      return resourceDelete_(ss, resource, map, request, declared);
+      result = resourceDelete_(ss, resource, map, request, declared);
+      break;
     default:
       throw apiError_(400, 'Método no soportado: ' + request.method);
   }
+
+  // B8 · R7.4b — read: el campo con `access.read` que la identidad no
+  // alcanza NI VIAJA en la respuesta. El filtro corre SIEMPRE después de la
+  // lectura (la caché guarda el dato crudo) y construye objetos nuevos:
+  // jamás muta lo cacheado. Recurso sin `access` en ningún campo ⇒ datos
+  // intactos, sin recorrer nada.
+  return filterFieldsByAccess_(resource, result, request.user === undefined ? null : request.user);
+}
+
+// ── B8 · R7.4b — acceso fino por campo ────────────────────────────────────
+//
+//   field.access = { read?, write? }   (niveles del vocabulario de §4.4)
+//     read  → sin el nivel, el campo NO viaja en la respuesta
+//     write → sin el nivel, escribirlo es 422 con su ruta (nunca en silencio)
+// Sin `access`, el campo obedece sólo los umbrales del recurso/grupo, como
+// siempre. El read corre SIEMPRE después de la lectura: la caché es cruda.
+
+// Árbol de sólo los campos que declaran `access` (recursivo en group/list);
+// null si ninguno lo hace — el caso común sale por la identidad sin tocar
+// los datos.
+function fieldAccessTree_(fields) {
+  var tree = null;
+  (fields || []).forEach(function (field) {
+    if (field === null || typeof field !== 'object' || typeof field.key !== 'string') return;
+    var node = null;
+    if (field.access !== null && typeof field.access === 'object') {
+      if (field.access.read !== undefined || field.access.write !== undefined) {
+        node = { access: field.access };
+      }
+    }
+    var sub = null;
+    if (field.type === 'group' && Array.isArray(field.fields)) {
+      sub = fieldAccessTree_(field.fields);
+    } else if (field.type === 'list' && Array.isArray(field.itemFields)) {
+      sub = fieldAccessTree_(field.itemFields);
+    }
+    if (sub !== null) {
+      if (node === null) node = {};
+      node.child = sub;
+    }
+    if (node !== null) {
+      if (tree === null) tree = {};
+      tree[field.key] = node;
+    }
+  });
+  return tree;
+}
+
+function filterFieldsByAccess_(resource, data, identity) {
+  var tree = fieldAccessTree_(resource.fields);
+  if (tree === null) return data;
+  return filterAccessNode_(tree, data, identity);
+}
+
+// Quita de cada objeto lo que la identidad no puede leer. Puro: devuelve
+// objetos nuevos (el dato cacheado puede ser la MISMA referencia en el
+// harness, así que mutarlo corrompería la caché para el próximo rol).
+function filterAccessNode_(tree, data, identity) {
+  if (Array.isArray(data)) {
+    return data.map(function (item) {
+      return item !== null && typeof item === 'object'
+        ? filterAccessNode_(tree, item, identity)
+        : item;
+    });
+  }
+  if (data === null || typeof data !== 'object') return data;
+  var out = {};
+  Object.keys(data).forEach(function (key) {
+    var value = data[key];
+    var node = tree[key];
+    if (node === undefined) {
+      out[key] = value;
+      return;
+    }
+    if (
+      node.access !== undefined &&
+      node.access.read !== undefined &&
+      !accessAllows_(identity, node.access.read)
+    ) {
+      return; // el campo NI VIAJA
+    }
+    out[key] =
+      node.child !== undefined && value !== null && typeof value === 'object'
+        ? filterAccessNode_(node.child, value, identity)
+        : value;
+  });
+  return out;
+}
+
+// Write: la forma de error es la MISMA que la validación declarativa (un
+// solo 422 con todas las rutas). Silenciar el descarte confundiría a quien
+// escribe y escondería el intento.
+function assertWritableFields_(resource, payload, identity) {
+  var tree = fieldAccessTree_(resource.fields);
+  if (tree === null) return;
+  var errors = [];
+  collectWriteAccessErrors_(tree, payload, '', identity, errors);
+  if (errors.length > 0) throw validationError_(errors);
+}
+
+function collectWriteAccessErrors_(tree, payload, prefix, identity, errors) {
+  if (payload === null || typeof payload !== 'object') return;
+  Object.keys(payload).forEach(function (key) {
+    var node = tree[key];
+    if (node === undefined) return;
+    var value = payload[key];
+    var path = prefix === '' ? key : prefix + '.' + key;
+    if (
+      node.access !== undefined &&
+      node.access.write !== undefined &&
+      !accessAllows_(identity, node.access.write)
+    ) {
+      errors.push({
+        path: path,
+        message: 'Sin permiso de escritura para este perfil',
+        code: 'VALIDATION_FIELD_ACCESS',
+      });
+      return;
+    }
+    if (node.child !== undefined && value !== null && typeof value === 'object') {
+      collectWriteAccessErrors_(node.child, value, path, identity, errors);
+    }
+  });
 }
 
 // Método lógico + forma de la ruta ⇒ nombre de la operación del motor.

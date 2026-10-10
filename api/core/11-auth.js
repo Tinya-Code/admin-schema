@@ -52,6 +52,22 @@ function requireAccess_(identity, level) {
   return true;
 }
 
+// Versión NO lanzadora de requireAccess_ (B8 · R7.4b): la usa el filtro de
+// campos por campo, donde denegar no es un error de la operación sino la
+// ausencia del dato en la respuesta. Mantiene la MISMA semántica: sin
+// identidad o inactiva sólo pasa 'public'; el rol se compara con la misma
+// roleAllowed_. requireAccess_ conserva su distinción 401/403 + auditoría.
+function accessAllows_(identity, level) {
+  var canonical = normalizeAccessLevel_(level);
+  if (canonical === 'public') return true;
+  if (identity === null || typeof identity !== 'object' || identity.active !== true) return false;
+  if (canonical === 'session') return true;
+  return roleAllowed_(
+    typeof identity.role === 'string' ? identity.role : '',
+    canonical.slice('role:'.length),
+  );
+}
+
 // ── Vocabulario de niveles (R2.4 — auth.md §4.4) ──────────────────────────
 //
 //   public         → cualquiera, sin token

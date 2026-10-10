@@ -222,6 +222,19 @@ function projectField_(field) {
     if (field[name] !== undefined) out[name] = field[name];
   });
 
+  // B8 · R7.4b — el acceso por campo viaja al front (R7.5 lo consume para
+  // ocultar o poner en solo-lectura; el back SIEMPRE vuelve a filtrar la
+  // respuesta por su cuenta — esto es sólo la promesa declarada).
+  if (field.access !== undefined && field.access !== null && typeof field.access === 'object') {
+    var access = {};
+    ['read', 'write'].forEach(function (side) {
+      if (typeof field.access[side] === 'string' && field.access[side] !== '') {
+        access[side] = field.access[side];
+      }
+    });
+    if (Object.keys(access).length > 0) out.access = access;
+  }
+
   // Enum declarativo: nombre interno ('availability') → valores (array).
   if (field.enum !== undefined) {
     out.enum =

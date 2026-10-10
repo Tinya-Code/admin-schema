@@ -106,6 +106,8 @@ var KNOWN_FIELD_KEYS = [
   'enum',
   'system',
   'computed',
+  // B8 · R7.4b — acceso fino por campo (misma gramática de niveles)
+  'access',
   // anidados
   'fields',
   'itemFields',
@@ -173,6 +175,25 @@ function walkFields_(where, fields, issues) {
         !Object.prototype.hasOwnProperty.call(REGISTRY.capabilities.computed, field.computed)
       ) {
         issues.push(at + ": computed inexistente '" + field.computed + "'");
+      }
+    }
+
+    // B8 · R7.4b — `access` por campo: un typo acá es un campo que se
+    // filtra de más o de menos en tráfico real, así que el arranque lo
+    // reprueba con la MISMA gramática de niveles que las políticas.
+    if (field.access !== undefined && field.access !== null) {
+      var atAccess = at + '.access';
+      if (typeof field.access !== 'object' || Array.isArray(field.access)) {
+        issues.push(atAccess + ': debe ser un objeto { read?, write? }');
+      } else {
+        issues.push.apply(issues, unknownKeys_(atAccess, field.access, ['read', 'write']));
+        ['read', 'write'].forEach(function (side) {
+          var level = field.access[side];
+          if (level === undefined || level === null) return;
+          if (typeof level !== 'string' || ACCESS_LEVELS.indexOf(level) === -1) {
+            issues.push(atAccess + '.' + side + ": nivel inválido '" + String(level) + "'");
+          }
+        });
       }
     }
 
