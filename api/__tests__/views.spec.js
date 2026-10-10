@@ -259,3 +259,374 @@ describe('aggregate', () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────
+// Parte C — R6.1 «Vistas más potentes» (B6)
+//
+// Cinco ampliaciones aditivas de `views`. Estos tests FALLAN antes del cambio:
+// hoy `where` es una AND plana, no hay `or`/`all`, `select` no proyecta
+// (eso lo hace `view.shape.pick`, F5), `page` no pagina y `expand` no
+// existe. Cada bloque fija un aspecto de una ampliación.
+// ─────────────────────────────────────────────────────────────
+
+describe('R6.1 · where estructurado (or / all)', () => {
+  it('`or` es una disyunción entre condiciones', () => {
+    // A y D son pendientes; B está entregado. `or` une: cumple cualquiera.
+    const r = recurso({
+      activoOPendiente: {
+        where: {
+          or: [
+            { field: 'status', op: 'eq', value: 'pendiente' },
+            { field: 'status', op: 'eq', value: 'entregado' },
+          ],
+        },
+      },
+    });
+    expect(applyDeclaredView_(r, 'activoOPendiente', ITEMS, {}).map((i) => i.ref)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+    ]);
+  });
+
+  it('`all` exige que TODAS las subcondiciones se cumplan', () => {
+    // Fixture limpio: el operador `gt` sobre un campo no-numérico cae a
+    // comparación lexicográfica (comportamiento correcto de opOrdered_),
+    // así que uso un campo numérico homogéneo para aislar la semántica de
+    // `all` sin mezclarla con el fallback lexicográfico.
+    const conMonto = [
+      { ref: 'A', status: 'pendiente', monto: 10 },
+      { ref: 'B', status: 'entregado', monto: 20 },
+      { ref: 'C', status: 'pendiente', monto: 3 },
+    ];
+    const r = recurso({
+      pendienteGrande: {
+        where: {
+          all: [
+            { field: 'status', op: 'eq', value: 'pendiente' },
+            { field: 'monto', op: 'gt', value: 6 },
+          ],
+        },
+      },
+    });
+    expect(applyDeclaredView_(r, 'pendienteGrande', conMonto, {}).map((i) => i.ref)).toEqual(['A']);
+  });
+
+  it('anida or dentro de all y respeta el fail-closed de `from`', () => {
+    const r = recurso({
+      anidado: {
+        where: {
+          all: [
+            { field: 'status', op: 'eq', value: 'pendiente' },
+            {
+              or: [
+                { field: 'monto', op: 'gt', value: 6 },
+                { field: 'monto', op: 'lt', value: 6 },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(applyDeclaredView_(r, 'anidado', ITEMS, {}).map((i) => i.ref)).toEqual(['A', 'C', 'D']);
+    // `from` sin ctx ⇒ la SUBcondición falla cerrada y el `or` entero no la
+    // cuenta como verdadera (no invierte `not`).
+    const r2 = recurso({
+      conFrom: {
+        where: {
+          or: [
+            { field: 'status', op: 'eq', value: 'pendiente' },
+            { field: 'monto', op: 'gt', from: '$item.umbral' },
+          ],
+        },
+      },
+    });
+    expect(applyDeclaredView_(r2, 'conFrom', ITEMS, {}).map((i) => i.ref)).toEqual(['A', 'C', 'D']);
+  });
+
+  it('tira 500 con or/all mal declarado (no-array, array vacío, subcondición rota)', () => {
+    expectStatus(
+      () => applyDeclaredView_(recurso({ v: { where: { or: 'no-array' } } }), 'v', ITEMS, {}),
+      500,
+      'or/all',
+    );
+    expectStatus(
+      () => applyDeclaredView_(recurso({ v: { where: { all: [] } } }), 'v', ITEMS, {}),
+      500,
+      'or/all',
+    );
+    expectStatus(
+      () =>
+        applyDeclaredView_(
+          recurso({ v: { where: { all: [{ field: 'x', op: 'no-existe', value: 1 }] } } }),
+          'v',
+          ITEMS,
+          {},
+        ),
+      500,
+      'Operador no registrado',
+    );
+  });
+});
+
+describe('R6.1 · sort por array (shorthand)', () => {
+  it('acepta la forma corta `["-monto", "ref"]` (desc por prefijo -)', () => {
+    const items = [
+      { a: 'x', monto: 2 },
+      { a: 'y', monto: 10 },
+      { a: 'z', monto: 2 },
+    ];
+    // Ya lo soporta la forma larga; este test fija que la corta mapee igual.
+    expect(sortItems_(items, ['-monto', 'a']).map((i) => i.monto)).toEqual([10, 2, 2]);
+    expect(sortItems_(items, ['-monto', 'a']).map((i) => i.a)).toEqual(['y', 'x', 'z']);
+  });
+
+  it('tira 500 con entrada de sort no-string', () => {
+    expectStatus(() => sortItems_([{ a: 1 }, { a: 2 }], [42]), 500, 'sort');
+  });
+});
+
+describe('R6.1 · select (proyección por vista)', () => {
+  // `select` acota la lista YA proyectada (listProjection) a los campos
+  // declarados, en ese orden. El fixture debe declarar listProjection: la
+  // vista opera sobre la salida del listado, no sobre la fila cruda.
+  const PROYECTADO = ['ref', 'status', 'monto'];
+  function recursoSelect(views) {
+    return { id: 'demo', listProjection: PROYECTADO, views };
+  }
+
+  it('proyecta sólo los campos declarados en `select`', () => {
+    const r = recursoSelect({
+      resumen: {
+        where: [{ field: 'status', op: 'eq', value: 'pendiente' }],
+        select: ['ref', 'monto'],
+      },
+    });
+    const out = applyDeclaredView_(r, 'resumen', ITEMS, {});
+    expect(out).toEqual([
+      { ref: 'A', monto: 10 },
+      { ref: 'C', monto: 'no-numérico' },
+      { ref: 'D', monto: 5 },
+    ]);
+  });
+
+  it('`select` no muta los ítems de entrada', () => {
+    const r = recursoSelect({ resumen: { select: ['ref'] } });
+    applyDeclaredView_(r, 'resumen', ITEMS, {});
+    expect(Object.keys(ITEMS[0]).sort()).toEqual(['monto', 'ref', 'status']);
+  });
+
+  it('tira 500 con select no-array o campo inexistente', () => {
+    expectStatus(
+      () => applyDeclaredView_(recursoSelect({ v: { select: 'ref' } }), 'v', ITEMS, {}),
+      500,
+      'select',
+    );
+    expectStatus(
+      () => applyDeclaredView_(recursoSelect({ v: { select: ['no-existe'] } }), 'v', ITEMS, {}),
+      500,
+      'select',
+    );
+  });
+});
+
+describe('R6.1 · page (paginación)', () => {
+  it('page corta el conjunto DESPUÉS de where+sort', () => {
+    const r = recurso({
+      paginado: {
+        where: [{ field: 'status', op: 'eq', value: 'pendiente' }],
+        sort: [{ field: 'ref', dir: 'asc' }],
+        page: { size: 2, offset: 1 },
+      },
+    });
+    // Pendientes: A, C, D → asc ⇒ A, C, D → offset 1, size 2 ⇒ C, D.
+    expect(applyDeclaredView_(r, 'paginado', ITEMS, {}).map((i) => i.ref)).toEqual(['C', 'D']);
+  });
+
+  it('page sin offset arranca en 0 y size=0 devuelve vacío', () => {
+    const r = recurso({ soloPrimero: { sort: [{ field: 'ref' }], page: { size: 1 } } });
+    expect(applyDeclaredView_(r, 'soloPrimero', ITEMS, {}).map((i) => i.ref)).toEqual(['A']);
+    const r2 = recurso({ nada: { page: { size: 0 } } });
+    expect(applyDeclaredView_(r2, 'nada', ITEMS, {})).toEqual([]);
+  });
+
+  it('page compite con limit: si ambos están, page gana', () => {
+    const r = recurso({
+      mixto: { sort: [{ field: 'ref' }], limit: 3, page: { size: 1, offset: 1 } },
+    });
+    expect(applyDeclaredView_(r, 'mixto', ITEMS, {}).map((i) => i.ref)).toEqual(['B']);
+  });
+
+  it('tira 500 con page mal declarado', () => {
+    expectStatus(
+      () => applyDeclaredView_(recurso({ v: { page: 5 } }), 'v', ITEMS, {}),
+      500,
+      'page',
+    );
+    expectStatus(
+      () => applyDeclaredView_(recurso({ v: { page: { size: 'x' } } }), 'v', ITEMS, {}),
+      500,
+      'page',
+    );
+    expectStatus(
+      () => applyDeclaredView_(recurso({ v: { page: { size: -1 } } }), 'v', ITEMS, {}),
+      500,
+      'page',
+    );
+  });
+});
+
+describe('R6.1 · expand (expansión de relaciones)', () => {
+  // `expand` NO lee la hoja destino (eso sería cambiar el contrato de
+  // respuesta de la API). Lo que hace es traer al ítem la META de la
+  // relación que `readRulesCtx_` ya construye en `ctx[<recurso>]` — un mapa
+  // { clave: activo } — de modo que el front puede decidir con qué cruzar.
+  // Un campo que no es `relation`, o que no existe en el recurso ⇒ 500.
+  function recursoRelacion(fields, views) {
+    return { id: 'demo', fields, views };
+  }
+  const CATS = [
+    { key: 'category', type: 'relation', resource: 'categories', valueField: 'slug' },
+    { key: 'ref', type: 'text' },
+  ];
+
+  it('expand inyecta el mapa de la relación declarada en ctx', () => {
+    const r = recursoRelacion(CATS, {
+      conCategoria: {
+        where: [{ field: 'status', op: 'eq', value: 'pendiente' }],
+        expand: ['category'],
+      },
+    });
+    const items = [
+      { ref: 'A', status: 'pendiente', category: 'bebidas' },
+      { ref: 'B', status: 'entregado', category: 'pan' },
+    ];
+    const ctx = { categories: { bebidas: true, pan: false } };
+    const out = applyDeclaredView_(r, 'conCategoria', items, ctx);
+    // El where deja sólo A (B es 'entregado'). expand inyecta el MAPA de
+    // hechos de la relación, y conserva la clave plana bajo `category_key`.
+    expect(out).toEqual([
+      {
+        ref: 'A',
+        status: 'pendiente',
+        category: { bebidas: true, pan: false },
+        category_key: 'bebidas',
+      },
+    ]);
+    // Los ítems de entrada quedan intactos (no mutar).
+    expect(items[0].category).toBe('bebidas');
+  });
+
+  it('expand conserva el resto de campos del ítem y la clave plana', () => {
+    const r = recursoRelacion(CATS, { v: { expand: ['category'] } });
+    const out = applyDeclaredView_(r, 'v', [{ ref: 'A', category: 'x' }], {
+      categories: { x: true },
+    });
+    expect(out[0]).toEqual({
+      ref: 'A',
+      category: { x: true },
+      category_key: 'x',
+    });
+  });
+
+  it('expand de un campo no-relación o inexistente ⇒ 500', () => {
+    expectStatus(
+      () => applyDeclaredView_(recursoRelacion(CATS, { v: { expand: ['ref'] } }), 'v', ITEMS, {}),
+      500,
+      'expand',
+    );
+    expectStatus(
+      () =>
+        applyDeclaredView_(recursoRelacion(CATS, { v: { expand: ['no-existe'] } }), 'v', ITEMS, {}),
+      500,
+      'expand',
+    );
+  });
+
+  it('tira 500 con expand no-array', () => {
+    expectStatus(
+      () =>
+        applyDeclaredView_(recursoRelacion(CATS, { v: { expand: 'category' } }), 'v', ITEMS, {}),
+      500,
+      'expand',
+    );
+  });
+});
+
+// Parte D — `groupBy` en agregados (refactormotor.md R6.2 / decisión D9-5).
+//
+// `groupBy` agrupa por el VALOR CRUDO de cualquier campo (texto, fecha ISO,
+// numérico) y devuelve UNA FILA POR GRUPO: [{ group, value }, …]. No parsea
+// fechas — el backend guarda el dato crudo y el formateo vive en el front
+// (el tipo `date` es `sheetFormat: 'text'`, ISO YYYY-MM-DD). Sin `groupBy`
+// todo sigue igual: UNA fila { value }.
+//
+// Estos tests FALLAN antes del cambio: aggregateItems_ no conoce `groupBy`.
+describe('aggregate con groupBy', () => {
+  const ITEMS2 = [
+    { ref: 'A', status: 'PENDIENTE', categoria: 'pan', monto: 10 },
+    { ref: 'B', status: 'ENTREGADO', categoria: 'bebida', monto: 20 },
+    { ref: 'C', status: 'PENDIENTE', categoria: 'pan', monto: 5 },
+    { ref: 'D', status: 'ENTREGADO', categoria: 'pan', monto: 1 },
+  ];
+
+  it('count agrupado por un campo de texto', () => {
+    const r = recurso({
+      por_categoria: { aggregate: 'count', groupBy: 'categoria' },
+    });
+    expect(applyDeclaredView_(r, 'por_categoria', ITEMS2, {})).toEqual([
+      { group: 'pan', value: 3 },
+      { group: 'bebida', value: 1 },
+    ]);
+  });
+
+  it('sum agrupado respeta el where (agrega sólo el subconjunto)', () => {
+    const r = recurso({
+      pendientes_por_categoria: {
+        aggregate: 'sum',
+        field: 'monto',
+        groupBy: 'categoria',
+        where: [{ field: 'status', op: 'eq', value: 'PENDIENTE' }],
+      },
+    });
+    expect(applyDeclaredView_(r, 'pendientes_por_categoria', ITEMS2, {})).toEqual([
+      { group: 'pan', value: 15 },
+    ]);
+  });
+
+  it('avg agrupado ignora valores no numéricos por grupo', () => {
+    const items = [
+      { categoria: 'pan', monto: 10 },
+      { categoria: 'pan', monto: 'x' },
+      { categoria: 'bebida', monto: 4 },
+    ];
+    const r = recurso({ avg_cat: { aggregate: 'avg', field: 'monto', groupBy: 'categoria' } });
+    expect(applyDeclaredView_(r, 'avg_cat', items, {})).toEqual([
+      { group: 'pan', value: 10 },
+      { group: 'bebida', value: 4 },
+    ]);
+  });
+
+  it('agrupa por valor crudo de una fecha ISO (prefijo de día) sin parsear', () => {
+    const items = [
+      { fecha: '2024-03-15', total: 10 },
+      { fecha: '2024-03-15', total: 20 },
+      { fecha: '2024-03-16', total: 7 },
+    ];
+    const r = recurso({ por_dia: { aggregate: 'sum', field: 'total', groupBy: 'fecha' } });
+    expect(applyDeclaredView_(r, 'por_dia', items, {})).toEqual([
+      { group: '2024-03-15', value: 30 },
+      { group: '2024-03-16', value: 7 },
+    ]);
+  });
+
+  it('tira 500 con groupBy sin string', () => {
+    expectStatus(
+      () =>
+        applyDeclaredView_(recurso({ v: { aggregate: 'count', groupBy: 42 } }), 'v', ITEMS2, {}),
+      500,
+      'groupBy',
+    );
+  });
+});
