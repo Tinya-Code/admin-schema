@@ -31,7 +31,7 @@ layout, endpoints). **No pide definiciones al backend en runtime**: consume
 │ sidebar ← allSchemas() ← registry (catálogo estático) │   │ 12-http (auth/parse)               │
 │                                                       │   │   ↓                                │
 │ ResourcePage ── api.service ── POST envelope ─────────┼──▶│ 10-router ← REGISTRY (auto-registro)│
-│   ├─ ListView  ← {items,total} (unwrapList)           │   │   ↓                                │
+│   ├─ ListView  ← {items,nextCursor,total} (unwrapList)│   │   ↓                                │
 │   ├─ FormView  ← 422 con errors[].path               │   │ engine: 24-crud · 23-validate       │
 │   └─ FieldHost ← campos/tipos del schema             │   │       22-assemble · 26-lock-cache  │
 │                                                       │   │       27-views · 50-audit         │
@@ -311,14 +311,14 @@ un interceptor de errores de API (`api-error.interceptor`).
 
 `ApiService` (`core/services/api.service.ts`):
 
-| Método    | Envelope                     | Notas                                                                                   |
-| --------- | ---------------------------- | --------------------------------------------------------------------------------------- |
-| `list`    | `GET /admin/<recurso>`       | desenvuelve `{items,total}` → `T[]` (**único** punto que habla de listas: `unwrapList`) |
-| `get`     | `GET /admin/<recurso>/{key}` | reemplaza `{key}` con `encodeURIComponent`                                              |
-| `create`  | `POST`                       | devuelve el registro                                                                    |
-| `update`  | `PUT`                        | devuelve el registro                                                                    |
-| `remove`  | `DELETE`                     |                                                                                         |
-| `request` | ruta libre                   | reorder (`{reorder:…}`), upload-signature                                               |
+| Método    | Envelope                     | Notas                                                                                              |
+| --------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `list`    | `GET /admin/<recurso>`       | desenvuelve `{items,nextCursor,total}` → `T[]` (**único** punto que habla de listas: `unwrapList`) |
+| `get`     | `GET /admin/<recurso>/{key}` | reemplaza `{key}` con `encodeURIComponent`                                                         |
+| `create`  | `POST`                       | devuelve el registro                                                                               |
+| `update`  | `PUT`                        | devuelve el registro                                                                               |
+| `remove`  | `DELETE`                     |                                                                                                    |
+| `request` | ruta libre                   | reorder (`{reorder:…}`), upload-signature                                                          |
 
 Si la operación no existe para el recurso, `list`/`get` fallan con
 «Operación no disponible para este recurso» (los endpoints vienen del
@@ -343,7 +343,7 @@ Cero llamadas por definiciones.
 **Listado:** ruta `/products` → `ResourcePage` → `ApiService.list`
 → envelope `GET /admin/products` → router resuelve contra `REGISTRY` →
 pipeline (`27-views` aplica vista → `24-crud` lee hoja → `22-assemble`
-proyecta `shape` → `26-lock-cache` cachea) → `{items,total}` →
+proyecta `shape` → `26-lock-cache` cachea) → `{items,nextCursor,total}` →
 `unwrapList` → `ListView` renderiza columnas del schema.
 
 **Alta:** `/:id/new` → `FormView` (campos desde `schema.fields` con sus

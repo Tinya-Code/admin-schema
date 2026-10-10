@@ -137,7 +137,7 @@ Respuesta: JSON plano 200. Sólo la lectura pública futura usa `GET ?path=`.
 | POST                | `/admin/categories`       | payload                                                       | `categories`                                 | posición final (última + paso)                                                                                        |
 | PUT                 | `/admin/categories/{key}` | payload; en reorder: `{ intent }` («después de Y» / «inicio») | `categories`                                 | `LockService`; rebalanceo en lote                                                                                     |
 | DELETE              | `/admin/categories/{key}` | —                                                             | `categories`                                 | con productos → 409 con motivo                                                                                        |
-| GET                 | `/admin/products`         | —                                                             | `products` + hijas                           | **`{ items, total }`** (shape F5: pick de 10 campos + `brand`)                                                        |
+| GET                 | `/admin/products`         | —                                                             | `products` + hijas                           | **`{ items, nextCursor, total }`** (shape F5: pick de 10 campos + `brand`)                                            |
 | GET                 | `/admin/products/{key}`   | —                                                             | `products` + `product_images/specs/faq`      | detalle completo                                                                                                      |
 | POST                | `/admin/products`         | payload                                                       | `products` + hijas                           | FK `category_slug` sólo activas                                                                                       |
 | PUT                 | `/admin/products/{key}`   | payload                                                       | `products` + hijas                           | hijos en **lote** (reemplazo completo, dentro del lock)                                                               |
@@ -157,7 +157,16 @@ editar sólo `schema/resources/<id>.js`; sin declaración la salida es la
 previa (fallback `listProjection` — **no se retiró en F7**: ver decisión
 F7-3 en `PLAN-MEJORAS.md`; se retira en F7/P cuando todos declaren su
 `shape`). Hoy sólo `products` la declara: su listado responde
-`{ items, total }` con pick de 10 campos.
+`{ items, nextCursor, total }` con pick de 10 campos.
+
+**Paginación de listado (R6.4):** el sobre de listado con
+`envelope: 'list'` trae SIEMPRE `nextCursor` (`null` al final o si no se
+paginó) y `total` contado **antes** del corte. El payload paginado acepta
+`page { size ≥1, offset? }` o `cursor` (mutuamente excluyentes); cualquier
+error de esa entrada ⇒ **422 con `errors[]`** y se valida antes de leer la
+hoja. Un listado sin `envelope: 'list'` o una vista `aggregate` no admiten
+página ⇒ mismo 422, accionable. Contrato completo en
+`doc/api-endpoints.md` (sección «Listados de recurso»).
 
 **Contrato legible (D1):** `/admin/schema` expone por recurso `operations`
 (métodos, rutas y forma pública de la respuesta), `views` (metadatos
