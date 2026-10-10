@@ -15,11 +15,16 @@ export function toSeries(data: unknown): BarDatum[] {
   if (!Array.isArray(data)) {
     return [];
   }
-  return data.filter(
-    (row): row is BarDatum =>
-      typeof row === 'object' &&
-      row !== null &&
-      typeof (row as BarDatum).label === 'string' &&
-      typeof (row as BarDatum).value === 'number',
-  );
+  return data
+    .map((row): BarDatum | null => {
+      if (typeof row !== 'object' || row === null) return null;
+      const r = row as { label?: unknown; group?: unknown; value?: unknown };
+      // El agregado agrupado del backend (R6.2) llega como { group, value };
+      // la forma histórica de tabla es { label, value }. El gráfico sólo
+      // entiende label ⇒ traducimos acá, en el borde.
+      const label = typeof r.label === 'string' ? r.label : r.group;
+      if (typeof label !== 'string' || typeof r.value !== 'number') return null;
+      return { label, value: r.value };
+    })
+    .filter((row): row is BarDatum => row !== null);
 }

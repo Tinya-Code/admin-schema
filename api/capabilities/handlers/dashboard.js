@@ -5,7 +5,9 @@
 // ejecuta todas las vistas declaradas en `resource.views` vía `applyDeclaredView_`
 // y devuelve un mapa con los resultados indexados por el nombre de cada vista.
 //
-// Para vistas con `aggregate: 'count'|'sum'|'avg'`, extrae el valor escalar (o 0 si null).
+// Para vistas con `aggregate: 'count'|'sum'|'avg'` SIN `groupBy`, extrae el
+// valor escalar (o 0 si null). CON `groupBy` conserva TODAS las filas
+// `[{ group, value }, …]` — es la serie que consume un gráfico (R6.2/R6.3).
 // Para vistas estándar o handlers custom, preserva la estructura devuelta.
 //
 // Contrato de respuesta:
@@ -47,7 +49,10 @@ function handleDashboard() {
       var view = views[name];
       if (!view) return;
       var rows = applyDeclaredView_(resource, name, items, {});
-      if (view.aggregate) {
+      // Un agregado SIN groupBy es un escalar (el KPI); CON groupBy devuelve
+      // todas sus filas [{ group, value }, …] para que el gráfico pinte la
+      // serie completa (R6.2/R6.3) — colapsarlo a rows[0] perdería grupos.
+      if (view.aggregate && !view.groupBy) {
         result[name] = rows.length > 0 && rows[0].value !== null ? Number(rows[0].value) : 0;
       } else {
         result[name] = rows;

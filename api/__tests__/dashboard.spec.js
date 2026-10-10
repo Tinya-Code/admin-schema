@@ -231,4 +231,33 @@ describe('handleDashboard', () => {
 
     expect(result.pendientes_recientes).toEqual([]);
   });
+
+  // R6.3 — el handler deja de colapsar el agregado agrupado: una vista con
+  // `groupBy` devuelve TODAS sus filas [{ group, value }, …] para que el
+  // widget gráfico (chart-line/bar-chart) pinte la serie completa. Antes,
+  // `rows[0].value` dejaba UN SOLO grupo.
+  it('devuelve todas las filas de un agregado con groupBy', () => {
+    originalOrders = REGISTRY.resources.orders;
+    REGISTRY.resources.orders = {
+      ...ORDERS_RESOURCE,
+      views: {
+        ventas_por_estado: { aggregate: 'count', groupBy: 'status' },
+      },
+    };
+    const maps = globalThis.STORAGE_MAPS_;
+    if (maps) delete maps['orders'];
+
+    patchListCollection([
+      { ref: 'R1', status: 'PENDIENTE' },
+      { ref: 'R2', status: 'PENDIENTE' },
+      { ref: 'R3', status: 'ENTREGADO' },
+    ]);
+
+    const result = REGISTRY.handlers.handleDashboard();
+
+    expect(result.ventas_por_estado).toEqual([
+      { group: 'PENDIENTE', value: 2 },
+      { group: 'ENTREGADO', value: 1 },
+    ]);
+  });
 });
