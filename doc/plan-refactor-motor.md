@@ -2552,6 +2552,37 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
   - **Por fila** (`scope`): condición declarativa que filtra qué filas ve cada
     rol.
   - **Siempre fail-closed.**
+  - ✅ **(a · por operación) hecha 2026-10-10** — vocabulario resuelto:
+    `policies.access.operations = { list: 'role:staff', get: 'role:admin' }`
+    (anidado bajo `access`, no el plano del ejemplo, que además usaba el
+    vocabulario viejo `delete`; D32: un solo sitio para toda la
+    autorización).
+    - **Enforcement en 24-crud**, donde la operación ya se conoce (el router
+      sólo ve read|write): se exige **sólo el override** — el umbral del
+      grupo ya lo aplicó el router en §3.4, y repetirlo acá rompería el
+      despacho directo sin identidad de specs y editor. Sin identidad ⇒
+      **401**; rol insuficiente ⇒ **403** (§4.5).
+    - **Coherencia al arranque** (validate-registry): nivel del vocabulario
+      · operación del vocabulario del motor (un `delete` histórico cae acá,
+      no en runtime) · op encendida en `operations` (mismo criterio que
+      audiences) · el override **no puede ser más suelto que el umbral de su
+      grupo** (rango public ⊂ session ⊂ role:staff ⊂ role:admin≡admin: en
+      tráfico real el router ya exige ese umbral, así que «más suelto» no
+      afloja nada, sólo miente). Bug propio cazado en el camino: el umbral
+      por defecto leía `ACCESS_RANK['admin']` — la clave es `role:admin`,
+      y `undefined` en la comparación silenciaba la regla entera.
+    - **El mapa viaja al front** en `policies.access.operations` (R7.5 lo
+      consume para apagar botones; el back siempre vuelve a verificar).
+    - **Specs nuevos:** `op-policies.spec.js` (8 casos por la puerta real
+      `dispatchResource_`: staff lista/get cae 403 · admin get pasa ·
+      sin rol 403 · sin identidad 401 · control sin mapa · proyección) +
+      6 en validate-registry. **Mutacionales 3/3** (dispatcher sin
+      enforcement · validador sin el mapa · validador sin la regla de
+      «más suelto»).
+    - **Gates:** front **401/53** · api **680/38** · `api:check` **5
+      VERDE** · build ✔ · prettier baseline · drift VERDE.
+  - ⏳ **Pendiente:** (b) por campo `field.access` y (c) `scope` por fila
+    (reutiliza la gramática `where` de views — diseño guardado en memoria).
 
 - [ ] **R7.5** — Consumo de políticas en UI (F10)
   - **`policies` gobiernan botones, campos y acciones** (ocultar /
