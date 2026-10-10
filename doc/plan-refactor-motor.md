@@ -2581,8 +2581,33 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
       «más suelto»).
     - **Gates:** front **401/53** · api **680/38** · `api:check` **5
       VERDE** · build ✔ · prettier baseline · drift VERDE.
-  - ⏳ **Pendiente:** (b) por campo `field.access` y (c) `scope` por fila
-    (reutiliza la gramática `where` de views — diseño guardado en memoria).
+  - ✅ **(b · por campo) hecha 2026-10-10** — `field.access = { read?, write? }`
+    con la gramática de niveles de §4.4:
+    - **read: el campo NI VIAJA.** `filterFieldsByAccess_` corre en
+      `dispatchResource_` SIEMPRE después de la lectura (la caché guarda el
+      dato crudo), construye objetos nuevos (jamás muta lo cacheado) y es
+      recursivo en group/list. Sin identidad o sin rol sólo pasan los campos
+      alcanzables (fail-closed); el nuevo predicado `accessAllows_` (11-auth)
+      es la versión no lanzadora de `requireAccess_`, con la misma semántica.
+    - **write: 422 honesto, nunca en silencio.** `assertWritableFields_`
+      corre ANTES de tocar la hoja y acumula las rutas denegadas en el mismo
+      `422` de la validación declarativa (código `VALIDATION_FIELD_ACCESS`);
+      silenciar el descarte escondería el intento.
+    - **Coherencia al arranque** (validate-registry, describe 7): claves
+      `read|write` · nivel del vocabulario · forma objeto (un string cae
+      acá). Publicación al front: `projectField_` manda `access` con valores
+      sanos (R7.5 lo consume).
+    - **Specs nuevos:** `field-access.spec.js` (10 casos por la puerta real:
+      contraste public vs role:admin en get · fail-closed · list por ítem ·
+      caché Map REAL sin envenenamiento · 422 en create y PATCH · recursión
+      group/list · proyección · control de referencia con recurso sin access)
+      - 5 en validate-registry. **Mutacionales 5/5** (filtro de lectura ·
+        recursión en subcampos · assert de write · validador sin el bloque ·
+        proyección sin access).
+    - **Gates:** front **401/53** · api **695/38** · `api:check` **5
+      VERDE** · build ✔ · prettier baseline · drift VERDE.
+  - ⏳ **Pendiente:** (c) `scope` por fila (reutiliza la gramática `where`
+    de views — diseño guardado en memoria).
 
 - [ ] **R7.5** — Consumo de políticas en UI (F10)
   - **`policies` gobiernan botones, campos y acciones** (ocultar /
