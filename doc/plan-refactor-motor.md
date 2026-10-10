@@ -2465,18 +2465,49 @@ reorder, bulk }` con cada una encendible/apagable.
       la coma) — no en el check.
     - **Gates:** `api:check` **5 VERDE** · prettier sin subir deuda.
 
-- [ ] **R7.2** — Audiencias en recursos (auth §4.8)
+- [x] **R7.2** — Audiencias en recursos (auth §4.8) ✅ **cerrada 2026-10-10**
   - **Declaración aditiva** — `exposeToFront` actual equivale a
     `audiences.admin`:
     ```js
     audiences: {
       admin:  { listProjection: [...], operations: [...] },
-      public: { listProjection: [...], views: ['activos'], operations: ['list','read'] },
+      public: { listProjection: [...], views: ['activos'], operations: ['list','get'] },
     }
     ```
   - **Lo público es lista blanca estricta**: sólo lectura, sin campos
     internos (`cost`, `stock`, ids de gestión).
   - **Ningún recurso `_users`/`_audit`/interno tiene audiencia `public`.**
+  - **Verificado:**
+    - **Declaración con lector real, no vocabulario decorativo.**
+      `handlePublicOrder` dejó de portar la whitelist hardcodeada
+      (`PUBLIC_ORDER_FIELDS_`): lee `audiences.public.listProjection` del
+      recurso. Ocultar un campo público ahora es cambiar el schema, con su
+      validación y sus tests — no tocar el endpoint. **Fail-closed:** un
+      recurso sin audiencia pública devuelve **500**, no campos sueltos.
+    - **`orders` declara su audiencia pública** (12 campos: `ref`,
+      `customer_name`, `description`, `pickup_date`, `status`,
+      `reference_photo`, `authorized_name`, `authorized_photo`,
+      `auth_state`, `created_at`, `updated_at`, `history`), que es
+      exactamente lo que el cliente y el autorizado necesitan para verificar
+      la recogida; `pin` y las notas internas no viajan.
+    - **El validador la hace verdad al arranque** (`validate-registry.js`):
+      nombre y claves de la lista blanca · `admin` exige
+      `exposeToFront: true` · lo público sólo `list`/`get` ·
+      `listProjection`/`views` sólo nombran campos y vistas del recurso ·
+      una operación de audiencia tiene que estar **encendida** en el
+      recurso (misma verdad que el dispatcher: `false` o
+      `remove: {mode:'forbidden'}` ⇒ rojo) · recurso interno (`_…`) nunca
+      declara `public`.
+    - **Vocabulario corregido:** el ejemplo histórico de auth §4.8 usaba
+      `read`/`delete` — desde D46 el motor habla `get`/`remove`, y con el
+      validador en puesto un copypaste del vocabulario viejo es rojo al
+      arranque. Doc actualizado.
+    - **Mutacionales: 4/4 detectadas** (ficheros restaurados): handler que
+      ignora la audiencia (vuelve la whitelist hardcodeada) · escritura en
+      audiencia pública · campo inexistente en `listProjection` · recurso
+      interno con audiencia pública.
+    - **Gates:** front **401/53** · api **664/38** · `api:check` **5 VERDE**
+      · build ✔ · prettier sin subir deuda (17).
 
 - [ ] **R7.3** — `contract-check` por audiencia
   - **Verifica:** rutas de recursos del front ⊆ audiencia correspondiente del

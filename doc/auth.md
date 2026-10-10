@@ -275,22 +275,28 @@ Rotar `AUTH_SECRET` invalida todas las sesiones (es un «cerrar sesión global»
 ### 4.8 Qué viaja a cada frontend (audiencias)
 
 El back sirve a dos frontends distintos, así que `exposeToFront` (booleano) se queda corto.
-Cambio **aditivo**: lo actual equivale a `audiences.admin`.
+Cambio **aditivo**: lo actual equivale a `audiences.admin` (declararla exige
+`exposeToFront: true`; si no la declaras, la audiencia admin es el recurso completo).
 
 ```js
 REGISTRY.resources.products = {
   …
   audiences: {
-    admin:  { listProjection: ['id','name','price','active','stock','cost'], operations: ['list','read','create','update','delete'] },
-    public: { listProjection: ['id','name','price','image'], views: ['activos'], operations: ['list','read'] },
+    admin:  { listProjection: ['id','name','price','active','stock','cost'], operations: ['list','get','create','update','remove'] },
+    public: { listProjection: ['id','name','price','image'], views: ['publishable'], operations: ['list','get'] },
   },
 };
 ```
 
-- **Lo público es lista blanca estricta**: solo lectura, vistas filtradas (`activos`), sin
-  campos internos (`cost`, `stock`, notas, ids de gestión).
+- **Lo público es lista blanca estricta**: solo lectura (`list`/`get`), vistas filtradas
+  (`publishable`), sin campos internos (`cost`, `stock`, notas, ids de gestión).
 - Una ruta `public` nunca acepta ni devuelve el token del admin.
 - Ningún recurso `_users`/`_audit`/internos tiene audiencia `public`.
+
+**Implementado (F7 · R7.2)**: `validate-registry.js` valida todo esto al arranque
+(ROJO), y los endpoints `/p/*` **leen la declaración** — `handlePublicOrder` proyecta
+`audiences.public.listProjection` en vez de portar una lista propia; recurso sin
+audiencia pública ⇒ **500**, no campos sueltos.
 
 ---
 
