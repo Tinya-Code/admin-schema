@@ -2,8 +2,13 @@
 // scripts/contract-check.mjs — Contract check: schemas back ↔ front
 // (doc/refactormotor.md §5 — contrato front ↔ back, una sola fuente).
 //
-// Compara los resources de api/schema/resources/*.js con los schemas de
-// src/app/schemas/*.schema.ts:
+// Compara, POR CONSUMIDOR (R7.1), lo que el back PROYECTA con
+// `projectResourceSchema_` — exactamente lo que sirve `/admin/schema` —
+// contra lo que cada front declara consumir en src/app/schemas/*.schema.ts.
+// Comparar contra el schema crudo mentiría: el front no recibe el recurso,
+// recibe su proyección (operaciones apagadas no viajan, `enum` nombrado ya
+// resuelto, `required` normalizado). O1: no se genera nada DATA→ui; sólo se
+// verifica que lo que el front declara pueda llegarle tal cual.
 //   1. Existencia: cada recurso del front existe en el back, y cada recurso
 //      del back tiene su *.schema.ts (la F7-4 ya no existe: alta de módulo =
 //      1 archivo por lado).
@@ -12,11 +17,15 @@
 //      (import.meta.glob no transforma en esbuild: ver plan, Fase 4 / D3), así
 //      que una alta olvidada en registry.ts = recurso invisible en el menú.
 //      Este check la convierte en rojo.
-//   2. Ruta: los endpoints del front son la ruta efectiva del back
-//      (route || /<scope>/<id>), con {key} en las operaciones con clave.
+//   2. Ruta: los endpoints del front son la ruta PROYECTADA por operación
+//      (la que la API responde) o la de un endpoint declarado con su
+//      método; una operación apagada (`false` o `remove:
+//      {mode:'forbidden'}`) que ningún endpoint cubre es un botón que
+//      responde 405.
 //   3. kind idéntico (collection/singleton).
-//   4. Por cada campo que declara el front: existe en el back y required +
-//      validators (minLength, maxLength, pattern, min, max, unique) coinciden.
+//   4. Por cada campo que declara el front: existe en la PROYECCIÓN del back
+//      y required + validators (minLength, maxLength, pattern, min, max,
+//      unique) coinciden.
 //   5. Campos required del back ausentes en el front = rojo (el form no
 //      podría crear el registro); los opcionales ausentes = aviso.
 //   6. (R1.6) `enum` del back ↔ `options[].value` del front, resolviendo
@@ -158,17 +167,17 @@ function backValidators(f) {
   return v;
 }
 
-/** Ruta efectiva del back: la misma fórmula que resourceRoute_ (10-router). */
-const backRoute = (r) => r.route ?? `/${r.scope ?? 'admin'}/${r.id}`;
-
 function compareResource(front, back) {
   const id = front.id;
-  if (front.kind !== back.kind) {
-    rojo(`${id}: kind back='${back.kind}' front='${front.kind}'`);
+  // R7.1 · el comparando es la PROYECCIÓN: lo que ese front va a recibir.
+  const proy = globalThis.projectResourceSchema_(back);
+  if (front.kind !== proy.kind) {
+    rojo(`${id}: kind back='${proy.kind}' front='${front.kind}'`);
   }
 
-  // 2. Endpoints del front contra la ruta efectiva del back.
-  const base = backRoute(back);
+  // 2. Endpoints del front contra las rutas proyectadas — sólo lo encendido.
+  //    `projectOperations_` omite las operaciones apagadas, así que una el
+  //    front declara y el back no proyecta ⇒ en runtime responde 405.
   const ops = front.endpoint ?? {};
   if (front.kind === 'singleton') {
     for (const op of ['list', 'create', 'remove']) {
@@ -176,20 +185,34 @@ function compareResource(front, back) {
     }
   }
   for (const [op, route] of Object.entries(ops)) {
-    const conClave = front.kind === 'collection' && ['get', 'update', 'remove'].includes(op);
-    const esperado = conClave ? `${base}/{key}` : base;
-    if (route !== esperado) {
-      rojo(`${id}: endpoint.${op} front='${route}' back='${esperado}'`);
+    const servida = proy.operations?.[op];
+    if (servida !== undefined) {
+      if (route !== servida.path) {
+        rojo(`${id}: endpoint.${op} front='${route}' back='${servida.path}'`);
+      }
+      continue;
+    }
+    // La operación del recurso no está encendida: la ruta puede vivir igual
+    // en un endpoint declarado (misma ruta y método). Si no, es un 405.
+    const metodos = RUTAS_SERVIDAS.get(route);
+    if (metodos === undefined || !metodos.has(METODO_DE_OPERACION[op] ?? '')) {
+      rojo(
+        `${id}: endpoint.${op} ('${route}') no lo sirve ni el recurso ni un ` +
+          'endpoint declarado — esa ruta responde 405 en runtime',
+      );
     }
   }
 
-  // 4. Campos del front → existencia + required + validators en el back.
-  const backFields = walkFields(back.fields);
+  // 4. Campos del front → existencia + required + validators en la proyección.
+  const proyFields = walkFields(proy.fields);
+  // `system` sólo vive en el schema crudo (la proyección no lo publica); se
+  // usa únicamente para no exigirle al front campos que asigna el motor.
+  const crudoFields = walkFields(back.fields);
   const frontFields = walkFields(front.fields);
   for (const [p, ff] of frontFields) {
-    const bf = backFields.get(p);
+    const bf = proyFields.get(p);
     if (bf === undefined) {
-      rojo(`${id}.${p}: el front declara el campo pero el back no lo tiene`);
+      rojo(`${id}.${p}: el front declara el campo pero el back no lo proyecta`);
       continue;
     }
     if ((ff.required === true) !== (bf.required === true)) {
@@ -205,9 +228,9 @@ function compareResource(front, back) {
     }
   }
 
-  // 5. Campos del back ausentes en el front: required = rojo, opcional = aviso.
-  for (const [p, bf] of backFields) {
-    if (frontFields.has(p) || bf.system === true) continue;
+  // 5. Campos proyectados ausentes en el front: required = rojo, opcional = aviso.
+  for (const [p, bf] of proyFields) {
+    if (frontFields.has(p) || crudoFields.get(p)?.system === true) continue;
     if (bf.required === true) {
       rojo(`${id}.${p}: required en el back pero el front no lo declara (el form no podría crear)`);
     } else {
@@ -217,22 +240,20 @@ function compareResource(front, back) {
 
   // ── R1.6 · contrato ampliado ─────────────────────────────────────────────
 
-  // 6. enum (back) ↔ options[].value (front).
-  //    `enum` en el back tiene DOS formas: array literal, o el NOMBRE de una
-  //    lista en REGISTRY.enums.sheetEnums (SHEET_ENUMS). El front siempre
-  //    los pone inline, así que hay que resolver antes de comparar.
-  for (const [p, bf] of backFields) {
+  // 6. enum (proyectado) ↔ options[].value (front).
+  //    La proyección ya resuelve el nombre interno ('availability') contra
+  //    SHEET_ENUMS, así que lo que compara el front es el array tal cual va
+  //    a viajar; un nombre colgado queda como string y se vuelve rojo acá.
+  for (const [p, bf] of proyFields) {
     if (bf.enum === undefined) continue;
-    let valores;
-    if (Array.isArray(bf.enum)) {
-      valores = bf.enum;
-    } else {
-      valores = REGISTRY.enums?.sheetEnums?.[bf.enum];
-      if (valores === undefined) {
-        rojo(`${id}.${p}: enum con nombre '${bf.enum}' no existe en REGISTRY.enums.sheetEnums`);
-        continue;
-      }
+    if (!Array.isArray(bf.enum)) {
+      rojo(
+        `${id}.${p}: enum nombrado '${bf.enum}' sin resolver en la proyección ` +
+          '(no existe en REGISTRY.enums.sheetEnums)',
+      );
+      continue;
     }
+    const valores = bf.enum;
     const ff = frontFields.get(p);
     if (ff === undefined) continue; // ya lo cubre el check 4 de existencia
     const opciones = (ff.options ?? []).map((o) => o.value);
@@ -249,8 +270,8 @@ function compareResource(front, back) {
     }
   }
 
-  // 7. default ↔ default.
-  for (const [p, bf] of backFields) {
+  // 7. default ↔ default (proyectado).
+  for (const [p, bf] of proyFields) {
     const ff = frontFields.get(p);
     if (ff === undefined) continue;
     if (bf.default !== ff.default) {
@@ -261,13 +282,13 @@ function compareResource(front, back) {
     }
   }
 
-  // 8. listProjection (back) ⊇ listColumns (front) — cierra R6.
-  //    Lo que el back SIRVE en el listado es `operations.list.shape.pick`
-  //    si está declarado, y si no, `listProjection` (F5-2: sin pick ⇒
-  //    fallback). Comparar contra listProjection a secas sería mentir.
+  // 8. listProjection (proyectada) ⊇ listColumns (front) — cierra R6.
+  //    Lo que el back SIRVE en el listado es operations.list.shape.pick si
+  //    está declarado, y si no, el fallback listProjection (F5-2): se lee de
+  //    la proyección, que es quien aplica ese orden.
   const servidoEnListado =
-    back.operations?.list?.shape?.pick ??
-    (Array.isArray(back.listProjection) ? back.listProjection : []);
+    proy.operations?.list?.shape?.pick ??
+    (Array.isArray(proy.listProjection) ? proy.listProjection : []);
   for (const col of front.listColumns ?? []) {
     if (!servidoEnListado.includes(col.key)) {
       rojo(
@@ -329,6 +350,36 @@ function checkRegistry() {
 checkRegistry();
 const REGISTRY = loadBackend();
 const backend = REGISTRY.resources;
+
+/**
+ * R7.1 · qué sirve la API de verdad: las operaciones PROYECTADAS de cada
+ * recurso + los endpoints declarados (`schema/endpoints/*`, ruta exacta con
+ * su método). Un `endpoint.<op>` del front que no está en este conjunto es
+ * un botón que responde 405 — hoy el caso real es un recurso con `get`
+ * apagado cuya ruta vive en un endpoint custom (p. ej. el panel).
+ */
+const METODO_DE_OPERACION = {
+  list: 'GET',
+  get: 'GET',
+  create: 'POST',
+  update: 'PUT',
+  remove: 'DELETE',
+};
+const RUTAS_SERVIDAS = new Map(); // ruta → Set de métodos
+const anotaServida = (route, metodo) => {
+  if (typeof route !== 'string' || typeof metodo !== 'string') return;
+  if (!RUTAS_SERVIDAS.has(route)) RUTAS_SERVIDAS.set(route, new Set());
+  RUTAS_SERVIDAS.get(route).add(metodo);
+};
+for (const resource of Object.values(backend)) {
+  for (const entry of Object.values(globalThis.projectResourceSchema_(resource).operations ?? {})) {
+    anotaServida(entry.path, entry.method);
+  }
+}
+for (const endpoint of Object.values(REGISTRY.endpoints ?? {})) {
+  anotaServida(endpoint.route, endpoint.method);
+}
+
 const fronts = await loadFrontend();
 const frontIds = new Set(fronts.map((f) => f.id));
 
