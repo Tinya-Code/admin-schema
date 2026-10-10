@@ -597,6 +597,96 @@ function operationEnabledDecl_(op, decl) {
   return true;
 }
 
+// B8 · R7.4 — políticas de acceso. El umbral por GRUPO (`read`|`write`) ya
+// existía y lo aplica el router; lo nuevo es el override por OPERACIÓN
+// (`access.operations`), que el router no puede juzgar porque sólo ve el
+// grupo — lo exige 24-crud, donde la operación ya se conoce. Acá se juzga
+// la DECLARACIÓN:
+//   · read/write y cada override tienen que ser un nivel del vocabulario;
+//   · una operación desconocida en el mapa es un typo que nunca se aplica
+//     (y `delete`/`read` del vocabulario viejo caen acá, no en runtime);
+//   · el override tiene que estar ENCENDIDO en operations (mismo criterio
+//     que en audiences: una política para una operación apagada es mentira);
+//   · y no puede ser MÁS SUELTO que el umbral de su grupo: en tráfico real
+//     el router ya exigió ese umbral, así que «más suelto» no afloja nada —
+//     declara «cualquiera» donde el motor sigue exigiendo.
+// Rangos de apretado (menos identidades que pasan ⇒ más apretado), iguales
+// a los de 11-auth: public ⊂ session ⊂ role:staff ⊂ role:admin(≡admin).
+var ACCESS_RANK = { public: 0, session: 1, 'role:staff': 2, 'role:admin': 3 };
+
+function accessRank_(level) {
+  return ACCESS_RANK[level === 'admin' ? 'role:admin' : level];
+}
+
+function validatePolicyAccess_(where, resource, issues) {
+  var policies = resource.policies;
+  if (!policies || typeof policies !== 'object') return;
+  var access = policies.access;
+  if (access === undefined || access === null) return;
+  var at = where + '.policies.access';
+  if (typeof access !== 'object' || Array.isArray(access)) {
+    issues.push(at + ': debe ser un objeto de políticas');
+    return;
+  }
+  issues.push.apply(issues, unknownKeys_(at, access, ['read', 'write', 'operations']));
+
+  // Umbral por grupo. Ausente ⇒ 'admin' (la misma verdad que aplica el
+  // router en policyAccess_). Ojo: la clave del rango es `role:admin` — el
+  // alias `admin` sólo lo resuelve accessRank_.
+  var thresholds = { read: accessRank_('admin'), write: accessRank_('admin') };
+  ['read', 'write'].forEach(function (group) {
+    var level = access[group];
+    if (level === undefined || level === null) return;
+    if (typeof level !== 'string' || ACCESS_LEVELS.indexOf(level) === -1) {
+      issues.push(at + '.' + group + ": nivel inválido '" + String(level) + "'");
+      return;
+    }
+    thresholds[group] = accessRank_(level);
+  });
+
+  var ops = access.operations;
+  if (ops === undefined || ops === null) return;
+  if (typeof ops !== 'object' || Array.isArray(ops)) {
+    issues.push(at + '.operations: debe ser un mapa operación ⇒ nivel');
+    return;
+  }
+  Object.keys(ops).forEach(function (op) {
+    var opAt = at + '.operations.' + op;
+    if (KNOWN_OPERATION_KEYS.indexOf(op) === -1) {
+      issues.push(
+        opAt +
+          ': operación desconocida (el motor habla list, get, create, update, remove, reorder, bulk)',
+      );
+      return;
+    }
+    var level = ops[op];
+    if (typeof level !== 'string' || ACCESS_LEVELS.indexOf(level) === -1) {
+      issues.push(opAt + ": nivel inválido '" + String(level) + "'");
+      return;
+    }
+    if (!operationEnabledDecl_(op, resource.operations ? resource.operations[op] : undefined)) {
+      issues.push(
+        opAt +
+          ": '" +
+          op +
+          "' no está encendida en operations del recurso — la política nunca se aplica",
+      );
+      return;
+    }
+    var group = op === 'list' || op === 'get' ? 'read' : 'write';
+    if (accessRank_(level) < thresholds[group]) {
+      issues.push(
+        opAt +
+          ": '" +
+          level +
+          "' es más suelto que el umbral " +
+          group +
+          ' — en tráfico real el router ya lo exige, el override no afloja nada',
+      );
+    }
+  });
+}
+
 function validateResource_(id, resource, issues) {
   var where = 'resources.' + id;
 
@@ -613,6 +703,7 @@ function validateResource_(id, resource, issues) {
       unknownKeys_(where + '.policies', resource.policies, KNOWN_POLICY_KEYS),
     );
   }
+  validatePolicyAccess_(where, resource, issues);
 
   var fieldKeys = fieldKeySet_(resource);
   validateOperations_(where, resource, issues);

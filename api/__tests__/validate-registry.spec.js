@@ -390,4 +390,68 @@ describe('R1.5 — validateRegistry_', () => {
       );
     });
   });
+
+  // B8 · R7.4 — políticas por operación. El router sólo ve read|write; el
+  // override fino lo exige 24-crud y su DECLARACIÓN se juzga acá: un mapa
+  // que miente es un 403/401 de más o de menos en producción.
+  describe('6 · políticas por operación (R7.4)', () => {
+    it('forma válida: override apretado sobre el umbral del grupo', () => {
+      const issues = mutate(() => {
+        resources_.orders.policies = {
+          access: {
+            read: 'role:staff',
+            write: 'admin',
+            operations: { list: 'role:staff', remove: 'role:admin' },
+          },
+        };
+      });
+      expect(issues).toEqual([]);
+    });
+
+    it('nivel fuera del vocabulario en un override', () => {
+      const issues = mutate(() => {
+        resources_.orders.policies = { access: { operations: { list: 'sucribirse' } } };
+      });
+      expect(issues).toContain(
+        "resources.orders.policies.access.operations.list: nivel inválido 'sucribirse'",
+      );
+    });
+
+    it('operación con el vocabulario viejo (delete) en el mapa', () => {
+      const issues = mutate(() => {
+        resources_.orders.policies = { access: { operations: { delete: 'role:admin' } } };
+      });
+      expect(issues).toContain(
+        'resources.orders.policies.access.operations.delete: operación desconocida ' +
+          '(el motor habla list, get, create, update, remove, reorder, bulk)',
+      );
+    });
+
+    it('override para una operación apagada en el recurso', () => {
+      const issues = mutate(() => {
+        resources_.orders.policies = { access: { operations: { reorder: 'role:admin' } } };
+      });
+      expect(issues).toContain(
+        "resources.orders.policies.access.operations.reorder: 'reorder' no está encendida " +
+          'en operations del recurso — la política nunca se aplica',
+      );
+    });
+
+    it('override más suelto que el umbral de su grupo', () => {
+      const issues = mutate(() => {
+        resources_.orders.policies = { access: { operations: { list: 'session' } } };
+      });
+      expect(issues).toContain(
+        "resources.orders.policies.access.operations.list: 'session' es más suelto que el " +
+          'umbral read — en tráfico real el router ya lo exige, el override no afloja nada',
+      );
+    });
+
+    it('nivel inválido en el umbral read del grupo', () => {
+      const issues = mutate(() => {
+        resources_.orders.policies = { access: { read: 'gerente' } };
+      });
+      expect(issues).toContain("resources.orders.policies.access.read: nivel inválido 'gerente'");
+    });
+  });
 });

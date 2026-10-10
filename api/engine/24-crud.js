@@ -51,6 +51,19 @@ function dispatchResource_(resource, request) {
     throw apiError_(405, "La operación '" + op + "' no está declarada en '" + resource.id + "'");
   }
 
+  // B8 · R7.4 — política por operación: el router sólo sabe read|write, así
+  // que el nivel fino por op se exige ACÁ, donde la operación ya se conoce.
+  // Sólo el OVERRIDE se vuelve a exigir: el umbral del grupo ya lo aplicó el
+  // router en la cadena de §3.4, y repetirlo acá rompería el despacho directo
+  // sin identidad (specs y editor). Un override más suelto que el umbral es
+  // rojo al arranque (validate-registry), así que en tráfico real esto sólo
+  // aprieta, nunca afloja. Sin identidad ⇒ 401 (fail-closed): un override
+  // declara QUIÉN puede, no un campo opcional.
+  var accessOverride = operationAccessOverride_(resource, op);
+  if (accessOverride !== null) {
+    requireAccess_(request.user === undefined ? null : request.user, accessOverride);
+  }
+
   switch (request.method) {
     case 'GET':
       return resourceGet_(ss, resource, map, request);
@@ -107,6 +120,17 @@ function declaredOperation_(resource, op) {
   var ops = resource.operations;
   if (ops === undefined || ops === null || typeof ops !== 'object') return undefined;
   return ops[op];
+}
+
+// Nivel fino por operación (`policies.access.operations[op]`), o `null` si
+// no hay override — el umbral read/write del grupo lo aplica el router.
+function operationAccessOverride_(resource, op) {
+  var access = resource.policies && resource.policies.access;
+  if (!access || typeof access !== 'object') return null;
+  var ops = access.operations;
+  if (!ops || typeof ops !== 'object') return null;
+  var level = ops[op];
+  return typeof level === 'string' && level !== '' ? level : null;
 }
 
 // Encendida: cualquier valor salvo ausente/`null`/`false`. `true` = sin tunear.

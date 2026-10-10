@@ -169,8 +169,25 @@ function projectPolicies_(resource) {
     access: {
       read: normalizeAccessValue_(declared.read),
       write: normalizeAccessValue_(declared.write),
+      // B8 · R7.4: el override por operación viaja al front — R7.5 lo
+      // consume para apagar botones (sólo UX; el back vuelve a verificar
+      // siempre, en 24-crud). El mapa viaja como está: validate-registry ya
+      // hizo rojo cualquier nivel u operación desconocida al arranque.
+      operations: projectAccessOperations_(declared.operations),
     },
   };
+}
+
+// Sólo strings no vacíos viajan: el proyector decide QUÉ viaja, no reescribe
+// verdad. Ausente ⇒ mapa vacío (sin overrides, el umbral del grupo manda).
+function projectAccessOperations_(operations) {
+  var out = {};
+  if (!operations || typeof operations !== 'object') return out;
+  Object.keys(operations).forEach(function (op) {
+    var level = operations[op];
+    if (typeof level === 'string' && level !== '') out[op] = level;
+  });
+  return out;
 }
 
 function normalizeAccessValue_(value) {
