@@ -2545,7 +2545,7 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
       corridas seguidas; ningún spec del front importa archivos de `api/`
       — flaky ajeno a la fase, a vigilar.)
 
-- [ ] **R7.4** — Políticas más finas (B8)
+- [x] **R7.4** — Políticas más finas (B8)
   - **Por operación:** `policies: { list: 'staff', delete: 'admin' }`.
   - **Por campo:** `field.access: { read, write }` — el campo **ni viaja** si
     no corresponde.
@@ -2606,8 +2606,35 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
         proyección sin access).
     - **Gates:** front **401/53** · api **695/38** · `api:check` **5
       VERDE** · build ✔ · prettier baseline · drift VERDE.
-  - ⏳ **Pendiente:** (c) `scope` por fila (reutiliza la gramática `where`
-    de views — diseño guardado en memoria).
+  - ✅ **(c · scope por fila) hecha 2026-10-10** —
+    `policies.access.scope = { '<nivel>': [where] }`, la MISMA gramática
+    `where` de las vistas (sin vocabulario nuevo):
+    - **Resolución:** la entrada MÁS ESPECÍFICA que la identidad satisfaga
+      (admin > staff > session > public) juzga la fila con `evalWhere_`.
+      Sin declaración ⇒ sin filtro (compat total); con declaración y sin
+      entrada que satisfacer ⇒ la fila NO pasa (fail-closed: el scope
+      declara quién ve qué, no quién queda excluido).
+    - **Enforcement:** el listado filtra la base cacheada ANTES del
+      filter/view del cliente (nadie amplía su horizonte) y antes de
+      paginar; fila con clave fuera de scope ⇒ **404 honesto** en get,
+      update y remove (la fila no existe para esa identidad — sin oráculo
+      de existencia). Helpers en 27-views (24→27 ya era la dirección);
+      `ctx` de scope reutiliza `readRulesCtx_` (hechos de relation una vez,
+      `self` re-apuntado por ítem ⇒ `$item.<campo>` ancla en la fila).
+    - **Coherencia al arranque** (validate-registry, describe 8): nivel
+      válido · mapa nivel ⇒ where · scope no vacío · scope prohibido en
+      singleton · campo del recurso · op registrada · grupo `or`/`all` con
+      la gramática de nodos de las vistas. Bug propio cazado: el guard
+      superior rechazaba el ARREGLO legítimo del where.
+    - **Specs nuevos:** `row-scope.spec.js` (9 casos por la puerta real:
+      list por rol · caché Map sin envenenamiento · fail-closed rol sin
+      entrada y sin identidad · entrada session · control sin scope ·
+      ancla `$item` · 404 en get/update/remove con su lado positivo) + 7 en
+      validate-registry. **Mutacionales 6/6** (filtro de listado · check en
+      get · en update · en remove · validador sin el bloque · orden de
+      niveles invertido).
+    - **Gates:** front **401/53** · api **711/38** · `api:check` **5
+      VERDE** · build ✔ · prettier baseline · drift VERDE.
 
 - [ ] **R7.5** — Consumo de políticas en UI (F10)
   - **`policies` gobiernan botones, campos y acciones** (ocultar /
