@@ -266,6 +266,22 @@ function fieldKeySet_(resource) {
   return keys;
 }
 
+// R7.6 — subseto de fieldKeySet_: sólo los campos `secret` (recursivo).
+function secretFieldKeys_(fields) {
+  var keys = {};
+  var walk = function (list) {
+    (list || []).forEach(function (f) {
+      if (!f || typeof f.key !== 'string') return;
+      if (f.type === 'secret') keys[f.key] = true;
+      walk(f.fields);
+      walk(f.itemFields);
+      walk(f.extraColumns);
+    });
+  };
+  walk(fields);
+  return keys;
+}
+
 // B3 · R5.4 — `acciones de dominio`: un cambio con nombre, declarado en el
 // recurso y publicado como POST /<base>/<clave>/actions/<nombre>. Se juzga
 // acá lo que el motor no puede: vocabulario, forma y las exclusiones que
@@ -874,9 +890,16 @@ function validateResource_(id, resource, issues) {
       if (!Array.isArray(resource.listProjection)) {
         issues.push(where + ': listProjection debe ser un arreglo');
       } else {
+        var secretKeys = secretFieldKeys_(resource.fields);
         resource.listProjection.forEach(function (key) {
           if (!fieldKeys[key]) {
             issues.push(where + ": listProjection apunta a '" + key + "', que no es un campo");
+          } else if (secretKeys[key]) {
+            // R7.6: un campo `secret` jamás se proyecta — nombrarlo acá es
+            // una promesa imposible (ni /admin/schema lo publica).
+            issues.push(
+              where + ": listProjection incluye '" + key + "', que es un campo secret (nunca se proyecta)",
+            );
           }
         });
       }

@@ -188,6 +188,16 @@ export function register(kind: RenderKind, descriptor: RenderDescriptor): void {
   RENDERERS.set(keyOf(kind, descriptor.type), descriptor);
 }
 
+/**
+ * Quita un descriptor (R7.6). Simétrico a `register`: los specs que
+ * registran entradas de prueba deben retirarlas, o el catálogo global queda
+ * contaminado para cualquier otro spec que lea `renderKinds()` (flaky por
+ * orden de ejecución).
+ */
+export function unregister(kind: RenderKind, type: string): void {
+  RENDERERS.delete(keyOf(kind, type));
+}
+
 /** Descriptor declarado para `(kind, type)`, o `undefined` si nadie lo registró. */
 export function get(kind: RenderKind, type: string): RenderDescriptor | undefined {
   return RENDERERS.get(keyOf(kind, type));

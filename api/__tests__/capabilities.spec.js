@@ -200,7 +200,7 @@ describe('contrato uniforme de todo lo registrado', () => {
       expect(meta).not.toHaveProperty('argsSchema');
       expect(meta.storage).toBeTruthy();
     }
-    expect(Object.keys(FIELD_TYPES).length).toBe(20);
+    expect(Object.keys(FIELD_TYPES).length).toBe(21); // 20 + `secret` (R7.6)
   });
 });
 

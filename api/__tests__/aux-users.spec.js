@@ -61,16 +61,29 @@ describe('_users (hoja interna)', () => {
     expect(auxSheetColumns('_users')).toContain('token_version');
   });
 
-  it('NO es un recurso: no aparece en REGISTRY.resources', () => {
-    // El recurso `users` es R7.6 (Fase 7). Antes de tiempo, exponerlo
-    // mandaría pass_hash a /admin/schema.
+  it('desde R7.6 SÍ hay recurso `users` — apunta a _users, sólo admin', () => {
+    // R2.1 lo prohibía (exponerlo antes de tiempo mandaría pass_hash a
+    // /admin/schema). R7.6 introduce el tipo `secret`: pass_hash/pass_salt/
+    // token_version jamás viajan ni se publican, así que el recurso ya es
+    // seguro de declarar (auth.md §4.2).
+    const users = globalThis.REGISTRY.resources.users;
+    expect(users, 'falta el recurso users (R7.6)').toBeTruthy();
+    expect(users.sheet).toBe('_users');
+    expect(users.kind).toBe('collection');
+    expect(users.policies.access.read).toBe('role:admin');
+    expect(users.policies.access.write).toBe('role:admin');
+    // El nombre interno sigue prohibido: la hoja no es recurso.
     expect(Object.keys(globalThis.REGISTRY.resources)).not.toContain('_users');
-    expect(Object.keys(globalThis.REGISTRY.resources)).not.toContain('users');
   });
 
-  it('NINGÚN recurso apunta a la hoja _users', () => {
-    const hojas = Object.values(globalThis.REGISTRY.resources).map((r) => r.sheet);
-    expect(hojas).not.toContain('_users');
+  it('los campos secret de users (pass_hash, pass_salt, token_version) nunca se publican', () => {
+    const users = globalThis.REGISTRY.resources.users;
+    const secretKeys = users.fields.filter((f) => f.type === 'secret').map((f) => f.key);
+    expect(secretKeys.sort()).toEqual(['pass_hash', 'pass_salt', 'token_version']);
+    // Ni en listProjection (validate-registry lo vuelve rojo al arranque).
+    for (const key of secretKeys) {
+      expect(users.listProjection || []).not.toContain(key);
+    }
   });
 
   it('NINGÚN recurso usa _users como hoja hija (field.sheet)', () => {

@@ -51,8 +51,23 @@ function projectResourceSchema_(resource) {
     operations: projectOperations_(resource),
     views: projectViews_(resource),
     policies: projectPolicies_(resource),
-    fields: resource.fields.map(projectField_),
+    fields: projectFields_(resource.fields),
   };
+}
+
+// Campos publicables: un campo `secret` (FIELD_TYPES.readable === false,
+// R7.6) NI SIQUIERA aparece en el schema — el front no puede nombrar lo
+// que no puede ver. Recursivo en group/list.
+function projectFields_(fields) {
+  return (fields || [])
+    .filter(function (field) {
+      return field !== null && typeof field === 'object' && readableField_(field);
+    })
+    .map(projectField_);
+}
+
+function readableField_(field) {
+  return (FIELD_TYPES[field.type] || {}).readable !== false;
 }
 
 // ── F7-1: operaciones (métodos y rutas efectivas) ───────────────────────────
@@ -250,13 +265,13 @@ function projectField_(field) {
     out.source = Object.assign({}, field.source);
     out.onlyActive = field.onlyActive === true;
   } else if (field.type === 'group') {
-    out.fields = field.fields.map(projectField_);
+    out.fields = projectFields_(field.fields);
   } else if (field.type === 'list') {
-    out.itemFields = field.itemFields.map(projectField_);
+    out.itemFields = projectFields_(field.itemFields);
     if (field.primaryFirst !== undefined) out.primaryFirst = field.primaryFirst;
   } else if (field.type === 'string-list') {
     if (field.itemType !== undefined) out.itemType = field.itemType;
-    out.extraColumns = (field.extraColumns || []).map(projectField_);
+    out.extraColumns = projectFields_(field.extraColumns || []);
   }
   // key-value: sin extra — sus claves (sheet, fk, keyColumn…) son internas.
   return out;

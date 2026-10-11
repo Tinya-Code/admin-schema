@@ -7,6 +7,7 @@ import { ordersSchema } from './orders.schema';
 import { pickpassSchema } from './pickpass.schema';
 import { productsSchema } from './products.schema';
 import { siteSchema } from './site.schema';
+import { usersSchema } from './users.schema';
 
 /**
  * Catálogo ordenado de recursos (base.md §3, §13.1): alimenta el menú
@@ -34,6 +35,7 @@ export const schemas: readonly ResourceSchema[] = [
   pickpassSchema,
   siteSchema,
   legalSchema,
+  usersSchema,
 ];
 
 /** Busca un schema por `id`; `undefined` si no existe. */

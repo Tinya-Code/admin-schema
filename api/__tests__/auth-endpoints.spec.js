@@ -194,23 +194,28 @@ describe('POST /auth/login (R2.5)', () => {
     expect(res.user).not.toHaveProperty('token_version');
   });
 
-  it('_users es inalcanzable por el motor de recursos (§8)', () => {
+  it('el recurso users (R7.6) es inofensivo: sólo admin y sin secretos (§8)', () => {
     // §8 pide que NINGUNA respuesta lleve `pass_hash`, `pass_salt` ni
     // `token_version`. Los endpoints de sesión ya están blanqueados por
-    // `publicUser_` (probado arriba); éste es el otro camino: si `_users`
-    // no es un recurso, ninguna respuesta del CRUD puede leerla.
+    // `publicUser_` (probado arriba). Desde R7.6 `users` SÍ es un recurso
+    // (gestión de usuarios, auth.md §4.2), pero sus secretos son campos
+    // `secret`: se quitan de cada respuesta SIEMPRE (24-crud), ni siquiera
+    // aparecen en /admin/schema (schema.js) y nombrarlos en listProjection
+    // es rojo al arranque (validate-registry).
     const resources = globalThis.REGISTRY.resources || {};
-    const ids = Object.keys(resources);
-    expect(ids).not.toContain('users');
-    expect(ids).not.toContain('_users');
+    expect(Object.keys(resources)).not.toContain('_users');
 
-    for (const id of ids) {
-      expect(String(resources[id].sheet || '')).not.toMatch(/^_users$/);
-      expect(String(resources[id].id || '')).not.toMatch(/^_?users$/);
-    }
-    // Y los de las hojas internas no cuelan por otro lado.
-    for (const name of ['_users', '_audit_log']) {
-      expect(ids.some((id) => String(resources[id].sheet) === name)).toBe(false);
+    const users = resources.users;
+    expect(users, 'falta el recurso users (R7.6)').toBeTruthy();
+    expect(users.sheet).toBe('_users');
+    expect(users.policies.access).toEqual({ read: 'role:admin', write: 'role:admin' });
+    const secretKeys = users.fields.filter((f) => f.type === 'secret').map((f) => f.key);
+    expect(secretKeys.sort()).toEqual(['pass_hash', 'pass_salt', 'token_version']);
+
+    // Ningún otro recurso toca hojas internas.
+    for (const id of Object.keys(resources)) {
+      if (id === 'users') continue;
+      expect(String(resources[id].sheet || '')).not.toMatch(/^_/);
     }
   });
 

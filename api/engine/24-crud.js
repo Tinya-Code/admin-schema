@@ -110,17 +110,23 @@ function dispatchResource_(resource, request) {
 // Sin `access`, el campo obedece sólo los umbrales del recurso/grupo, como
 // siempre. El read corre SIEMPRE después de la lectura: la caché es cruda.
 
-// Árbol de sólo los campos que declaran `access` (recursivo en group/list);
-// null si ninguno lo hace — el caso común sale por la identidad sin tocar
-// los datos.
+// Árbol de sólo los campos que declaran `access` o que son `secret` (R7.6);
+// recursivo en group/list; null si ninguno lo hace — el caso común sale por
+// la identidad sin tocar los datos.
 function fieldAccessTree_(fields) {
   var tree = null;
   (fields || []).forEach(function (field) {
     if (field === null || typeof field !== 'object' || typeof field.key !== 'string') return;
     var node = null;
+    // `secret` (R7.6): la columna existe en la hoja pero JAMÁS viaja en una
+    // respuesta — ni para admin. Se quita SIEMPRE, sin mirar identidad.
+    if (field.type === 'secret') {
+      node = { secret: true };
+    }
     if (field.access !== null && typeof field.access === 'object') {
       if (field.access.read !== undefined || field.access.write !== undefined) {
-        node = { access: field.access };
+        if (node === null) node = {};
+        node.access = field.access;
       }
     }
     var sub = null;
@@ -166,6 +172,9 @@ function filterAccessNode_(tree, data, identity) {
     if (node === undefined) {
       out[key] = value;
       return;
+    }
+    if (node.secret === true) {
+      return; // R7.6: `secret` NI PARA ADMIN — la columna no viaja jamás
     }
     if (
       node.access !== undefined &&

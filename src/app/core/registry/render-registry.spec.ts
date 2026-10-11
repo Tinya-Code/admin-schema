@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { get, isSupported, register, resolve, type RenderDescriptor } from './render-registry';
+import {
+  get,
+  isSupported,
+  register,
+  resolve,
+  unregister,
+  type RenderDescriptor,
+} from './render-registry';
 
 /** Los 20 tipos de campo que la UI sabe dibujar (R3.3). */
 const CAMPOS = [
@@ -39,9 +46,15 @@ describe('render-registry', () => {
     };
 
     register('view', descriptor);
-
-    expect(get('view', 'ficha-de-prueba')).toBe(descriptor);
-    expect(get('field', 'ficha-de-prueba')).toBeUndefined();
+    try {
+      expect(get('view', 'ficha-de-prueba')).toBe(descriptor);
+      expect(get('field', 'ficha-de-prueba')).toBeUndefined();
+    } finally {
+      // El catálogo es GLOBAL: sin retirarla, la entrada de prueba contamina
+      // `renderKinds()` y el tripwire de contract.spec.ts flashea según el
+      // orden de ejecución (R7.6).
+      unregister('view', 'ficha-de-prueba');
+    }
   });
 
   it('isSupported sólo mira dentro de su kind', () => {

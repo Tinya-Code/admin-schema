@@ -117,6 +117,10 @@ function getSheetSpecs_() {
   Object.keys(REGISTRY.resources).forEach(function (id) {
     var resource = getResourceSchema(id);
     if (!resource.sheet) return; // descriptor sin storage: sin hoja
+    // R7.6: un recurso sobre hoja auxiliar (p. ej. `users` → `_users`) no
+    // añade spec — la columna la define AUX_SHEETS (fuente única). Así
+    // setupSheets/setupDrift no comparan la misma hoja dos veces.
+    if (AUX_SHEET_ORDER.indexOf(resource.sheet) !== -1) return;
     specs.push({
       name: resource.sheet,
       kind: resource.kind,

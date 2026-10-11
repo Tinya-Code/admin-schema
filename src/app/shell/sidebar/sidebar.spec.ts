@@ -43,6 +43,7 @@ describe('Sidebar — menú desde el catálogo estático', () => {
       'Configuración PickPass',
       'Sitio',
       'Legal',
+      'Usuarios', // R7.6: recurso users, sólo audiencia admin
     ]);
     expect(hrefs(root)).toEqual([
       '/dashboard',
@@ -52,6 +53,7 @@ describe('Sidebar — menú desde el catálogo estático', () => {
       '/pickpass',
       '/site',
       '/legal',
+      '/users',
     ]);
   });
 

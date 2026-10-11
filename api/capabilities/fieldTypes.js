@@ -23,6 +23,15 @@ var FIELD_TYPES_DECL_ = {
   time: { storage: 'column', sheetFormat: 'text' }, // HH:mm texto plano
   'readonly-text': { storage: 'column', sheetFormat: 'text' }, // calculado por el backend
 
+  // ── Sólo presencia (R7.6 · B2 · auth.md §4.2) ──────────────────────────
+  // NO es un tipo visual: es la marca de «esta columna existe en la hoja
+  // pero JAMÁS viaja en una respuesta». `readable: false` la excluye del
+  // /admin/schema (projectFields_), del filtrado de acceso (siempre se
+  // quita, incluso para admin) y de listProjection (validate-registry).
+  // `writeOnly: true` permite escribirla (p. ej. setear pass_hash) sin
+  // que ninguna identidad pueda leerla de vuelta.
+  secret: { storage: 'column', sheetFormat: 'text', readable: false, writeOnly: true },
+
   // ── Referencias e imagen ───────────────────────────────────────────────
   relation: { storage: 'column', fk: true, sheetFormat: 'text' }, // FK: <entidad>_slug
   image: { storage: 'column', sheetFormat: 'text', validate: 'cloudinary-origin' },
