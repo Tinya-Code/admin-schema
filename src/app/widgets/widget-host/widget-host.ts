@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 
 import type { WidgetSchema } from '../../core/models/schema.model';
 import { RenderHost } from '../../core/registry/render-host';
+import { Skeleton } from '../../shared/components/skeleton/skeleton';
 
 /**
  * Adaptador de widgets (R3.6 · `doc/plan-refactor-motor.md` §3.6).
@@ -25,17 +26,33 @@ import { RenderHost } from '../../core/registry/render-host';
  */
 @Component({
   selector: 'app-widget-host',
-  imports: [RenderHost],
+  imports: [RenderHost, Skeleton],
   host: {
     '[class]': 'gridSpanClass()',
   },
   template: `
-    <app-render-host kind="widget" [type]="widget().type" [config]="widget()" [data]="data()" />
+    @if (loading()) {
+      <!-- Reserva el espacio del widget mientras su dato viaja (la red
+           Apps Script tarda ~1s): sin esto el panel se veía "completo"
+           con valores vacíos que después aparecían solos (cargar ≠ vacío,
+           doc/ux-ui-mobile.md §estados de UI). La grilla mantiene su
+           span porque la clase la pone el host. -->
+      <div class="rounded-lg border border-neutral/20 bg-surface p-4">
+        <app-skeleton [lines]="1" [height]="14" width="40%" />
+        <div class="mt-3">
+          <app-skeleton [lines]="2" [height]="32" />
+        </div>
+      </div>
+    } @else {
+      <app-render-host kind="widget" [type]="widget().type" [config]="widget()" [data]="data()" />
+    }
   `,
 })
 export class WidgetHost {
   readonly widget = input.required<WidgetSchema>();
   readonly data = input<unknown>(null);
+  /** El dato del widget todavía viaja: la tarjeta muestra skeleton. */
+  readonly loading = input(false);
 
   /** `sm:col-span-*` del panel: ancho en la grilla de 12 columnas (literales: Tailwind v4 es JIT). */
   protected readonly gridSpanClass = computed(() => {

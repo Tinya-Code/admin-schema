@@ -50,7 +50,7 @@ import { WidgetHost } from '../../widgets/widget-host/widget-host';
     } @else {
       <div class="grid grid-cols-12 gap-4">
         @for (widget of widgets(); track widget.key) {
-          <app-widget-host [widget]="widget" [data]="datum(widget)" />
+          <app-widget-host [widget]="widget" [data]="datum(widget)" [loading]="cargando()" />
         }
       </div>
     }
@@ -74,13 +74,15 @@ export class Dashboard {
     toObservable(this.schema).pipe(
       switchMap((schema) => {
         const getEndpoint = schema.endpoint?.get;
+        // `of({})` = SIN get contratado: ya hay respuesta (vacía). El
+        // `null` inicial del signal en cambio marca «todavía viaja».
         if (!getEndpoint || !this.api) return of<Record<string, unknown>>({});
         return this.api
           .request<Record<string, unknown>>('GET', getEndpoint)
           .pipe(catchError(() => of<Record<string, unknown>>({})));
       }),
     ),
-    { initialValue: {} as Record<string, unknown> },
+    { initialValue: null },
   );
 
   protected readonly effectiveData = computed<Record<string, unknown>>(() => {
@@ -127,6 +129,19 @@ export class Dashboard {
 
   /** ¿Alguna fuente del panel falló? (`status()` no tira; `value()` sí.) */
   protected readonly falloFuentes = computed(() => this.fuentes.status() === 'error');
+
+  /**
+   * Estado de carga del panel — mientras dure, cada tarjeta reserva su
+   * espacio con skeleton (`cargar ≠ vacío`, doc/ux-ui-mobile.md §estados).
+   * Cubre LOS dos caminos de dato: el payload (`null` inicial = sin
+   * respuesta todavía) y las fuentes declaradas (`resource` en loading;
+   * con params vacíos queda idle, que NO es carga).
+   */
+  protected readonly cargando = computed(() => {
+    const payloadViaja = this.data() === null && this.fetchedData() === null;
+    const fuentesViajan = this.fuentes.status() === 'loading';
+    return payloadViaja || fuentesViajan;
+  });
 
   /** `null` explícito cuando la clave no vino: el widget muestra su vacío. */
   protected datum(widget: WidgetSchema): unknown {

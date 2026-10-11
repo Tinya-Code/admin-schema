@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { vi } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
@@ -45,6 +45,9 @@ describe('Dashboard', () => {
   /** Filas que piden los widgets con `source` (F8 · R6.5). */
   const listSpy = vi.fn((endpoint?: unknown, payload?: unknown) => of([{ value: 42 }]));
 
+  /** Payload del panel (camino de dato contrario a las fuentes). */
+  const requestSpy = vi.fn(() => of(FIXTURE));
+
   /**
    * Los componentes salen del registro con un `import()`, que `RenderHost`
    * registra como tarea pendiente para que `whenStable()` lo cubra (D28).
@@ -63,13 +66,15 @@ describe('Dashboard', () => {
   beforeEach(async () => {
     listSpy.mockClear();
     listSpy.mockImplementation(() => of([{ value: 42 }]));
+    requestSpy.mockClear();
+    requestSpy.mockImplementation(() => of(FIXTURE));
     await TestBed.configureTestingModule({
       imports: [Dashboard],
       providers: [
         {
           provide: ApiService,
           useValue: {
-            request: () => of(FIXTURE),
+            request: requestSpy,
             list: listSpy,
           },
         },
@@ -148,5 +153,24 @@ describe('Dashboard', () => {
     expect(root().querySelector('app-metric-card')).not.toBeNull();
     expect(root().querySelector('[data-testid="value-empty"]')).not.toBeNull();
     expect(text()).toContain('Sin datos.');
+  });
+
+  it('mientras carga el payload, cada tarjeta reserva su espacio con skeleton', () => {
+    // Regresión del «panel completo con valores vacíos»: con el get lento
+    // (Apps Script ~1s) los widgets pintaban su estado vacío como si no
+    // hubiera datos. Ahora la tarjeta muestra skeleton hasta que llegue
+    // (cargar ≠ vacío, doc/ux-ui-mobile.md §estados de UI).
+    requestSpy.mockImplementation(() => NEVER);
+
+    fixture.componentRef.setInput('schema', SCHEMA);
+    fixture.detectChanges();
+
+    const hosts = root().querySelectorAll('app-widget-host');
+    expect(hosts.length).toBe(2);
+    hosts.forEach((host) => expect(host.querySelector('app-skeleton')).not.toBeNull());
+    // Ningún widget llega a montar su estado vacío: no hay dato que decir
+    // todavía.
+    expect(root().querySelector('[data-testid="value-empty"]')).toBeNull();
+    expect(root().querySelector('app-metric-card')).toBeNull();
   });
 });

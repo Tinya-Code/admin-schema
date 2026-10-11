@@ -128,6 +128,23 @@ describe('WidgetHost', () => {
     expect(root().querySelector('[data-testid="empty"]')?.textContent?.trim()).toBe('Sin datos.');
   });
 
+  it('con loading reserva su espacio con skeleton sin montar el widget', () => {
+    // Cargar ≠ vacío (doc/ux-ui-mobile.md §estados): la tarjeta no pinta
+    // su estado vacío mientras el dato viaja, y la grilla conserva el span.
+    fixture.componentRef.setInput('widget', {
+      type: 'metric-card',
+      key: 'kpi',
+      label: 'KPI',
+      width: 8,
+    });
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+
+    expect(root().querySelector('app-skeleton')).not.toBeNull();
+    expect(root().querySelector('app-metric-card')).toBeNull();
+    expect(root().className).toContain('col-span-12 lg:col-span-8');
+  });
+
   it('calcula la clase de ancho de columna en la grilla', async () => {
     fixture.componentRef.setInput('widget', {
       type: 'metric-card',
