@@ -9,16 +9,39 @@
 
 Apps Script no expone cabeceras: todo viaja en el cuerpo de un `POST`
 (`Content-Type: text/plain`, sin preflight — ver `doc/baseapi.md` §2).
+El `token` va en el envelope para rutas protegidas y se omite en rutas `public`; no se envía en una cabecera ni en la URL. `path` es la ruta lógica, no la URL del web app. Las query strings se descartan: envía filtros en `payload`.
 
 ```json
-{ "token": "<sólo admin>", "method": "POST", "path": "/auth/login", "payload": {} }
+{ "token": "<token de sesión>", "method": "GET", "path": "/admin/orders", "payload": {} }
 ```
 
-| Código              | Cuándo                                                                                           | Forma                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| **422**             | El `input` declarado rechaza la petición. Se valida **antes** del handler: el handler no corre.  | `{ error: { status, message, errors: [{ path, message, code }] } }`               |
-| **500**             | Sólo en dev: la salida no cumple el `output` declarado. En prod el contrato documenta, no frena. | `{ error: { status, message: "Salida fuera de contrato en <ruta>: <campo> …" } }` |
-| **401 / 403 / 429** | Auth, `access` y límites — no los decide el contrato de `input`.                                 | `{ error: { status, message, code } }`                                            |
+La respuesta exitosa es el JSON plano del handler (no se envuelve en `data`). Para errores, inspecciona `body.error` aunque `response.status` sea 200; usa `error.status` como estado funcional y, si existe, `error.code` para distinguir el caso. En validación, procesa todos los elementos de `error.errors` usando su `path`.
+
+```json
+{
+  "error": {
+    "status": 422,
+    "message": "Errores de validación",
+    "errors": [{ "path": "pin", "message": "...", "code": "VALIDATION_*" }]
+  }
+}
+```
+
+En producción, `output` es documentación del contrato; sólo se valida en modo dev. Una respuesta puede añadir `meta.renewedToken` cuando se renueva una sesión.
+
+| Código de aplicación | Cuándo                                                                                                                      | Forma                                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **HTTP 200**         | Apps Script devuelve éxito y errores de aplicación con HTTP 200; el estado funcional está en el JSON.                       | JSON plano en éxito; `{ error: { status, message, code?, errors? } }` en error.                         |
+| **400**              | JSON/envelope inválido, método o payload mal formados, o clave de ruta inválida.                                            | `{ error: { status, message } }`                                                                        |
+| **401**              | Sesión no válida o rechazo de credenciales/PIN.                                                                             | `{ error: { status, message, code? } }`                                                                 |
+| **403**              | Acceso insuficiente o la operación no está permitida para el estado actual.                                                 | `{ error: { status, message } }`                                                                        |
+| **404**              | Ruta, recurso o registro inexistente; algunos endpoints ocultan recursos no disponibles con este estado.                    | `{ error: { status, message } }`                                                                        |
+| **409**              | Conflicto de estado, como un PIN ya utilizado.                                                                              | `{ error: { status, message } }`                                                                        |
+| **410**              | Recurso temporal vencido, como un PIN expirado.                                                                             | `{ error: { status, message } }`                                                                        |
+| **422**              | El `input` declarado rechaza la petición. Se valida **antes** del handler: el handler no corre.                             | `{ error: { status, message, errors: [{ path, message, code }] } }`                                     |
+| **429**              | Límite de peticiones o intentos excedido.                                                                                   | `{ error: { status, message, code? } }`                                                                 |
+| **500**              | Error interno; en dev también si la salida incumple `output` (en producción ese chequeo de contrato no frena la respuesta). | `{ error: { status, message: "Salida fuera de contrato en <ruta>: <campo> …" } }` para salida inválida. |
+| **503**              | Dependencia o configuración temporalmente no disponible.                                                                    | `{ error: { status, message } }`                                                                        |
 
 Los `code` de un 422 son `VALIDATION_*` y comparten vocabulario con
 `src/app/core/registry/field-validators.ts` (check 11 de contract-check).
@@ -94,7 +117,7 @@ titleField: `name` · kind: `collection` · sheet: `categories` · keyField: `sl
 | PUT    | `/admin/categories/{key}` | —                        |
 | DELETE | `/admin/categories/{key}` | baja lógica vía `active` |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo             | Tipo       | Obligatorio | Reglas                                    |
 | ----------------- | ---------- | ----------- | ----------------------------------------- |
@@ -110,7 +133,7 @@ titleField: `name` · kind: `collection` · sheet: `categories` · keyField: `sl
 
 **Listado** — `listProjection`: `slug`, `image_url`, `name`, `active`, `position`
 
-**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · visible en `/admin/schema`
 
 ### `dashboard`
 
@@ -121,14 +144,14 @@ titleField: `label` · kind: `dashboard` · sheet: `—` · keyField: `id`
 | Método | Path | Notas |
 | ------ | ---- | ----- |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo | Tipo | Obligatorio | Reglas |
 | ----- | ---- | ----------- | ------ |
 
 **Listado** — `listProjection`: —
 
-**Política** — read: `admin` · write: `admin` · publicable a front
+**Política** — read: `admin` · write: `admin` · visible en `/admin/schema`
 
 ### `legal`
 
@@ -141,7 +164,7 @@ titleField: `legal_name` · kind: `singleton` · sheet: `legal_config` · keyFie
 | GET    | `/admin/legal` | —     |
 | PUT    | `/admin/legal` | —     |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo                    | Tipo            | Obligatorio | Reglas                  |
 | ------------------------ | --------------- | ----------- | ----------------------- |
@@ -159,7 +182,7 @@ titleField: `legal_name` · kind: `singleton` · sheet: `legal_config` · keyFie
 
 **Listado** — `listProjection`: —
 
-**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · visible en `/admin/schema`
 
 ### `orders`
 
@@ -175,7 +198,13 @@ titleField: `customer_name` · kind: `collection` · sheet: `orders` · keyField
 | PUT    | `/admin/orders/{key}` | —                                  |
 | DELETE | `/admin/orders/{key}` | hard delete                        |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Acciones de dominio**
+
+| Método | Path                                         | Handler               | Acceso                      |
+| ------ | -------------------------------------------- | --------------------- | --------------------------- |
+| POST   | `/admin/orders/{ref}/actions/regenerate-pin` | `handlePinRegenerate` | write del recurso (`admin`) |
+
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo              | Tipo            | Obligatorio | Reglas                                  |
 | ------------------ | --------------- | ----------- | --------------------------------------- |
@@ -200,7 +229,11 @@ titleField: `customer_name` · kind: `collection` · sheet: `orders` · keyField
 
 **Listado** — `listProjection`: `ref`, `pin`, `customer_name`, `status`, `pickup_date`, `auth_state`, `created_at`
 
-**Política** — read: `admin` · write: `admin` · cache: {"ttl":60} · audit · lock · publicable a front
+**Audiencia pública** — operaciones CRUD: `get`
+**Proyección pública** — `ref`, `customer_name`, `description`, `pickup_date`, `status`, `reference_photo`, `authorized_name`, `authorized_photo`, `auth_state`, `created_at`, `updated_at`, `history`
+Las acciones y endpoints custom se declaran por separado; no son operaciones CRUD de esta audiencia.
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":60} · audit · lock · visible en `/admin/schema`
 
 ### `pickpass`
 
@@ -213,7 +246,7 @@ titleField: `public_base_url` · kind: `singleton` · sheet: `pickpass_config` �
 | GET    | `/admin/pickpass` | —     |
 | PUT    | `/admin/pickpass` | —     |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo                    | Tipo       | Obligatorio | Reglas                                                                                                         |
 | ------------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
@@ -224,7 +257,7 @@ titleField: `public_base_url` · kind: `singleton` · sheet: `pickpass_config` �
 
 **Listado** — `listProjection`: —
 
-**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · visible en `/admin/schema`
 
 ### `products`
 
@@ -240,7 +273,7 @@ titleField: `name` · kind: `collection` · sheet: `products` · keyField: `slug
 | PUT    | `/admin/products/{key}` | —                        |
 | DELETE | `/admin/products/{key}` | baja lógica vía `active` |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo                | Tipo            | Obligatorio | Reglas                                    |
 | -------------------- | --------------- | ----------- | ----------------------------------------- |
@@ -270,7 +303,7 @@ titleField: `name` · kind: `collection` · sheet: `products` · keyField: `slug
 
 **Listado** — `listProjection`: `slug`, `name`, `category_slug`, `price`, `availability`, `registro_sanitario`, `featured`, `active`, `images`
 
-**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · visible en `/admin/schema`
 
 ### `site`
 
@@ -283,7 +316,7 @@ titleField: `name` · kind: `singleton` · sheet: `site_config` · keyField: `ke
 | GET    | `/admin/site` | —     |
 | PUT    | `/admin/site` | —     |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo          | Tipo          | Obligatorio | Reglas                             |
 | -------------- | ------------- | ----------- | ---------------------------------- |
@@ -304,7 +337,7 @@ titleField: `name` · kind: `singleton` · sheet: `site_config` · keyField: `ke
 
 **Listado** — `listProjection`: —
 
-**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · visible en `/admin/schema`
 
 ### `users`
 
@@ -320,7 +353,7 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 | PUT    | `/admin/users/{key}` | —                        |
 | DELETE | `/admin/users/{key}` | baja lógica vía `active` |
 
-**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**
 
 | Campo           | Tipo            | Obligatorio | Reglas                                 |
 | --------------- | --------------- | ----------- | -------------------------------------- |
@@ -334,7 +367,7 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 
 **Listado** — `listProjection`: `id`, `email`, `name`, `role`, `active`, `last_login_at`
 
-**Política** — read: `role:admin` · write: `role:admin` · cache: {"ttl":60} · audit · lock · publicable a front
+**Política** — read: `role:admin` · write: `role:admin` · cache: {"ttl":60} · audit · lock · visible en `/admin/schema`
 
 ## Resumen
 
@@ -349,7 +382,7 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 | 7   | POST   | `/auth/logout`            | session | —                                                        | —        | no      | sí       | `1.0`   |
 | 8   | POST   | `/auth/me`                | session | —                                                        | —        | no      | sí       | `1.0`   |
 | 9   | GET    | `/p/orders/:ref`          | public  | `60/min`                                                 | `orders` | no      | no       | `1.0`   |
-| 10  | POST   | `/p/pin/:ref`             | public  | `5/min`                                                  | `orders` | no      | sí       | `1.0`   |
+| 10  | POST   | `/p/pin/:ref`             | public  | `5/min`                                                  | `orders` | sí      | sí       | `1.0`   |
 
 ## Endpoints
 
@@ -362,6 +395,20 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 **input** — sin contrato declarado.
 
 **output** — sin contrato declarado.
+
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "GET",
+  "path": "/admin/dashboard",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
 
 ---
 
@@ -379,6 +426,20 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 | ----- | --------- | ----------- | ------ |
 | `ok`  | `boolean` | sí          | —      |
 
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "POST",
+  "path": "/admin/events",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
 ---
 
 ### `GET /admin/schema`
@@ -390,6 +451,20 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 **input** — sin contrato declarado.
 
 **output** — sin contrato declarado.
+
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "GET",
+  "path": "/admin/schema",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
 
 ---
 
@@ -403,6 +478,20 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 
 **output** — sin contrato declarado.
 
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "GET",
+  "path": "/admin/sheet-drift",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
 ---
 
 ### `POST /admin/upload-signature`
@@ -414,6 +503,20 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 **input** — sin contrato declarado.
 
 **output** — sin contrato declarado.
+
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "POST",
+  "path": "/admin/upload-signature",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
 
 ---
 
@@ -437,7 +540,23 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 | `token` | `text`  | sí          | —      |
 | `user`  | `group` | sí          | —      |
 
-Los campos **no declarados en `input` se ignoran** (lista blanca).
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "method": "POST",
+  "path": "/auth/login",
+  "payload": {
+    "email": "usuario@example.com",
+    "password": "<PASSWORD>"
+  }
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 404 (ruta o registro inexistente) · 422 (contrato de entrada) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
+Los campos **no declarados en `input` no se validan por el contrato**; el handler recibe el payload original.
 
 ---
 
@@ -455,6 +574,20 @@ Los campos **no declarados en `input` se ignoran** (lista blanca).
 | ----------- | --------- | ----------- | ------ |
 | `loggedOut` | `boolean` | sí          | —      |
 
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "POST",
+  "path": "/auth/logout",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
 ---
 
 ### `POST /auth/me`
@@ -471,6 +604,20 @@ Los campos **no declarados en `input` se ignoran** (lista blanca).
 | ------ | ------- | ----------- | ------ |
 | `user` | `group` | sí          | —      |
 
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "token": "<token de sesión/admin>",
+  "method": "POST",
+  "path": "/auth/me",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
 ---
 
 ### `GET /p/orders/:ref`
@@ -483,6 +630,19 @@ Los campos **no declarados en `input` se ignoran** (lista blanca).
 
 **output** — sin contrato declarado.
 
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "method": "GET",
+  "path": "/p/orders/{ref}",
+  "payload": {}
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope, método o clave mal formados) · 404 (ruta o registro inexistente) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
 ---
 
 ### `POST /p/pin/:ref`
@@ -491,7 +651,12 @@ Los campos **no declarados en `input` se ignoran** (lista blanca).
 | ----------------- | ------ | ------- | -------- | ------- | ------- |
 | `handlePinVerify` | public | 5/min   | `orders` | —       | `1.0`   |
 
-**input** — sin contrato declarado.
+**input — se valida ANTES del handler (422 si falla)**
+
+| Campo        | Tipo     | Obligatorio | Reglas |
+| ------------ | -------- | ----------- | ------ |
+| `params.ref` | `text`   | sí          | —      |
+| `pin`        | `secret` | sí          | —      |
 
 **output — se valida sólo en dev (500 si falla)**
 
@@ -499,3 +664,34 @@ Los campos **no declarados en `input` se ignoran** (lista blanca).
 | ----- | --------- | ----------- | ------ |
 | `ok`  | `boolean` | sí          | —      |
 | `ref` | `text`    | sí          | —      |
+
+**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
+Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
+
+```json
+{
+  "method": "POST",
+  "path": "/p/pin/{ref}",
+  "payload": {
+    "pin": "<PIN>"
+  }
+}
+```
+
+**Errores comunes del router** — 400 (JSON, envelope, método o clave mal formados) · 404 (ruta o registro inexistente) · 422 (contrato de entrada) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
+
+**Errores específicos declarados** — `status` es el código de aplicación dentro de `error`; Apps Script responde HTTP 200.
+
+| `status` | `code` | Significado                                                                                    |
+| -------- | ------ | ---------------------------------------------------------------------------------------------- |
+| **401**  | —      | El PIN recibido no coincide con el hash guardado.                                              |
+| **403**  | —      | El pedido no está PENDIENTE y ya no admite retiro.                                             |
+| **404**  | —      | No hay PIN para el pedido, el PIN está deshabilitado o el pedido no existe.                    |
+| **409**  | —      | El PIN ya fue utilizado.                                                                       |
+| **410**  | —      | El PIN superó pin_ttl_hours (24 h por defecto) o su fecha de creación no se puede interpretar. |
+| **422**  | —      | Falta el PIN requerido en el payload.                                                          |
+| **429**  | —      | Se agotaron los intentos por pedido o el límite de 5/min.                                      |
+| **500**  | —      | Error de configuración o estructura interna de las hojas.                                      |
+| **503**  | —      | La hoja auxiliar _pin no está configurada.                                                     |
+
+Los campos **no declarados en `input` no se validan por el contrato**; el handler recibe el payload original.

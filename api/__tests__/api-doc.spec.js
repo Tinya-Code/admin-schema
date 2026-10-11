@@ -67,7 +67,9 @@ describe('R5.2 — doc de endpoints generada del registro', () => {
     // Sin declaración, el doc lo DICE: no se cuela como «sin validar» en silencio.
     expect(doc).toContain('**input** — sin contrato declarado.');
     expect(doc).toContain('**output** — sin contrato declarado.');
-    expect(doc).toContain('Los campos **no declarados en `input` se ignoran**');
+    expect(doc).toContain(
+      'Los campos **no declarados en `input` no se validan por el contrato**; el handler recibe el payload original.',
+    );
   });
 
   it('publica el contrato que el front necesita: envelope, 422 y 500', async () => {
@@ -77,9 +79,58 @@ describe('R5.2 — doc de endpoints generada del registro', () => {
     expect(doc).toContain('errors: [{ path, message, code }]');
     expect(doc).toContain('Se valida **antes** del handler: el handler no corre.');
     expect(doc).toContain('Salida fuera de contrato en <ruta>');
-    expect(doc).toContain('**401 / 403 / 429**');
+    expect(doc).toContain('**410**');
+    expect(doc).toContain('**503**');
+    expect(doc).toContain('Apps Script devuelve éxito y errores de aplicación con HTTP 200');
     expect(doc).toContain('`VALIDATION_*`');
     expect(doc).toContain('No editar a mano');
+  });
+
+  it('documenta los errores de PIN declarados y el HTTP 200 de Apps Script', async () => {
+    const doc = await renderDoc(REGISTRY.endpoints);
+    const pinSection = doc.split('### `POST /p/pin/:ref`')[1];
+
+    expect(doc).toContain('**HTTP 200**');
+    expect(pinSection).toContain('**Errores específicos declarados**');
+    for (const status of [401, 403, 404, 409, 410, 422, 429, 500, 503]) {
+      expect(pinSection).toContain(`**${status}**`);
+    }
+  });
+
+  it('genera ejemplos de envelope desde input, separando params de payload', () => {
+    const md = buildMarkdown({
+      pinVerify: {
+        route: '/p/pin/:ref',
+        method: 'POST',
+        access: 'public',
+        limits: '5/min',
+        handler: 'handlePinVerify',
+        since: '1.0',
+        input: {
+          params: { ref: { type: 'text', required: true } },
+          pin: { type: 'secret', required: true },
+          options: { type: 'select', options: ['one', 'two'] },
+        },
+      },
+    });
+    const section = md.split('### `POST /p/pin/:ref`')[1];
+
+    expect(section).toContain('"path": "/p/pin/{ref}"');
+    expect(section).toContain('"payload": {\n    "pin": "<PIN>",\n    "options": "one"');
+    expect(section).not.toContain('"token":');
+    expect(section).toContain('`params` declarados se extraen de la ruta');
+    expect(section).toContain('400 (JSON, envelope, método o clave mal formados)');
+    expect(section).toContain('422 (contrato de entrada)');
+    expect(section).toContain('429 (límite)');
+  });
+
+  it('documenta el transporte y cómo leer errores de Apps Script', async () => {
+    const doc = await renderDoc(REGISTRY.endpoints);
+
+    expect(doc).toContain('El `token` va en el envelope para rutas protegidas');
+    expect(doc).toContain('inspecciona `body.error` aunque `response.status` sea 200');
+    expect(doc).toContain('usa `error.status` como estado funcional');
+    expect(doc).toContain('`meta.renewedToken`');
   });
 
   it('es determinista: dos renderizaciones del mismo registro son idénticas', async () => {
@@ -191,6 +242,26 @@ describe('plan-doc-recursos — sección CRUD por recurso', () => {
     expect(doc).toContain('generado: create · uuid');
     expect(doc).toContain('generado: create · slugify');
     expect(doc).toContain('generado: create · token');
+  });
+
+  it('distingue la proyección pública de orders y documenta sus acciones', async () => {
+    const doc = flat(await renderDoc(REGISTRY.endpoints, REGISTRY.resources));
+    const orders = doc.slice(doc.indexOf('### `orders`'), doc.indexOf('### `pickpass`'));
+    const publicAudience = orders.split('**Proyección pública**')[1].split('**Política**')[0];
+
+    expect(orders).toContain('**Audiencia pública** — operaciones CRUD: `get`');
+    expect(publicAudience).toContain('`history`');
+    expect(publicAudience).not.toContain('`pin`');
+    expect(orders).toContain(
+      '|POST|`/admin/orders/{ref}/actions/regenerate-pin`|`handlePinRegenerate`|write del recurso (`admin`)|',
+    );
+    expect(orders).toContain('visible en `/admin/schema`');
+  });
+
+  it('documenta el PIN como entrada requerida del endpoint público', async () => {
+    const doc = flat(await renderDoc(REGISTRY.endpoints, REGISTRY.resources));
+    expect(doc).toContain('|`params.ref`|`text`|sí|—|');
+    expect(doc).toContain('|`pin`|`secret`|sí|—|');
   });
 
   it('sin resources el doc sigue siendo sólo endpoints (compat)', async () => {

@@ -103,6 +103,14 @@ describe('B2 · R5.1 — contrato declarativo de endpoints', () => {
       }
     });
 
+    it('la verificación pública exige el PIN antes de llamar al handler', () => {
+      const body = post('/p/pin/ORD-123', {});
+      expect(body.error.status).toBe(422);
+      expect(body.error.errors.map(({ path, code }) => ({ path, code }))).toEqual([
+        { path: 'pin', code: 'VALIDATION_REQUIRED' },
+      ]);
+    });
+
     it('el grupo `params` se valida contra la RUTA, no contra el payload', () => {
       addEndpoint(
         '__params',
@@ -291,6 +299,23 @@ describe('B2 · R5.1 — contrato declarativo de endpoints', () => {
       ).toHaveLength(1);
     });
 
+    it('los errores declarados requieren status válido y descripción', () => {
+      const issues = mutateEndpoint('pinVerify', {
+        ...REGISTRY.endpoints.pinVerify,
+        errors: [
+          { status: 399, description: '' },
+          { status: 401, description: 'Uno' },
+          { status: 401, description: 'Duplicado' },
+        ],
+      });
+
+      expect(issues).toEqual([
+        expect.stringContaining('status: debe ser un entero entre 400 y 599'),
+        expect.stringContaining('description: debe ser texto no vacío'),
+        expect.stringContaining('status: no debe repetirse'),
+      ]);
+    });
+
     it('un `resource` inexistente es referencia rota, no descubierta en producción', () => {
       const issues = mutateEndpoint('pinVerify', {
         route: '/p/pin/:ref',
@@ -313,6 +338,10 @@ describe('B2 · R5.1 — contrato declarativo de endpoints', () => {
       expect(REGISTRY.endpoints.authLogin.input).toEqual({
         email: { type: 'email' },
         password: { type: 'secret' },
+      });
+      expect(REGISTRY.endpoints.pinVerify.input).toEqual({
+        params: { ref: { type: 'text', required: true } },
+        pin: { type: 'secret', required: true },
       });
     });
   });

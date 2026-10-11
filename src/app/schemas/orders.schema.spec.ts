@@ -43,6 +43,16 @@ function shareTextOf(actions: readonly unknown[] | undefined): string | undefine
 }
 
 describe('ordersSchema — creación de pedidos', () => {
+  it('declara el trigger con el mismo nombre de acción que el backend', () => {
+    const action = ordersSchema.actions?.find((candidate) => candidate.type === 'trigger');
+
+    expect(action).toMatchObject({
+      id: 'regenerate_pin',
+      type: 'trigger',
+      name: 'regenerate-pin',
+    });
+  });
+
   it('el código del pedido no es una entrada del operador', () => {
     const ref = field('ref');
 

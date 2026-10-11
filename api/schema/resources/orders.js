@@ -54,8 +54,9 @@ REGISTRY.resources.orders = {
         'updated_at',
         'history',
       ],
-      // Sólo lectura (el validador lo exige): el PIN se verifica por el
-      // endpoint propio `pinVerify`, no por un recurso público.
+      // Sólo lectura (el validador lo exige): estas operaciones controlan el
+      // CRUD público. La verificación del PIN es un endpoint propio (`pinVerify`)
+      // con su contrato y política declarados en schema/endpoints/pin-verify.js.
       operations: ['get'],
     },
   },

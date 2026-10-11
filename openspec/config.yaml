@@ -1,0 +1,75 @@
+# openspec/config.yaml — SDD configuration for admin-schema
+# Bootstrapped by sdd-init in hybrid mode (OpenSpec files + Engram) on 2026-10-11.
+
+schema: spec-driven
+
+project:
+  name: admin-schema
+  persistence: hybrid # openspec/ files + Engram (topic_key prefix sdd/)
+  strict_tdd: true # test runners detected on both sides; default per sdd-init decision gates
+
+delivery:
+  strategy: auto-chain # preflight: chain propose → spec → design → tasks → apply → verify → archive
+  review_budget_lines: 800 # max diff lines per review slice before chaining PRs
+
+context: |
+  Frontend: Angular 22 (standalone + signals, Tailwind v4, chart.js, @lucide/angular), TypeScript ~6.0, Vitest via @angular/build:unit-test.
+  Backend: Google Apps Script (clasp) in api/ — plain JS, schema-driven engine (capabilities/ core/ engine/), Vitest (node env).
+  Contract: schema is the single source of truth; back ↔ front checked by npm run api:check (scripts/contract-check.mjs).
+  Deployment: Vercel (front) + deployed GAS webapp (back); smoke/regression scripts hit the real API.
+  Style: Prettier (printWidth 100, singleQuote), conventional commits with scopes; no ESLint configured.
+  Language: repo docs/comments are Spanish (neutral register); SDD artifacts default to English per skill contract.
+
+testing:
+  strict_tdd: true
+  suites:
+    frontend:
+      command: npx ng test --watch=false
+      framework: Vitest (Angular unit-test builder)
+      scope: src/**/*.spec.ts
+    backend:
+      command: npm run test:api
+      framework: Vitest (node env)
+      scope: api/**/*.spec.js
+  contract_checks:
+    - npm run api:check # static unbreakable rules + back ↔ front schema contract
+    - npm run api:drift # Google Sheet drift check
+  smoke:
+    - bash scripts/api-regression.sh # requires gitignored api/.gas-smoke.env credentials
+    - npm run smoke:login
+  coverage:
+    available: false # @vitest/coverage-v8 is NOT installed; enable with: npm i -D @vitest/coverage-v8
+  quality:
+    formatter: npx prettier --check . 2>&1 # 17 known pre-existing debt files — do NOT reformat them
+    typecheck: npx tsc -p tsconfig.app.json --noEmit
+    build: npm run build
+    linter: none # no ESLint in the repo; contract/static rules live in scripts/api-check.sh
+
+rules:
+  proposal:
+    - Include a rollback plan for risky changes (deployed GAS back + Vercel front)
+    - State which gates from the README "Gates" table are affected
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Schema/contract changes MUST cover both sides (api/schema + src/app/schemas) and keep api:check green
+  design:
+    - Document architecture decisions with rationale
+    - Include sequence diagrams for complex flows
+    - Respect api/mejoras.md §11 unbreakable rules: no concrete resource names in capabilities/core/engine, registerCapability is the only entry point, schema as single source
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Each task MUST name its verification command
+  apply:
+    guidelines:
+      - Follow existing code patterns (field/column/widget descriptors, capability registry, CRUD hooks)
+      - Re-run the full README "Gates" table before marking a task done
+    tdd: true # RED-GREEN-REFACTOR enforced
+    test_command: npx ng test --watch=false && npm run test:api
+  verify:
+    test_command: npx ng test --watch=false && npm run test:api && npm run api:check
+    build_command: npm run build
+    coverage_threshold: 0 # no coverage tooling installed yet
+  archive:
+    - Warn before merging destructive deltas

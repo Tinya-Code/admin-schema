@@ -171,6 +171,29 @@ describe('Fase 5 — Verificación de PIN (POST /p/pin/:ref)', () => {
     expect(appended).toHaveLength(0);
   });
 
+  it('PIN creado hace un minuto y leído desde Sheets como Date sigue vigente', () => {
+    const createdAt = new Date(Date.now() - 60 * 1000);
+    stubSheets({
+      pinRows: [makeActiveRow('ORD-DATE', TEST_PIN_HASH, createdAt)],
+      orders: [makeOrderRow('ORD-DATE')],
+    });
+
+    const origHash = globalThis.Props.hashText;
+    globalThis.Props.hashText = () => TEST_PIN_HASH;
+
+    let result;
+    try {
+      result = REGISTRY.handlers.handlePinVerify(
+        { pin: TEST_PIN },
+        { params: { ref: 'ORD-DATE' } },
+      );
+    } finally {
+      globalThis.Props.hashText = origHash;
+    }
+
+    expect(result).toEqual({ ok: true, ref: 'ORD-DATE' });
+  });
+
   it('PIN incorrecto → 401 y registra fila __failed__', () => {
     const appended = stubSheets({
       pinRows: [makeActiveRow('ORD-002')],

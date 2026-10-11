@@ -105,6 +105,19 @@ describe('R8.8 — declaración y registro de la acción', () => {
     expect(action.set).toBeUndefined();
   });
 
+  it('el router publica la ruta declarada para el ref del pedido', () => {
+    globalThis.ROUTE_TABLE_ = null;
+
+    const route = globalThis.resolveRoute_('/admin/orders/55HL6P/actions/regenerate-pin');
+
+    expect(route).toMatchObject({
+      kind: 'resource',
+      resource: REGISTRY.resources.orders,
+      action: 'regenerate-pin',
+      params: { ref: '55HL6P' },
+    });
+  });
+
   it('REGISTRY expone el handler handlePinRegenerate', () => {
     expect(typeof REGISTRY.handlers.handlePinRegenerate).toBe('function');
   });

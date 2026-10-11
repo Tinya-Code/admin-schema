@@ -95,6 +95,85 @@ function contractBlock_(title, decl) {
   return [`**${title}**`, '', FIELD_HEADER, ...rows].join('\n');
 }
 
+/** Valores ilustrativos para construir un envelope desde el contrato de input. */
+function sampleValue_(key, field) {
+  if (field.type === 'secret') return `<${key.toUpperCase()}>`;
+  if (field.default !== undefined) return field.default;
+  const choices = field.enum ?? field.options;
+  if (Array.isArray(choices) && choices.length > 0) {
+    const first = choices[0];
+    if (typeof first === 'string' || typeof first === 'number') return first;
+    if (first && typeof first === 'object') return first.value ?? first.key ?? `<${key}>`;
+  }
+  switch (field.type) {
+    case 'boolean':
+      return true;
+    case 'number':
+    case 'currency':
+      return field.min ?? 1;
+    case 'email':
+      return 'usuario@example.com';
+    case 'url':
+      return 'https://example.com';
+    case 'date':
+      return '2026-01-31';
+    case 'time':
+      return '09:00';
+    case 'select':
+      return `<${key}>`;
+    case 'multiselect':
+      return [];
+    case 'group':
+      return {};
+    case 'text':
+    case 'textarea':
+    case 'readonly-text':
+    case 'slug':
+      return field.minLength ? 'x'.repeat(field.minLength) : `<${key}>`;
+    default:
+      return `<${key}>`;
+  }
+}
+
+function sampleShape_(shape) {
+  return Object.fromEntries(
+    Object.entries(shape ?? {}).map(([key, field]) => [
+      key,
+      field && typeof field.type === 'string' ? sampleValue_(key, field) : sampleShape_(field),
+    ]),
+  );
+}
+
+/** Construye el payload de ejemplo; `params` pertenece a la ruta, no al body. */
+function samplePayload_(input) {
+  const payload = {};
+  for (const [key, entry] of Object.entries(input ?? {})) {
+    if (key === 'params') continue;
+    if (entry && typeof entry.type === 'string') {
+      payload[key] = sampleValue_(key, entry);
+      continue;
+    }
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      payload[key] = sampleShape_(entry);
+    }
+  }
+  return payload;
+}
+
+/** Error statuses comunes que el router puede producir para este endpoint. */
+function commonErrorSummary_(endpoint) {
+  const malformed = endpoint.route.includes('/:')
+    ? '400 (JSON, envelope, método o clave mal formados)'
+    : '400 (JSON, envelope o método mal formados)';
+  const errors = [malformed];
+  if (endpoint.access !== 'public') errors.push('401/403 (sesión o acceso)');
+  errors.push('404 (ruta o registro inexistente)');
+  if (endpoint.input) errors.push('422 (contrato de entrada)');
+  if (endpoint.limits !== undefined && endpoint.limits !== null) errors.push('429 (límite)');
+  errors.push('500 (error interno)');
+  return errors.join(' · ');
+}
+
 // ── Recursos CRUD (REGISTRY.resources) — plan §4 ────────────────────────────
 //
 // La fuente son los resources del back, NO el schema del front: el contract
@@ -180,6 +259,14 @@ function resourceBlock_(resource) {
       : {};
   const generated = generatedBy_(resource);
   const pol = resource.policies ?? {};
+  const actions = Object.entries(resource.actions ?? {}).map(([name, decl]) => {
+    const access = decl.access
+      ? `\`${decl.access}\``
+      : `write del recurso (\`${pol.access?.write ?? 'admin por defecto'}\`)`;
+    return `| POST | \`/admin/${resource.id}/{${resource.keyField}}/actions/${name}\` | \`${
+      decl.handler ?? '—'
+    }\` | ${access} |`;
+  });
 
   const opRows = Object.entries(projectedOps_(resource)).map(([name, entry]) => {
     const notas = [];
@@ -210,7 +297,7 @@ function resourceBlock_(resource) {
     pol.cache ? `cache: ${esc(JSON.stringify(pol.cache))}` : null,
     pol.audit ? 'audit' : null,
     pol.lock ? 'lock' : null,
-    resource.exposeToFront ? 'publicable a front' : 'sólo back',
+    resource.exposeToFront ? 'visible en `/admin/schema`' : 'sólo back',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -219,6 +306,22 @@ function resourceBlock_(resource) {
   const listFields = (proy.listProjection ?? resource.listProjection ?? [])
     .map((k) => `\`${k}\``)
     .join(', ');
+  const publicAudience = resource.audiences?.public;
+  const resourceFields = new Map((resource.fields ?? []).map((field) => [field.key, field]));
+  const publicFields = (publicAudience?.listProjection ?? [])
+    .filter((key) => readable_(resourceFields.get(key) ?? {}))
+    .map((key) => `\`${key}\``)
+    .join(', ');
+  const audienceBlock = publicAudience
+    ? [
+        '',
+        `**Audiencia pública** — operaciones CRUD: ${(publicAudience.operations ?? [])
+          .map((op) => `\`${op}\``)
+          .join(', ') || '—'}`,
+        `**Proyección pública** — ${publicFields || '—'}`,
+        'Las acciones y endpoints custom se declaran por separado; no son operaciones CRUD de esta audiencia.',
+      ]
+    : [];
 
   return [
     `### \`${resource.id}\``,
@@ -234,13 +337,24 @@ function resourceBlock_(resource) {
     '| Método | Path | Notas |',
     '| --- | --- | --- |',
     ...opRows,
+    ...(actions.length > 0
+      ? [
+          '',
+          '**Acciones de dominio**',
+          '',
+          '| Método | Path | Handler | Acceso |',
+          '| --- | --- | --- | --- |',
+          ...actions,
+        ]
+      : []),
     '',
-    '**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**',
+    '**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**',
     '',
     FIELD_HEADER,
     ...campos,
     '',
     `**Listado** — \`listProjection\`: ${listFields || '—'}`,
+    ...audienceBlock,
     '',
     `**Política** — ${acceso || '—'}`,
   ].join('\n');
@@ -305,6 +419,7 @@ export function buildMarkdown(endpoints, resources = null) {
 
   const fichas = ids.map((id) => {
     const e = endpoints[id];
+    const examplePath = String(e.route).replace(/:([A-Za-z0-9_]+)/g, '{$1}');
     const limit =
       e.limits === null || e.limits === undefined
         ? '—'
@@ -329,9 +444,43 @@ export function buildMarkdown(endpoints, resources = null) {
         e.output ? 'output — se valida sólo en dev (500 si falla)' : 'output',
         e.output,
       ),
+      '',
+      '**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.',
+      'Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.',
+      '',
+      '```json',
+      JSON.stringify(
+        {
+          ...(e.access === 'public' ? {} : { token: '<token de sesión/admin>' }),
+          method: e.method,
+          path: examplePath,
+          payload: samplePayload_(e.input),
+        },
+        null,
+        2,
+      ),
+      '```',
+      '',
+      `**Errores comunes del router** — ${commonErrorSummary_(e)}. Los detalles específicos del handler se listan aparte cuando están declarados.`,
     ];
+    if (Array.isArray(e.errors) && e.errors.length > 0) {
+      head.push(
+        '',
+        '**Errores específicos declarados** — `status` es el código de aplicación dentro de `error`; Apps Script responde HTTP 200.',
+        '',
+        '| `status` | `code` | Significado |',
+        '| --- | --- | --- |',
+        ...e.errors.map(
+          ({ status, code, description }) =>
+            `| **${status}** | ${code ? `\`${esc(code)}\`` : '—'} | ${esc(description)} |`,
+        ),
+      );
+    }
     if (e.input) {
-      head.push('', 'Los campos **no declarados en `input` se ignoran** (lista blanca).');
+      head.push(
+        '',
+        'Los campos **no declarados en `input` no se validan por el contrato**; el handler recibe el payload original.',
+      );
     }
     return head.join('\n');
   });
@@ -348,16 +497,33 @@ export function buildMarkdown(endpoints, resources = null) {
     '',
     'Apps Script no expone cabeceras: todo viaja en el cuerpo de un `POST`',
     '(`Content-Type: text/plain`, sin preflight — ver `doc/baseapi.md` §2).',
+    'El `token` va en el envelope para rutas protegidas y se omite en rutas `public`; no se envía en una cabecera ni en la URL. `path` es la ruta lógica, no la URL del web app. Las query strings se descartan: envía filtros en `payload`.',
     '',
     '```json',
-    '{ "token": "<sólo admin>", "method": "POST", "path": "/auth/login", "payload": {} }',
+    '{ "token": "<token de sesión>", "method": "GET", "path": "/admin/orders", "payload": {} }',
     '```',
     '',
-    '| Código | Cuándo | Forma |',
+    'La respuesta exitosa es el JSON plano del handler (no se envuelve en `data`). Para errores, inspecciona `body.error` aunque `response.status` sea 200; usa `error.status` como estado funcional y, si existe, `error.code` para distinguir el caso. En validación, procesa todos los elementos de `error.errors` usando su `path`.',
+    '',
+    '```json',
+    '{ "error": { "status": 422, "message": "Errores de validación", "errors": [{ "path": "pin", "message": "...", "code": "VALIDATION_*" }] } }',
+    '```',
+    '',
+    'En producción, `output` es documentación del contrato; sólo se valida en modo dev. Una respuesta puede añadir `meta.renewedToken` cuando se renueva una sesión.',
+    '',
+    '| Código de aplicación | Cuándo | Forma |',
     '| --- | --- | --- |',
+    '| **HTTP 200** | Apps Script devuelve éxito y errores de aplicación con HTTP 200; el estado funcional está en el JSON. | JSON plano en éxito; `{ error: { status, message, code?, errors? } }` en error. |',
+    '| **400** | JSON/envelope inválido, método o payload mal formados, o clave de ruta inválida. | `{ error: { status, message } }` |',
+    '| **401** | Sesión no válida o rechazo de credenciales/PIN. | `{ error: { status, message, code? } }` |',
+    '| **403** | Acceso insuficiente o la operación no está permitida para el estado actual. | `{ error: { status, message } }` |',
+    '| **404** | Ruta, recurso o registro inexistente; algunos endpoints ocultan recursos no disponibles con este estado. | `{ error: { status, message } }` |',
+    '| **409** | Conflicto de estado, como un PIN ya utilizado. | `{ error: { status, message } }` |',
+    '| **410** | Recurso temporal vencido, como un PIN expirado. | `{ error: { status, message } }` |',
     '| **422** | El `input` declarado rechaza la petición. Se valida **antes** del handler: el handler no corre. | `{ error: { status, message, errors: [{ path, message, code }] } }` |',
-    '| **500** | Sólo en dev: la salida no cumple el `output` declarado. En prod el contrato documenta, no frena. | `{ error: { status, message: "Salida fuera de contrato en <ruta>: <campo> …" } }` |',
-    '| **401 / 403 / 429** | Auth, `access` y límites — no los decide el contrato de `input`. | `{ error: { status, message, code } }` |',
+    '| **429** | Límite de peticiones o intentos excedido. | `{ error: { status, message, code? } }` |',
+    '| **500** | Error interno; en dev también si la salida incumple `output` (en producción ese chequeo de contrato no frena la respuesta). | `{ error: { status, message: "Salida fuera de contrato en <ruta>: <campo> …" } }` para salida inválida. |',
+    '| **503** | Dependencia o configuración temporalmente no disponible. | `{ error: { status, message } }` |',
     '',
     'Los `code` de un 422 son `VALIDATION_*` y comparten vocabulario con',
     '`src/app/core/registry/field-validators.ts` (check 11 de contract-check).',

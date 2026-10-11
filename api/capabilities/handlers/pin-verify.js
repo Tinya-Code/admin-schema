@@ -32,9 +32,34 @@ var PIN_ATTEMPT_WINDOW_MS_ = 60 * 1000;
 // local, así el timezone del runtime no entra en la resta. Sello ilegible ⇒
 // NaN, que el llamador trata como fail-closed (se cuenta el intento).
 function pinStampMs_(stamp) {
+  // Sheets puede interpretar el texto de appendRow como fecha; getValues()
+  // entonces devuelve Date y String(Date) ya no conserva el formato anterior.
+  if (stamp instanceof Date) {
+    if (!isFinite(stamp.getTime())) return NaN;
+    return Date.UTC(
+      stamp.getFullYear(),
+      stamp.getMonth(),
+      stamp.getDate(),
+      stamp.getHours(),
+      stamp.getMinutes(),
+      stamp.getSeconds(),
+    );
+  }
   var match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(String(stamp || ''));
   if (!match) return NaN;
-  return Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]);
+  var ms = Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]);
+  var parsed = new Date(ms);
+  if (
+    parsed.getUTCFullYear() !== +match[1] ||
+    parsed.getUTCMonth() !== +match[2] - 1 ||
+    parsed.getUTCDate() !== +match[3] ||
+    parsed.getUTCHours() !== +match[4] ||
+    parsed.getUTCMinutes() !== +match[5] ||
+    parsed.getUTCSeconds() !== +match[6]
+  ) {
+    return NaN;
+  }
+  return ms;
 }
 
 function handlePinVerify(payload, request) {
@@ -168,7 +193,7 @@ function handlePinVerify(payload, request) {
   // después de created_at. Sello ilegible ⇒ expirado (fail-closed): la
   // ventana se cierra igual que la de los intentos.
   var nowMs = pinStampMs_(nowStamp_());
-  var createdMs = pinStampMs_(createdIdx !== -1 ? String(activeRow.values[createdIdx]) : '');
+  var createdMs = pinStampMs_(createdIdx !== -1 ? activeRow.values[createdIdx] : '');
   var ttlMs = ttlHours * 3600 * 1000;
   if (isNaN(createdMs) || nowMs - createdMs > ttlMs) {
     throw apiError_(410, 'El PIN de este pedido expiró');
@@ -181,7 +206,7 @@ function handlePinVerify(payload, request) {
     var usedAt = usedIdx !== -1 ? String(row.values[usedIdx]) : '';
     if (!usedAt || usedAt.trim() === '') return false;
     if (String(row.values[hashIdx]) !== '__failed__') return false;
-    var atMs = pinStampMs_(createdIdx !== -1 ? String(row.values[createdIdx]) : '');
+    var atMs = pinStampMs_(createdIdx !== -1 ? row.values[createdIdx] : '');
     if (isNaN(atMs)) return true; // sello ilegible ⇒ no regalar intentos
     return nowMs - atMs <= PIN_ATTEMPT_WINDOW_MS_;
   }).length;

@@ -64,6 +64,7 @@ var KNOWN_ENDPOINT_KEYS = [
   'resource',
   'input',
   'output',
+  'errors',
   'cache',
   'since',
 ];
@@ -1068,6 +1069,37 @@ function validateEndpoint_(id, endpoint, issues) {
   }
   if (endpoint.output !== undefined) {
     validateEndpointFields_(where + '.output', endpoint.output, issues);
+  }
+  if (endpoint.errors !== undefined) {
+    if (!Array.isArray(endpoint.errors)) {
+      issues.push(where + '.errors: debe ser un arreglo de { status, description }');
+    } else {
+      var errorStatuses = {};
+      endpoint.errors.forEach(function (decl, index) {
+        var errorWhere = where + '.errors[' + index + ']';
+        if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+          issues.push(errorWhere + ': debe ser un objeto { status, description }');
+          return;
+        }
+        issues.push.apply(issues, unknownKeys_(errorWhere, decl, ['status', 'description']));
+        if (
+          typeof decl.status !== 'number' ||
+          !isFinite(decl.status) ||
+          Math.floor(decl.status) !== decl.status ||
+          decl.status < 400 ||
+          decl.status > 599
+        ) {
+          issues.push(errorWhere + '.status: debe ser un entero entre 400 y 599');
+        } else if (errorStatuses[decl.status]) {
+          issues.push(errorWhere + '.status: no debe repetirse');
+        } else {
+          errorStatuses[decl.status] = true;
+        }
+        if (typeof decl.description !== 'string' || decl.description.trim() === '') {
+          issues.push(errorWhere + '.description: debe ser texto no vacío');
+        }
+      });
+    }
   }
   if (
     endpoint.since !== undefined &&
