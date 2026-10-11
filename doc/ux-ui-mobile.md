@@ -19,11 +19,13 @@
 ## 1. Principios rectores
 
 ### 1.1 Contexto de uso
+
 - Un panel administrativo en móvil **no es una versión reducida del escritorio**. Es un contexto distinto: sesiones cortas, interrupciones, una sola mano, conexión variable.
 - El administrador en móvil suele **consultar, aprobar, corregir y reaccionar**. En escritorio suele **analizar, configurar y producir en masa**.
 - Diseña primero las tareas móviles críticas; deja las tareas pesadas para pantallas grandes, pero nunca las bloquees sin una alternativa razonable.
 
 ### 1.2 Los siete principios
+
 1. **Mobile-first en contenido, no solo en layout:** decide qué es esencial antes de decidir cómo se acomoda.
 2. **Prioridad de información:** lo urgente y accionable va arriba; lo histórico y de detalle, abajo o detrás de un toque.
 3. **Una acción principal por pantalla:** el usuario debe saber siempre cuál es el siguiente paso más probable.
@@ -37,18 +39,20 @@
 ## 2. Estrategia responsive
 
 ### 2.1 Enfoque
+
 - Diseñar de **menor a mayor**: base móvil, luego ampliar.
 - Los puntos de quiebre se definen por **el contenido que se rompe**, no por modelos de dispositivos.
 - Usar un número reducido de rangos conceptuales:
 
-| Rango | Comportamiento esperado |
-|---|---|
-| **Móvil compacto** (teléfono vertical) | Una columna, navegación inferior o menú colapsado, tablas convertidas en tarjetas/listas |
-| **Móvil amplio / teléfono horizontal** | Una columna ancha o dos columnas simples; evitar que el contenido se estire sin control |
-| **Tablet** | Navegación lateral colapsable (solo íconos o expandible), dos columnas, tablas con columnas prioritarias |
-| **Escritorio** | Navegación lateral fija, múltiples paneles, tablas completas, atajos de teclado |
+| Rango                                  | Comportamiento esperado                                                                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Móvil compacto** (teléfono vertical) | Una columna, navegación inferior o menú colapsado, tablas convertidas en tarjetas/listas                 |
+| **Móvil amplio / teléfono horizontal** | Una columna ancha o dos columnas simples; evitar que el contenido se estire sin control                  |
+| **Tablet**                             | Navegación lateral colapsable (solo íconos o expandible), dos columnas, tablas con columnas prioritarias |
+| **Escritorio**                         | Navegación lateral fija, múltiples paneles, tablas completas, atajos de teclado                          |
 
 ### 2.2 Reglas
+
 - **DEBE** funcionar en orientación vertical y horizontal sin pérdida de funciones.
 - **DEBE** evitar el scroll horizontal de la página completa. Solo se permite dentro de componentes específicos (por ejemplo, una tabla densa) y con indicio visual claro.
 - **DEBE** respetar las zonas seguras del dispositivo (muescas, barra de gestos, esquinas redondeadas).
@@ -61,19 +65,21 @@
 ## 3. Arquitectura de navegación
 
 ### 3.1 Principio
+
 La navegación de un panel administrativo suele tener muchas secciones. En móvil hay que **jerarquizar**, no solo esconder.
 
 ### 3.2 Patrones y cuándo usarlos
 
-| Patrón | Úsalo cuando | Evítalo cuando |
-|---|---|---|
-| **Barra inferior de pestañas** | Hay de 3 a 5 destinos principales y frecuentes | Hay más de 5 destinos o destinos de uso raro |
-| **Menú lateral deslizable (cajón)** | Hay muchas secciones, con subniveles | Es el único acceso a funciones críticas diarias |
-| **Barra superior con título y acciones** | Siempre, para dar contexto y acciones de la pantalla | Nunca se omite |
-| **Pestañas superiores o segmentadas** | Se alternan vistas del mismo objeto (resumen, actividad, ajustes) | Hay más de 4 o 5 pestañas sin scroll |
-| **Búsqueda global** | El panel tiene mucho contenido navegable | No hay nada que buscar |
+| Patrón                                   | Úsalo cuando                                                      | Evítalo cuando                                  |
+| ---------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| **Barra inferior de pestañas**           | Hay de 3 a 5 destinos principales y frecuentes                    | Hay más de 5 destinos o destinos de uso raro    |
+| **Menú lateral deslizable (cajón)**      | Hay muchas secciones, con subniveles                              | Es el único acceso a funciones críticas diarias |
+| **Barra superior con título y acciones** | Siempre, para dar contexto y acciones de la pantalla              | Nunca se omite                                  |
+| **Pestañas superiores o segmentadas**    | Se alternan vistas del mismo objeto (resumen, actividad, ajustes) | Hay más de 4 o 5 pestañas sin scroll            |
+| **Búsqueda global**                      | El panel tiene mucho contenido navegable                          | No hay nada que buscar                          |
 
 ### 3.3 Reglas
+
 - **DEBE** mostrar siempre al usuario dónde está (título de pantalla, elemento activo en la navegación).
 - **DEBE** permitir volver atrás de forma predecible (gesto del sistema, botón visible).
 - **DEBERÍA** combinar barra inferior (accesos principales) + cajón (accesos secundarios y configuración).
@@ -90,7 +96,7 @@ La navegación de un panel administrativo suele tener muchas secciones. En móvi
 - Usar **tres niveles** de jerarquía tipográfica como máximo en una vista: título, dato principal, dato secundario.
 - Agrupar con **espacio y contenedores**, no con líneas decorativas excesivas.
 - Aplicar **divulgación progresiva**: mostrar el resumen, revelar el detalle bajo demanda (expandir, abrir hoja inferior, pasar a pantalla de detalle).
-- Priorizar por pregunta del usuario: *¿qué pasó? ¿qué requiere mi atención? ¿qué puedo hacer ahora?*
+- Priorizar por pregunta del usuario: _¿qué pasó? ¿qué requiere mi atención? ¿qué puedo hacer ahora?_
 - **DEBE** mantener contraste suficiente para lectura en exteriores y con brillo bajo.
 - **DEBERÍA** usar color como refuerzo, nunca como único portador de significado (acompañar con texto o ícono).
 - **NO DEBE** replicar toda la densidad del escritorio en móvil.
@@ -100,9 +106,11 @@ La navegación de un panel administrativo suele tener muchas secciones. En móvi
 ## 5. Dashboard / pantalla de inicio
 
 ### 5.1 Objetivo en móvil
+
 Responder en una mirada: **¿hay algo que requiera mi atención?**
 
 ### 5.2 Estructura recomendada (de arriba hacia abajo)
+
 1. **Alertas y pendientes urgentes** (aprobaciones, errores, incidentes).
 2. **Indicadores clave (KPIs):** 3 a 4 como máximo visibles sin desplazarse; el resto, en carrusel o sección expandible.
 3. **Acciones rápidas** frecuentes.
@@ -110,6 +118,7 @@ Responder en una mirada: **¿hay algo que requiera mi atención?**
 5. **Gráficos de tendencia**, simplificados.
 
 ### 5.3 Reglas
+
 - **DEBE** mostrar cada KPI con: valor, etiqueta clara, variación y periodo.
 - **DEBERÍA** permitir tocar un KPI para ver su detalle.
 - **DEBERÍA** ofrecer selector de periodo accesible con una mano.
@@ -124,15 +133,16 @@ Las tablas anchas son el principal problema de un panel administrativo en móvil
 
 ### 6.1 Árbol de decisión
 
-| Situación | Estrategia |
-|---|---|
-| Pocos campos (2–3) por registro | Lista simple con fila de dos líneas (principal + secundario) |
-| Muchos campos, el usuario necesita ver varios | **Tarjetas** con campos clave visibles y el resto en detalle |
-| Comparación entre filas es esencial | Tabla con **primera columna fija** y desplazamiento horizontal contenido |
-| Datos numéricos densos / análisis | Mostrar resumen en móvil y ofrecer vista completa en pantalla grande o exportación |
-| Registros con estado y acciones | Lista con **indicador de estado visible** y acciones por deslizamiento o menú contextual |
+| Situación                                     | Estrategia                                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Pocos campos (2–3) por registro               | Lista simple con fila de dos líneas (principal + secundario)                             |
+| Muchos campos, el usuario necesita ver varios | **Tarjetas** con campos clave visibles y el resto en detalle                             |
+| Comparación entre filas es esencial           | Tabla con **primera columna fija** y desplazamiento horizontal contenido                 |
+| Datos numéricos densos / análisis             | Mostrar resumen en móvil y ofrecer vista completa en pantalla grande o exportación       |
+| Registros con estado y acciones               | Lista con **indicador de estado visible** y acciones por deslizamiento o menú contextual |
 
 ### 6.2 Reglas
+
 - **DEBE** decidir qué 2–4 campos son los **campos clave** de cada entidad y mostrarlos siempre.
 - **DEBE** mantener el identificador o nombre del registro visible en todo momento.
 - **DEBE** garantizar que cada fila o tarjeta completa sea un objetivo táctil.
@@ -149,12 +159,14 @@ Las tablas anchas son el principal problema de un panel administrativo en móvil
 ## 7. Formularios
 
 ### 7.1 Principios
+
 - Una columna siempre en móvil.
 - Etiquetas **siempre visibles** (no solo marcador de posición que desaparece).
 - Agrupar campos por tema con títulos de sección.
 - Para formularios largos, dividir en **pasos** o secciones plegables, con indicador de progreso.
 
 ### 7.2 Reglas
+
 - **DEBE** elegir el tipo de teclado según el dato (numérico, correo, teléfono, URL, búsqueda).
 - **DEBE** activar el autocompletado y autocorrección apropiados (y desactivarlos en códigos, identificadores y nombres propios cuando estorban).
 - **DEBE** mostrar errores **junto al campo**, en lenguaje claro, indicando cómo corregir.
@@ -172,12 +184,14 @@ Las tablas anchas son el principal problema de un panel administrativo en móvil
 ## 8. Acciones, botones y gestos
 
 ### 8.1 Jerarquía de acciones
+
 - **Primaria:** una sola por pantalla, de mayor peso visual.
 - **Secundaria:** peso medio.
 - **Terciaria / texto:** acciones de bajo énfasis.
 - **Destructiva:** diferenciada, nunca adyacente a la primaria sin separación.
 
 ### 8.2 Reglas
+
 - **DEBE** ofrecer un objetivo táctil mínimo de **44×44 pt / 48×48 dp**, con separación suficiente entre objetivos vecinos (aprox. 8 dp).
 - **DEBERÍA** ubicar la acción principal en la zona inferior, accesible con el pulgar (botón fijo inferior o botón de acción flotante).
 - **DEBERÍA** usar el botón de acción flotante solo para **una** acción de creación dominante.
@@ -201,15 +215,16 @@ Las tablas anchas son el principal problema de un panel administrativo en móvil
 
 ## 10. Componentes de superposición (modales, hojas, menús)
 
-| Componente | Uso en móvil |
-|---|---|
-| **Hoja inferior (bottom sheet)** | Filtros, opciones, acciones contextuales, selecciones; reemplaza a la mayoría de los modales y menús desplegables |
-| **Pantalla completa** | Tareas con varios campos, edición compleja, flujos con teclado |
-| **Diálogo central** | Solo confirmaciones breves y mensajes críticos |
-| **Menú contextual** | Acciones secundarias de un elemento; preferir hoja inferior si hay más de 4–5 opciones |
-| **Aviso temporal (toast / snackbar)** | Confirmaciones no críticas, con opción de deshacer |
+| Componente                            | Uso en móvil                                                                                                      |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Hoja inferior (bottom sheet)**      | Filtros, opciones, acciones contextuales, selecciones; reemplaza a la mayoría de los modales y menús desplegables |
+| **Pantalla completa**                 | Tareas con varios campos, edición compleja, flujos con teclado                                                    |
+| **Diálogo central**                   | Solo confirmaciones breves y mensajes críticos                                                                    |
+| **Menú contextual**                   | Acciones secundarias de un elemento; preferir hoja inferior si hay más de 4–5 opciones                            |
+| **Aviso temporal (toast / snackbar)** | Confirmaciones no críticas, con opción de deshacer                                                                |
 
 ### Reglas
+
 - **DEBE** permitir cerrar de forma obvia (botón visible, gesto, toque fuera cuando sea seguro).
 - **DEBE** evitar apilar superposiciones unas sobre otras.
 - **DEBERÍA** conservar el contexto visible detrás cuando aporte orientación.
@@ -232,6 +247,7 @@ Todo componente de datos **DEBE** definir y diseñar cada uno de estos estados:
 8. **Deshabilitado:** explicar por qué no está disponible (permiso, requisito pendiente).
 
 ### Reglas
+
 - **DEBERÍA** actualizar de forma optimista cuando el riesgo es bajo, revirtiendo con aviso si falla.
 - **DEBERÍA** mostrar el progreso en operaciones largas, con posibilidad de salir y volver sin perder el avance.
 - **NO DEBE** dejar al usuario sin saber si una acción se ejecutó.
@@ -353,32 +369,38 @@ Todo componente de datos **DEBE** definir y diseñar cada uno de estos estados:
 El agente **DEBE** confirmar cada punto antes de entregar:
 
 ### Estructura y navegación
+
 - [ ] Se identifica con claridad la pantalla actual y cómo volver.
 - [ ] Los accesos principales están al alcance del pulgar.
 - [ ] La profundidad de navegación es razonable y el estado se conserva.
 
 ### Contenido y jerarquía
+
 - [ ] Lo urgente y accionable está arriba.
 - [ ] Hay una sola acción primaria clara por pantalla.
 - [ ] El detalle se revela de forma progresiva.
 
 ### Datos
+
 - [ ] Las tablas tienen una estrategia móvil definida (lista, tarjeta o columna fija).
 - [ ] Los campos clave de cada entidad están decididos y siempre visibles.
 - [ ] Filtros, orden y selección múltiple funcionan con controles táctiles.
 
 ### Formularios y acciones
+
 - [ ] Una columna, etiquetas visibles, teclado adecuado, errores junto al campo.
 - [ ] Objetivos táctiles ≥ 44×44 pt / 48×48 dp con separación suficiente.
 - [ ] Ningún flujo depende de hover ni de gestos sin alternativa.
 - [ ] Acciones destructivas diferenciadas, con confirmación específica o deshacer.
 
 ### Estados y rendimiento
+
 - [ ] Cargando, vacío, sin resultados, error, sin conexión y éxito están diseñados.
 - [ ] No hay saltos de layout; el contenido prioritario carga primero.
 - [ ] Lo escrito no se pierde ante fallos.
 
 ### Accesibilidad y consistencia
+
 - [ ] Contraste, foco, texto ampliado, lector de pantalla y reducción de movimiento cumplidos.
 - [ ] Se usan tokens y componentes existentes; no hay valores sueltos.
 - [ ] Probado en vertical, horizontal, tablet y escritorio.
