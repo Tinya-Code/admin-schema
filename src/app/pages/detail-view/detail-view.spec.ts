@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
@@ -50,14 +50,18 @@ describe('DetailView', () => {
     status: 'PENDIENTE',
   };
 
+  const getSpy = vi.fn();
+
   beforeEach(async () => {
+    getSpy.mockReset();
+    getSpy.mockImplementation(() => of(null));
     await TestBed.configureTestingModule({
       imports: [DetailView],
       providers: [
         {
           provide: ApiService,
           useValue: {
-            get: () => of(null),
+            get: getSpy,
             request: () => of(null),
           },
         },
@@ -230,5 +234,47 @@ describe('DetailView', () => {
     expect(action).toMatchObject({ id: 'regenerate_pin', name: 'regenerate-pin' });
     expect(request.resource).toBe('orders');
     expect(request.keyField).toBe('ref');
+  });
+
+  it('7. mientras viaja el get, reserva el espacio con skeleton (cargar ≠ vacío)', () => {
+    // Regresión del «renderizado completo pero vacío»: con el get lento
+    // (Apps Script ~1s) el detalle pintaba la fila parcial con los campos
+    // pesados en `—`. Ahora la región de secciones queda en busy con
+    // skeletons con la forma de las tarjetas.
+    getSpy.mockImplementation(() => NEVER);
+
+    fixture.componentRef.setInput('schema', mockSchema);
+    fixture.componentRef.setInput('record', mockRecord);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('[aria-busy="true"] app-skeleton'), 'skeleton visible').toBeTruthy();
+    // Las etiquetas de las secciones NO se pintan hasta que llegue el registro.
+    expect(root.textContent).not.toContain('Fecha Retiro');
+    // La cabecera sí: son datos reales de la fila de la lista.
+    expect(root.textContent).toContain('ORD-42');
+  });
+
+  it('8. estado de error: ofrece reintento y al reintentar pinta el registro', async () => {
+    getSpy.mockImplementationOnce(() => throwError(() => new Error('500')));
+    getSpy.mockImplementationOnce(() => of({ ...mockRecord, pickup_date: '2026-10-12' }));
+
+    fixture.componentRef.setInput('schema', mockSchema);
+    fixture.componentRef.setInput('record', mockRecord);
+    await montar(fixture);
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('No se pudo cargar el registro');
+
+    const retryBtn = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('button[app-button]'),
+    ).find((b) => b.textContent?.trim().includes('Reintentar'));
+    expect(retryBtn, 'debe existir el botón Reintentar').toBeDefined();
+    retryBtn!.click();
+    await montar(fixture);
+
+    // El date se pinta formateado por render-host, no en crudo.
+    expect(root.textContent).toContain('12 oct. 2026');
+    expect(root.textContent).not.toContain('No se pudo cargar el registro');
   });
 });

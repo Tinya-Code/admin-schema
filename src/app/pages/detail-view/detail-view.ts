@@ -1,9 +1,15 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { catchError, combineLatest, of, switchMap } from 'rxjs';
+import { catchError, combineLatest, map, of, switchMap } from 'rxjs';
 
-import { LucideArrowLeft, LucideExternalLink, LucidePencil, LucideTrash2 } from '@lucide/angular';
+import {
+  LucideArrowLeft,
+  LucideExternalLink,
+  LucidePencil,
+  LucideRotateCw,
+  LucideTrash2,
+} from '@lucide/angular';
 import type {
   CopyShareAction,
   DetailViewSchema,
@@ -26,9 +32,22 @@ import { ConfigService } from '../../core/services/config.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { Button } from '../../shared/components/button/button';
 import { CopyShare } from '../../shared/components/copy-share/copy-share';
+import { EmptyState } from '../../shared/components/empty-state/empty-state';
+import { Skeleton } from '../../shared/components/skeleton/skeleton';
 import { getValue } from '../../shared/utils/field-path';
 
 type Row = Record<string, unknown>;
+
+/**
+ * Estado etiquetado del `get` del registro.
+ *
+ * `pending` distingue «todavía viaja» de «terminó sin datos» (sin
+ * `endpoint.get` contratado o sin key): antes ambos eran `null` y el
+ * detalle pintaba la fila parcial de la lista como si fuera todo, con los
+ * campos pesados en `—` que después mutaban solos (cargar ≠ vacío,
+ * doc/ux-ui-mobile.md §estados de UI).
+ */
+type FetchState = { phase: 'pending' } | { phase: 'done'; data: Row | null } | { phase: 'error' };
 
 /**
  * Campo ya resuelto contra el registro, **sin formatear**.
@@ -70,11 +89,14 @@ interface DetailSection {
   imports: [
     Button,
     CopyShare,
+    EmptyState,
     LucideArrowLeft,
     LucideExternalLink,
     LucidePencil,
+    LucideRotateCw,
     LucideTrash2,
     RenderHost,
+    Skeleton,
   ],
   template: `
     <div class="space-y-6">
@@ -157,56 +179,91 @@ interface DetailSection {
       }
 
       <!-- ── Secciones de Datos ── -->
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        @for (section of sections(); track section.id) {
-          <section
-            class="rounded-2xl border border-neutral/15 bg-surface shadow-xs overflow-hidden flex flex-col"
-            [class.lg:col-span-2]="hasLargeContent(section)"
+      @switch (status()) {
+        @case ('loading') {
+          <!-- Skeleton con la forma de las tarjetas de sección: reserva el
+               espacio (sin layout jump) y distingue «cargando» de «vacío».
+               La cabecera y las acciones de arriba sí se pintan ya: son la
+               fila de la lista, datos reales que no están en disputa. -->
+          <div aria-busy="true" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            @for (placeholder of [0, 1]; track placeholder) {
+              <section
+                class="rounded-2xl border border-neutral/15 bg-surface shadow-xs overflow-hidden"
+              >
+                <header class="border-b border-neutral/10 bg-neutral/5 px-5 py-3.5">
+                  <app-skeleton [lines]="1" [height]="14" width="30%" />
+                </header>
+                <div class="p-5">
+                  <app-skeleton [lines]="6" [height]="44" />
+                </div>
+              </section>
+            }
+          </div>
+        }
+        @case ('error') {
+          <app-empty-state
+            title="No se pudo cargar el registro"
+            message="Revisa tu conexión e intenta de nuevo."
           >
-            <header class="border-b border-neutral/10 bg-neutral/5 px-5 py-3.5">
-              <h2 class="text-sm font-semibold tracking-wide text-neutral-light uppercase">
-                {{ section.label }}
-              </h2>
-            </header>
+            <button app-button variant="outline" type="button" (click)="retry()">
+              <svg lucideRotateCw size="16" />
+              Reintentar
+            </button>
+          </app-empty-state>
+        }
+        @case ('ready') {
+          <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            @for (section of sections(); track section.id) {
+              <section
+                class="rounded-2xl border border-neutral/15 bg-surface shadow-xs overflow-hidden flex flex-col"
+                [class.lg:col-span-2]="hasLargeContent(section)"
+              >
+                <header class="border-b border-neutral/10 bg-neutral/5 px-5 py-3.5">
+                  <h2 class="text-sm font-semibold tracking-wide text-neutral-light uppercase">
+                    {{ section.label }}
+                  </h2>
+                </header>
 
-            <div class="p-5 flex-1 space-y-4">
-              <!-- Grid para campos regulares -->
-              @if (regularFields(section).length > 0) {
-                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                  @for (campo of regularFields(section); track campo.key) {
-                    <div class="space-y-1">
-                      <dt class="text-xs font-medium text-neutral">{{ campo.label }}</dt>
-                      <dd class="text-sm font-medium text-neutral-light break-words">
-                        <app-render-host
-                          mode="display"
-                          [type]="campo.field.type"
-                          [config]="campo.field"
-                          [value]="campo.raw"
-                        />
-                      </dd>
+                <div class="p-5 flex-1 space-y-4">
+                  <!-- Grid para campos regulares -->
+                  @if (regularFields(section).length > 0) {
+                    <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                      @for (campo of regularFields(section); track campo.key) {
+                        <div class="space-y-1">
+                          <dt class="text-xs font-medium text-neutral">{{ campo.label }}</dt>
+                          <dd class="text-sm font-medium text-neutral-light break-words">
+                            <app-render-host
+                              mode="display"
+                              [type]="campo.field.type"
+                              [config]="campo.field"
+                              [value]="campo.raw"
+                            />
+                          </dd>
+                        </div>
+                      }
+                    </dl>
+                  }
+
+                  <!-- Renderizado de listas anidadas (Timeline de eventos / items) -->
+                  @for (campo of listFields(section); track campo.key) {
+                    <div class="pt-2">
+                      <h3 class="mb-3 text-xs font-semibold text-neutral uppercase">
+                        {{ campo.label }}
+                      </h3>
+                      <app-render-host
+                        mode="display"
+                        [type]="campo.field.type"
+                        [config]="campo.field"
+                        [value]="campo.raw"
+                      />
                     </div>
                   }
-                </dl>
-              }
-
-              <!-- Renderizado de listas anidadas (Timeline de eventos / items) -->
-              @for (campo of listFields(section); track campo.key) {
-                <div class="pt-2">
-                  <h3 class="mb-3 text-xs font-semibold text-neutral uppercase">
-                    {{ campo.label }}
-                  </h3>
-                  <app-render-host
-                    mode="display"
-                    [type]="campo.field.type"
-                    [config]="campo.field"
-                    [value]="campo.raw"
-                  />
                 </div>
-              }
-            </div>
-          </section>
+              </section>
+            }
+          </div>
         }
-      </div>
+      }
     </div>
   `,
 })
@@ -246,28 +303,56 @@ export class DetailView {
   /**
    * Obtiene el registro completo desde el endpoint get si existe.
    * Esto asegura que campos pesados o no proyectados en la lista (como fotos, notas o historial)
-   * se carguen y muestren completos.
+   * se carguen y muestren completos. El resultado va etiquetado (`FetchState`)
+   * para que la vista sepa distinguir «cargando» de «sin datos» de «error».
    */
-  private readonly fetchedRecord = toSignal(
+  private readonly fetched = toSignal(
     combineLatest([toObservable(this.record), toObservable(this.refreshTick)]).pipe(
       switchMap(([rec]) => {
         const schema = this.schema();
         const key = rec ? String(rec[schema.keyField] ?? '') : '';
         const getEndpoint = schema.endpoint?.get;
         if (!key || !getEndpoint || typeof this.api?.get !== 'function') {
-          return of<Row | null>(null);
+          // Sin get contratado la fila de la lista ES todo lo que hay.
+          return of<FetchState>({ phase: 'done', data: null });
         }
-        return this.api.get<Row>(schema.endpoint, key).pipe(catchError(() => of<Row | null>(null)));
+        return this.api.get<Row>(schema.endpoint, key).pipe(
+          map((data): FetchState => ({ phase: 'done', data })),
+          catchError(() => of<FetchState>({ phase: 'error' })),
+        );
       }),
     ),
-    { initialValue: null },
+    { initialValue: { phase: 'pending' } as FetchState },
   );
+
+  /**
+   * Estados universales del detalle — el mismo trío que `list-view` y
+   * `form-view`. El skeleton reserva el espacio de las secciones mientras
+   * viaja el `get` (Apps Script tarda ~1s): sin él, el operador veía una
+   * pantalla «completa» con campos vacíos que después aparecían solos.
+   */
+  protected readonly status = computed<'loading' | 'ready' | 'error'>(() => {
+    const fetched = this.fetched();
+    if (fetched.phase === 'pending') return 'loading';
+    if (fetched.phase === 'error') return 'error';
+    return 'ready';
+  });
+
+  /** Reintenta el `get` del registro desde el estado de error. */
+  protected retry(): void {
+    this.refreshTick.update((tick) => tick + 1);
+  }
 
   protected readonly effectiveRecord = computed<Row>(() => {
     const initial = this.record();
-    const fetched = this.fetchedRecord();
-    if (fetched && typeof fetched === 'object' && Object.keys(fetched).length > 0) {
-      return { ...initial, ...fetched };
+    const fetched = this.fetched();
+    if (
+      fetched.phase === 'done' &&
+      fetched.data &&
+      typeof fetched.data === 'object' &&
+      Object.keys(fetched.data).length > 0
+    ) {
+      return { ...initial, ...fetched.data };
     }
     return initial;
   });
