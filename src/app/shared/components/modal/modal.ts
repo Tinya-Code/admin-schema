@@ -55,7 +55,7 @@ let titleCounter = 0;
             </h2>
             <button
               type="button"
-              class="rounded p-1 text-neutral hover:bg-neutral/10 focus-visible:outline-2 focus-visible:outline-primary"
+              class="flex min-h-11 min-w-11 items-center justify-center rounded text-neutral hover:bg-neutral/10 focus-visible:outline-2 focus-visible:outline-primary lg:min-h-0 lg:min-w-0"
               [attr.aria-label]="closeLabel()"
               (click)="close.emit()"
             >

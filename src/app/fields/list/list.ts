@@ -22,9 +22,6 @@ import {
 import { seedFields } from '../../shared/utils/seed';
 import { itemTree, listTree, type ListChildContext, type RootTree } from '../field-node';
 
-const TOOLBAR_BTN =
-  'rounded p-1 text-neutral hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
-
 /**
  * Lista de ítems (base.md §6): asa de arrastre, subir/bajar, eliminar con
  * confirmación (sólo si el ítem tiene contenido) y agregar respetando
@@ -77,7 +74,10 @@ const TOOLBAR_BTN =
               @if (sortable()) {
                 <button
                   type="button"
-                  class="cursor-grab text-neutral hover:text-primary"
+                  app-button
+                  variant="ghost"
+                  size="icon"
+                  class="cursor-grab"
                   cdkDragHandle
                   [attr.aria-label]="'Reordenar elemento ' + (i + 1)"
                   title="Arrastrar para reordenar"
@@ -106,10 +106,12 @@ const TOOLBAR_BTN =
               @if (hasProblem(i)) {
                 <span class="text-xs font-medium text-danger">Revisar</span>
               }
-              <span class="ml-auto flex shrink-0 items-center gap-1">
+              <span class="ml-auto flex shrink-0 items-center gap-2 lg:gap-1">
                 <button
                   type="button"
-                  class="{{ toolbarBtn }}"
+                  app-button
+                  variant="ghost"
+                  size="icon"
                   [disabled]="i === 0"
                   [attr.aria-label]="'Subir elemento ' + (i + 1)"
                   (click)="move(i, -1)"
@@ -118,7 +120,9 @@ const TOOLBAR_BTN =
                 </button>
                 <button
                   type="button"
-                  class="{{ toolbarBtn }}"
+                  app-button
+                  variant="ghost"
+                  size="icon"
                   [disabled]="i === items().length - 1"
                   [attr.aria-label]="'Bajar elemento ' + (i + 1)"
                   (click)="move(i, 1)"
@@ -127,7 +131,9 @@ const TOOLBAR_BTN =
                 </button>
                 <button
                   type="button"
-                  class="{{ toolbarBtn }}"
+                  app-button
+                  variant="ghost"
+                  size="icon"
                   [disabled]="!canRemove()"
                   [attr.aria-label]="'Eliminar elemento ' + (i + 1)"
                   (click)="remove(i)"
@@ -187,7 +193,6 @@ export class FieldList {
 
   protected readonly sortable = computed(() => this.field().sortable ?? true);
   /** Clase fija de la barra de ícono (literal: Tailwind v4 es JIT). */
-  protected readonly toolbarBtn = TOOLBAR_BTN;
 
   protected canAdd(): boolean {
     const max = this.field().max;

@@ -30,13 +30,13 @@ import { Button } from '../../shared/components/button/button';
         #area
       ></textarea>
       @if (field().tokens?.length) {
-        <div class="mt-1.5 flex flex-wrap gap-1.5" data-testid="textarea-tokens">
+        <div class="mt-1.5 flex flex-wrap gap-2 lg:gap-1.5" data-testid="textarea-tokens">
           @for (token of field().tokens; track token.key) {
             <button
               app-button
               type="button"
               variant="outline"
-              class="!min-h-8 !px-2 !py-1 !text-xs"
+              size="sm"
               [attr.title]="'Inserta {' + token.key + '} en el texto'"
               (click)="insertToken(token.key)"
             >

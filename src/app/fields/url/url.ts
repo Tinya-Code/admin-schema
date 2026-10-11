@@ -23,8 +23,11 @@ import { childTree, type RootTree } from '../field-node';
         [placeholder]="field().placeholder ?? 'https://…'"
       />
       @if (href(); as href) {
+        <!-- Mismo lenguaje que la variante outline de app-button (el
+             selector del componente es button[app-button], un ancla no
+             puede usarlo): borde /40, hover con fondo, 44 px en mobile. -->
         <a
-          class="shrink-0 rounded-lg border border-neutral/30 px-3 py-2 text-sm hover:border-primary"
+          class="min-h-11 shrink-0 rounded-lg border border-neutral/40 bg-surface px-3 py-2 text-sm text-neutral hover:bg-neutral/10 lg:min-h-0"
           [href]="href"
           target="_blank"
           rel="noopener noreferrer"

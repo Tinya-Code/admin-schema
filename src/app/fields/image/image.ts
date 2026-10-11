@@ -16,10 +16,8 @@ import type { FormValueControl } from '@angular/forms/signals';
 import type { ImageField } from '../../core/models/schema.model';
 import { ApiError } from '../../core/models/api.model';
 import { NotificationService } from '../../core/services/notification.service';
+import { Button } from '../../shared/components/button/button';
 import { UploadService } from '../../core/services/upload.service';
-
-const BASE =
-  'rounded-lg border border-neutral/30 px-3 py-2 text-sm font-medium hover:bg-neutral/5 disabled:cursor-not-allowed disabled:opacity-50';
 
 /**
  * Carga de imagen (base.md §7): el valor es SOLO la URL pública.
@@ -35,6 +33,7 @@ const BASE =
  */
 @Component({
   selector: 'app-field-image',
+  imports: [Button],
   template: ` @if (error(); as message) {
       <p
         class="mb-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger"
@@ -67,11 +66,23 @@ const BASE =
           [style.aspect-ratio]="aspectRatio()"
         />
         <div class="mt-2 flex flex-wrap items-center gap-2">
-          <button type="button" class="{{ baseBtn }}" [disabled]="disabled()" (click)="pickFile()">
+          <button
+            type="button"
+            app-button
+            variant="outline"
+            [disabled]="disabled()"
+            (click)="pickFile()"
+          >
             Reemplazar
           </button>
           @if (!field().required) {
-            <button type="button" class="{{ baseBtn }}" [disabled]="disabled()" (click)="clear()">
+            <button
+              type="button"
+              app-button
+              variant="outline"
+              [disabled]="disabled()"
+              (click)="clear()"
+            >
               Quitar
             </button>
           }
@@ -95,7 +106,9 @@ const BASE =
         <p class="text-sm text-neutral">Arrastrá una imagen acá</p>
         <button
           type="button"
-          class="mt-2 {{ baseBtn }}"
+          app-button
+          variant="outline"
+          class="mt-2"
           [disabled]="disabled()"
           (click)="pickFile()"
         >
@@ -133,7 +146,6 @@ export class FieldImage implements FormValueControl<string> {
   protected readonly error = signal<string | null>(null);
 
   /** Literal en el código: Tailwind v4 genera las clases al escanearlo. */
-  protected readonly baseBtn = BASE;
   protected readonly previewClass = computed(
     () => `${this.field().previewSize ?? 'w-48'} rounded-lg object-cover`,
   );

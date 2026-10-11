@@ -21,9 +21,6 @@ import {
 import { FieldAria } from '../field-aria';
 import { childTree, itemTree, listTree, type RootTree } from '../field-node';
 
-const TOOLBAR_BTN =
-  'rounded p-1 text-neutral hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
-
 /**
  * Pares clave→valor (base.md §9 «ficha técnica»). Hoja: tabla con sus
  * propios `<input [formField]>` (nodos `key`/`value` del ítem) y no toca
@@ -77,7 +74,10 @@ const TOOLBAR_BTN =
                   @if (sortable()) {
                     <button
                       type="button"
-                      class="cursor-grab text-neutral hover:text-primary"
+                      app-button
+                      variant="ghost"
+                      size="icon"
+                      class="cursor-grab"
                       cdkDragHandle
                       [attr.aria-label]="'Reordenar fila ' + (i + 1)"
                       title="Arrastrar para reordenar"
@@ -88,7 +88,7 @@ const TOOLBAR_BTN =
                 </td>
                 <td class="px-3 py-2">
                   <input
-                    class="w-full rounded-lg border border-neutral/30 px-3 py-2 focus:border-primary focus:outline-2 focus:outline-primary/40"
+                    class="field-input"
                     type="text"
                     placeholder="Clave"
                     [attr.aria-label]="'Clave, fila ' + (i + 1)"
@@ -98,7 +98,7 @@ const TOOLBAR_BTN =
                 </td>
                 <td class="px-3 py-2">
                   <input
-                    class="w-full rounded-lg border border-neutral/30 px-3 py-2 focus:border-primary focus:outline-2 focus:outline-primary/40"
+                    class="field-input"
                     type="text"
                     placeholder="Valor"
                     [attr.aria-label]="'Valor, fila ' + (i + 1)"
@@ -107,10 +107,12 @@ const TOOLBAR_BTN =
                   />
                 </td>
                 <td class="px-3 py-2">
-                  <span class="flex items-center justify-end gap-1">
+                  <span class="flex items-center justify-end gap-2 lg:gap-1">
                     <button
                       type="button"
-                      class="{{ toolbarBtn }}"
+                      app-button
+                      variant="ghost"
+                      size="icon"
                       [disabled]="i === 0"
                       [attr.aria-label]="'Subir fila ' + (i + 1)"
                       (click)="move(i, -1)"
@@ -119,7 +121,9 @@ const TOOLBAR_BTN =
                     </button>
                     <button
                       type="button"
-                      class="{{ toolbarBtn }}"
+                      app-button
+                      variant="ghost"
+                      size="icon"
                       [disabled]="i === items().length - 1"
                       [attr.aria-label]="'Bajar fila ' + (i + 1)"
                       (click)="move(i, 1)"
@@ -128,7 +132,9 @@ const TOOLBAR_BTN =
                     </button>
                     <button
                       type="button"
-                      class="{{ toolbarBtn }}"
+                      app-button
+                      variant="ghost"
+                      size="icon"
                       [disabled]="!canRemove()"
                       [attr.aria-label]="'Eliminar fila ' + (i + 1)"
                       (click)="remove(i)"
@@ -166,7 +172,6 @@ export class FieldKeyValue {
   protected readonly items = computed(() => this.state().value() ?? []);
 
   protected readonly sortable = computed(() => this.field().sortable ?? true);
-  protected readonly toolbarBtn = TOOLBAR_BTN;
 
   /** Nodo de `key`/`value` del ítem; se llama fresco en cada render (NG01904). */
   protected fieldNode(

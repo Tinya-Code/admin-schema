@@ -15,9 +15,6 @@ import { Button } from '../../shared/components/button/button';
 import { FieldAria } from '../field-aria';
 import { childTree, stringItemTree, type RootTree } from '../field-node';
 
-const TOOLBAR_BTN =
-  'rounded p-1 text-neutral hover:bg-neutral/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40';
-
 /**
  * Lista de cadenas (base.md §9: `text`, `url` o `email` por ítem).
  *
@@ -60,7 +57,10 @@ const TOOLBAR_BTN =
             @if (sortable()) {
               <button
                 type="button"
-                class="cursor-grab text-neutral hover:text-primary"
+                app-button
+                variant="ghost"
+                size="icon"
+                class="cursor-grab"
                 cdkDragHandle
                 [attr.aria-label]="'Reordenar elemento ' + (i + 1)"
                 title="Arrastrar para reordenar"
@@ -69,17 +69,19 @@ const TOOLBAR_BTN =
               </button>
             }
             <input
-              class="min-w-0 grow rounded-lg border border-neutral/30 px-3 py-2 text-sm focus:border-primary focus:outline-2 focus:outline-primary/40"
+              class="field-input min-w-0 grow"
               [type]="inputType()"
               [placeholder]="field().placeholder ?? placeholderFor()"
               [attr.aria-label]="field().label + ', elemento ' + (i + 1)"
               [id]="idPrefix() + '-' + i"
               [formField]="itemNode(i)"
             />
-            <span class="flex shrink-0 items-center gap-1">
+            <span class="flex shrink-0 items-center gap-2 lg:gap-1">
               <button
                 type="button"
-                class="{{ toolbarBtn }}"
+                app-button
+                variant="ghost"
+                size="icon"
                 [disabled]="i === 0"
                 [attr.aria-label]="'Subir elemento ' + (i + 1)"
                 (click)="move(i, -1)"
@@ -88,7 +90,9 @@ const TOOLBAR_BTN =
               </button>
               <button
                 type="button"
-                class="{{ toolbarBtn }}"
+                app-button
+                variant="ghost"
+                size="icon"
                 [disabled]="i === items().length - 1"
                 [attr.aria-label]="'Bajar elemento ' + (i + 1)"
                 (click)="move(i, 1)"
@@ -97,7 +101,9 @@ const TOOLBAR_BTN =
               </button>
               <button
                 type="button"
-                class="{{ toolbarBtn }}"
+                app-button
+                variant="ghost"
+                size="icon"
                 [disabled]="!canRemove()"
                 [attr.aria-label]="'Eliminar elemento ' + (i + 1)"
                 (click)="remove(i)"
@@ -130,7 +136,6 @@ export class FieldStringList {
   protected readonly items = computed(() => this.state().value() ?? []);
 
   protected readonly sortable = computed(() => this.field().sortable ?? true);
-  protected readonly toolbarBtn = TOOLBAR_BTN;
   protected readonly inputType = computed(() => this.field().itemType ?? 'text');
 
   protected itemNode(index: number): ReturnType<typeof stringItemTree> {
