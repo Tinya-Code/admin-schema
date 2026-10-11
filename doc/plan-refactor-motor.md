@@ -2668,19 +2668,43 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
   - **Gates:** front **412/53** · api **711/38** · `api:check` **5
     VERDE** · build ✔ · prettier baseline · drift VERDE.
 
-- [ ] **R7.6** — Tipo `secret` + recurso `users` (auth §7.5)
+- [x] **R7.6** — Tipo `secret` + recurso `users` (auth §7.5)
   - **Tipo nuevo** en `FIELD_TYPES`:
-    `{ storage: 'column', sheetFormat: 'text', readable: false, writeOnly: true }`.
+    `{ storage: 'column', sheetFormat: 'text', readable: false, writeOnly: true }`
+    (21 tipos).
   - **Excluido** de `listProjection`, de `/admin/schema` y de cualquier
-    respuesta, siempre.
-  - **Recurso `users`** declarado como cualquier otro (auth §4.2), con
-    `policies: { … : 'role:admin' }`.
+    respuesta, siempre: `filterAccessNode_` omite nodos `secret` aunque
+    la sesión sea admin; `readableField_` los excluye del schema
+    publicado (recursivo: group/list/extraColumns); validate-registry
+    marca rojo si `listProjection` nombra un campo secret.
+  - **Recurso `users`** declarado como cualquier otro sobre la hoja
+    auxiliar `_users` (auth §4.2), `policies.access` read/write
+    `role:admin`; campos `pass_hash`/`pass_salt`/`token_version` como
+    `type: 'secret'`. `getSheetSpecs_` salta hojas auxiliares para no
+    duplicar spec. Front: `users.schema.ts` (counterpart del
+    contract-check) con `access: { requires: 'role:admin' }`.
+  - **Fix latente corregido en el camino:** `unregister()` nuevo en
+    render-registry — el descriptor de prueba del spec contaminaba
+    `renderKinds()` y el tripwire de contract.spec flasheaba según el
+    orden de ejecución de Jasmine.
+  - **Gates:** front **412/53** · api **717/43** · contract-check
+    **VERDE** (8 recursos, 91 campos) · build ✔ · prettier baseline
+    (18) · drift VERDE.
 
-- [ ] **R7.7** — Prueba de fuga
-  - **Verificación:** ninguna respuesta contiene `pass_hash`, `pass_salt` ni
-    `token_version` — test automatizado.
+- [x] **R7.7** — Prueba de fuga
+  - **Verificación:** `secret-leak.spec.js` (6 tests): get/list/update no
+    contienen `pass_hash`/`pass_salt`/`token_version` para admin ni
+    staff; `/admin/schema` no los publica; la caché no resucita
+    secretos; `listProjection` con un campo secret es rojo de arranque.
+  - **Mutacionales 3/3:** M1 (`readable: false` → true) 3 fallos ·
+    M2 (omisión en `projectFields_` → off) 1 fallo · M3 (regla
+    listProjection → off) 1 fallo. Restaurados desde backup, 717/43.
 
-- [ ] **R7.8** — Gates de la fase
+- [x] **R7.8** — Gates de la fase
+  - **Gates frescos (tanda única de cierre):** front **412/53** · api
+    **717/43** · `api:check` **5 VERDE** · build ✔ · prettier baseline
+    (18 warns, sin diferencia con el stash base) · drift VERDE.
+  - **Fase 7 cerrada.**
 
 ---
 
