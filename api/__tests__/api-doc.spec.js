@@ -162,3 +162,41 @@ describe('R5.2 — firstDiff_ (lo que api:check imprime)', () => {
     expect(d.reg).toBe('(fin de fichero)');
   });
 });
+
+// Sección nueva (doc/plan-doc-recursos.md, fases 1-3): el CRUD por recurso
+// sale de REGISTRY.resources con la MISMA proyección que sirve /admin/schema.
+describe('plan-doc-recursos — sección CRUD por recurso', () => {
+  it('documenta cada recurso con sus operaciones proyectadas', async () => {
+    const doc = flat(await renderDoc(REGISTRY.endpoints, REGISTRY.resources));
+    expect(doc).toContain('## Recursos (CRUD por recurso)');
+    for (const [id, r] of Object.entries(REGISTRY.resources)) {
+      expect(doc).toContain(`### \`${id}\``);
+      expect(doc).toContain(`[\`${id}\`](#${id})`);
+      const ops = globalThis.projectResourceSchema_(r).operations;
+      for (const entry of Object.values(ops)) {
+        expect(doc).toContain(`|${entry.method}|\`${entry.path}\``);
+      }
+    }
+  });
+
+  it('los campos secret no aparecen ni nombrados (R7.6)', async () => {
+    const doc = await renderDoc(REGISTRY.endpoints, REGISTRY.resources);
+    for (const secret of ['pass_hash', 'pass_salt', 'token_version']) {
+      expect(doc).not.toContain(secret);
+    }
+  });
+
+  it('marca lo que genera el back: users.id (uuid), products.slug, orders.ref', async () => {
+    const doc = flat(await renderDoc(REGISTRY.endpoints, REGISTRY.resources));
+    expect(doc).toContain('generado: create · uuid');
+    expect(doc).toContain('generado: create · slugify');
+    expect(doc).toContain('generado: create · token');
+  });
+
+  it('sin resources el doc sigue siendo sólo endpoints (compat)', async () => {
+    const sin = await renderDoc(REGISTRY.endpoints);
+    const con = await renderDoc(REGISTRY.endpoints, REGISTRY.resources);
+    expect(sin).not.toContain('## Recursos (CRUD por recurso)');
+    expect(con).toContain('## Recursos (CRUD por recurso)');
+  });
+});

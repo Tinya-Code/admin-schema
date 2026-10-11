@@ -62,6 +62,280 @@ mismo con una vista `aggregate` (devuelve UNA fila de resultado). Los
 `VALIDATION_PAGE_SIZE`, `VALIDATION_PAGE_OFFSET`, `VALIDATION_CURSOR` y
 `VALIDATION_PAGINATION`, con `path` relativo al payload.
 
+## Recursos (CRUD por recurso)
+
+> **Generado** de `api/schema/resources/*.js` (este bloque no se edita a
+> mano). Las rutas salen de la misma proyección que sirve
+> `GET /admin/schema`: una operación apagada no aparece acá porque
+> responde 405. Los campos `secret` jamás se nombran.
+
+| #   | Recurso                     | keyField | Operaciones                                 | Acceso (write) |
+| --- | --------------------------- | -------- | ------------------------------------------- | -------------- |
+| 1   | [`categories`](#categories) | `slug`   | `create`, `get`, `list`, `remove`, `update` | `admin`        |
+| 2   | [`dashboard`](#dashboard)   | `id`     |                                             | `admin`        |
+| 3   | [`legal`](#legal)           | `key`    | `get`, `update`                             | `admin`        |
+| 4   | [`orders`](#orders)         | `ref`    | `create`, `get`, `list`, `remove`, `update` | `admin`        |
+| 5   | [`pickpass`](#pickpass)     | `key`    | `get`, `update`                             | `admin`        |
+| 6   | [`products`](#products)     | `slug`   | `create`, `get`, `list`, `remove`, `update` | `admin`        |
+| 7   | [`site`](#site)             | `key`    | `get`, `update`                             | `admin`        |
+| 8   | [`users`](#users)           | `id`     | `create`, `get`, `list`, `remove`, `update` | `role:admin`   |
+
+### `categories`
+
+titleField: `name` · kind: `collection` · sheet: `categories` · keyField: `slug` · activeField: `active` · ordering: positioned
+
+**Operaciones**
+
+| Método | Path                      | Notas                    |
+| ------ | ------------------------- | ------------------------ |
+| GET    | `/admin/categories`       | —                        |
+| GET    | `/admin/categories/{key}` | —                        |
+| POST   | `/admin/categories`       | genera: `slug` (slugify) |
+| PUT    | `/admin/categories/{key}` | —                        |
+| DELETE | `/admin/categories/{key}` | baja lógica vía `active` |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo             | Tipo       | Obligatorio | Reglas                                    |
+| ----------------- | ---------- | ----------- | ----------------------------------------- |
+| `slug`            | `slug`     | sí          | unique: true · generado: create · slugify |
+| `name`            | `text`     | sí          | —                                         |
+| `seo_title`       | `text`     | sí          | —                                         |
+| `seo_description` | `textarea` | sí          | —                                         |
+| `intro`           | `textarea` | sí          | minLength: 100 · maxLength: 1000          |
+| `image_url`       | `image`    | sí          | —                                         |
+| `image_alt`       | `text`     | no          | —                                         |
+| `active`          | `boolean`  | sí          | default: true                             |
+| `position`        | `number`   | sí          | sistema                                   |
+
+**Listado** — `listProjection`: `slug`, `image_url`, `name`, `active`, `position`
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+
+### `dashboard`
+
+titleField: `label` · kind: `dashboard` · sheet: `—` · keyField: `id`
+
+**Operaciones**
+
+| Método | Path | Notas |
+| ------ | ---- | ----- |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo | Tipo | Obligatorio | Reglas |
+| ----- | ---- | ----------- | ------ |
+
+**Listado** — `listProjection`: —
+
+**Política** — read: `admin` · write: `admin` · publicable a front
+
+### `legal`
+
+titleField: `legal_name` · kind: `singleton` · sheet: `legal_config` · keyField: `key` · ordering: none
+
+**Operaciones**
+
+| Método | Path           | Notas |
+| ------ | -------------- | ----- |
+| GET    | `/admin/legal` | —     |
+| PUT    | `/admin/legal` | —     |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo                    | Tipo            | Obligatorio | Reglas                  |
+| ------------------------ | --------------- | ----------- | ----------------------- |
+| `legal_name`             | `text`          | sí          | —                       |
+| `trade_name`             | `text`          | sí          | —                       |
+| `ruc`                    | `text`          | sí          | pattern: ^\d{11}$       |
+| `fiscal_address`         | `text`          | sí          | —                       |
+| `last_updated`           | `readonly-text` | sí          | generado: now · sistema |
+| `email`                  | `email`         | sí          | —                       |
+| `phone`                  | `phone`         | sí          | —                       |
+| `reclamos_email`         | `email`         | sí          | —                       |
+| `reclamos_response_days` | `number`        | sí          | min: 0                  |
+| `prices_include_igv`     | `boolean`       | sí          | default: true           |
+| `currency`               | `text`          | sí          | pattern: ^[A-Z]{3}$     |
+
+**Listado** — `listProjection`: —
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+
+### `orders`
+
+titleField: `customer_name` · kind: `collection` · sheet: `orders` · keyField: `ref` · ordering: none
+
+**Operaciones**
+
+| Método | Path                  | Notas                              |
+| ------ | --------------------- | ---------------------------------- |
+| GET    | `/admin/orders`       | —                                  |
+| GET    | `/admin/orders/{key}` | —                                  |
+| POST   | `/admin/orders`       | genera: `ref` (token), `pin` (pin) |
+| PUT    | `/admin/orders/{key}` | —                                  |
+| DELETE | `/admin/orders/{key}` | hard delete                        |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo              | Tipo            | Obligatorio | Reglas                                  |
+| ------------------ | --------------- | ----------- | --------------------------------------- |
+| `ref`              | `text`          | sí          | unique: true · generado: create · token |
+| `pin`              | `text`          | no          | maxLength: 12 · generado: create · pin  |
+| `customer_name`    | `text`          | sí          | maxLength: 80                           |
+| `description`      | `textarea`      | sí          | —                                       |
+| `pickup_date`      | `date`          | sí          | —                                       |
+| `status`           | `select`        | sí          | enum: 3 valores · default: PENDIENTE    |
+| `reference_photo`  | `image`         | no          | —                                       |
+| `customer_notes`   | `textarea`      | no          | maxLength: 500                          |
+| `authorized_name`  | `text`          | no          | maxLength: 80                           |
+| `authorized_photo` | `image`         | no          | —                                       |
+| `authorized_notes` | `textarea`      | no          | maxLength: 300                          |
+| `auth_state`       | `select`        | no          | enum: 3 valores · default: NINGUNO      |
+| `created_at`       | `readonly-text` | no          | generado: now · sistema                 |
+| `updated_at`       | `readonly-text` | no          | generado: now · sistema                 |
+| `history`          | `list`          | no          | min: 0 · max: 200                       |
+| `history.at`       | `readonly-text` | no          | generado: now · sistema                 |
+| `history.action`   | `select`        | no          | enum: 5 valores                         |
+| `history.detail`   | `text`          | no          | maxLength: 120                          |
+
+**Listado** — `listProjection`: `ref`, `pin`, `customer_name`, `status`, `pickup_date`, `auth_state`, `created_at`
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":60} · audit · lock · publicable a front
+
+### `pickpass`
+
+titleField: `public_base_url` · kind: `singleton` · sheet: `pickpass_config` · keyField: `key` · ordering: none
+
+**Operaciones**
+
+| Método | Path              | Notas |
+| ------ | ----------------- | ----- |
+| GET    | `/admin/pickpass` | —     |
+| PUT    | `/admin/pickpass` | —     |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo                    | Tipo       | Obligatorio | Reglas                                                                                                         |
+| ------------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
+| `public_base_url`        | `url`      | sí          | —                                                                                                              |
+| `share_message_template` | `textarea` | sí          | default: Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}. Su PIN es {pin}. |
+| `pin_ttl_hours`          | `number`   | sí          | min: 1 · max: 720 · default: 24                                                                                |
+| `pin_enabled`            | `select`   | sí          | enum: 2 valores · default: SI                                                                                  |
+
+**Listado** — `listProjection`: —
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+
+### `products`
+
+titleField: `name` · kind: `collection` · sheet: `products` · keyField: `slug` · activeField: `active` · ordering: none
+
+**Operaciones**
+
+| Método | Path                    | Notas                    |
+| ------ | ----------------------- | ------------------------ |
+| GET    | `/admin/products`       | —                        |
+| GET    | `/admin/products/{key}` | —                        |
+| POST   | `/admin/products`       | genera: `slug` (slugify) |
+| PUT    | `/admin/products/{key}` | —                        |
+| DELETE | `/admin/products/{key}` | baja lógica vía `active` |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo                | Tipo            | Obligatorio | Reglas                                    |
+| -------------------- | --------------- | ----------- | ----------------------------------------- |
+| `slug`               | `slug`          | sí          | unique: true · generado: create · slugify |
+| `name`               | `text`          | sí          | —                                         |
+| `category_slug`      | `relation`      | sí          | —                                         |
+| `sku`                | `text`          | sí          | unique: true                              |
+| `brand`              | `text`          | no          | —                                         |
+| `price`              | `currency`      | sí          | —                                         |
+| `availability`       | `select`        | sí          | enum: availability                        |
+| `featured`           | `boolean`       | sí          | default: false                            |
+| `active`             | `boolean`       | sí          | default: true                             |
+| `description`        | `textarea`      | sí          | minLength: 100 · maxLength: 2000          |
+| `seo_title`          | `text`          | no          | —                                         |
+| `seo_description`    | `textarea`      | sí          | —                                         |
+| `registro_sanitario` | `text`          | no          | —                                         |
+| `clase_riesgo`       | `select`        | no          | enum: risk_class                          |
+| `titular_registro`   | `text`          | no          | —                                         |
+| `updated_at`         | `readonly-text` | no          | generado: now · sistema                   |
+| `images`             | `list`          | sí          | min: 1                                    |
+| `images.image_url`   | `image`         | sí          | —                                         |
+| `images.image_alt`   | `text`          | sí          | —                                         |
+| `specs`              | `key-value`     | no          | —                                         |
+| `faq`                | `list`          | no          | —                                         |
+| `faq.question`       | `text`          | sí          | —                                         |
+| `faq.answer`         | `textarea`      | sí          | —                                         |
+
+**Listado** — `listProjection`: `slug`, `name`, `category_slug`, `price`, `availability`, `registro_sanitario`, `featured`, `active`, `images`
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+
+### `site`
+
+titleField: `name` · kind: `singleton` · sheet: `site_config` · keyField: `key` · ordering: none
+
+**Operaciones**
+
+| Método | Path          | Notas |
+| ------ | ------------- | ----- |
+| GET    | `/admin/site` | —     |
+| PUT    | `/admin/site` | —     |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo          | Tipo          | Obligatorio | Reglas                             |
+| -------------- | ------------- | ----------- | ---------------------------------- |
+| `name`         | `text`        | sí          | —                                  |
+| `url`          | `url`         | sí          | —                                  |
+| `description`  | `textarea`    | sí          | —                                  |
+| `currency`     | `text`        | sí          | pattern: ^[A-Z]{3}$ · default: PEN |
+| `phone`        | `phone`       | sí          | —                                  |
+| `whatsapp`     | `phone`       | sí          | —                                  |
+| `email`        | `email`       | sí          | —                                  |
+| `address`      | `group`       | sí          | —                                  |
+| `geo`          | `group`       | sí          | —                                  |
+| `hours`        | `list`        | no          | —                                  |
+| `hours.days`   | `multiselect` | sí          | enum: days                         |
+| `hours.opens`  | `time`        | sí          | —                                  |
+| `hours.closes` | `time`        | sí          | —                                  |
+| `social`       | `string-list` | no          | —                                  |
+
+**Listado** — `listProjection`: —
+
+**Política** — read: `admin` · write: `admin` · cache: {"ttl":300} · audit · lock · publicable a front
+
+### `users`
+
+titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` · activeField: `active`
+
+**Operaciones**
+
+| Método | Path                 | Notas                    |
+| ------ | -------------------- | ------------------------ |
+| GET    | `/admin/users`       | —                        |
+| GET    | `/admin/users/{key}` | —                        |
+| POST   | `/admin/users`       | genera: `id` (uuid)      |
+| PUT    | `/admin/users/{key}` | —                        |
+| DELETE | `/admin/users/{key}` | baja lógica vía `active` |
+
+**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**
+
+| Campo           | Tipo            | Obligatorio | Reglas                                 |
+| --------------- | --------------- | ----------- | -------------------------------------- |
+| `id`            | `text`          | sí          | unique: true · generado: create · uuid |
+| `email`         | `email`         | sí          | unique: true                           |
+| `name`          | `text`          | sí          | —                                      |
+| `role`          | `select`        | sí          | enum: 1 valores · default: admin       |
+| `active`        | `boolean`       | sí          | default: true                          |
+| `last_login_at` | `readonly-text` | no          | —                                      |
+| `created_at`    | `readonly-text` | no          | —                                      |
+
+**Listado** — `listProjection`: `id`, `email`, `name`, `role`, `active`, `last_login_at`
+
+**Política** — read: `role:admin` · write: `role:admin` · cache: {"ttl":60} · audit · lock · publicable a front
+
 ## Resumen
 
 | #   | Método | Ruta                      | Acceso  | Límites                                                  | Recurso  | `input` | `output` | `since` |

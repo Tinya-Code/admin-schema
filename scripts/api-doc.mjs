@@ -4,9 +4,11 @@
 //   npm run api:doc                    → regenera doc/api-endpoints.md
 //   node scripts/api-doc.mjs --check   → no escribe; ROJO si el doc está viejo
 //
-// La fuente es `REGISTRY.endpoints` (api/schema/endpoints/*.js): la doc NO se
-// escribe a mano, así que una declaración nueva sólo puede quedar vieja en el
-// documento — y eso lo convierte en rojo dentro de `npm run api:check`.
+// La fuente es `REGISTRY.endpoints` (api/schema/endpoints/*.js) + la sección
+// de `REGISTRY.resources` (api/schema/resources/*.js, CRUD por recurso —
+// plan en doc/plan-doc-recursos.md): la doc NO se escribe a mano, así que una
+// declaración nueva sólo puede quedar vieja en el documento — y eso lo
+// convierte en rojo dentro de `npm run api:check`.
 //
 // Salida: **OpenAPI-lite** (resumen + una ficha por endpoint con `input` y
 // `output` en el mismo vocabulario `FIELD_TYPES` que valida el router) y el
@@ -93,8 +95,191 @@ function contractBlock_(title, decl) {
   return [`**${title}**`, '', FIELD_HEADER, ...rows].join('\n');
 }
 
-/** El documento crudo (sin formatear). La formatación es de `renderDoc`. */
-export function buildMarkdown(endpoints) {
+// ── Recursos CRUD (REGISTRY.resources) — plan §4 ────────────────────────────
+//
+// La fuente son los resources del back, NO el schema del front: el contract
+// ya valida ese contra este. Rutas y campos publicables salen de
+// `projectResourceSchema_` (handlers/schema.js) — la MISMA proyección que
+// sirve GET /admin/schema, así el doc nunca promete una ruta que el router
+// no resuelva. Un campo `secret` (R7.6) jamás se nombra.
+
+/** Legible para el doc: `FIELD_TYPES.readable === false` o `type: 'secret'`. */
+function readable_(field) {
+  const ft = globalThis.FIELD_TYPES;
+  const meta = ft ? ft[field.type] : undefined;
+  if (meta && meta.readable === false) return false;
+  return field.type !== 'secret';
+}
+
+/** field.key → 'create · uuid' para lo que genera el back en el alta. */
+function generatedBy_(resource) {
+  const map = new Map();
+  const ops = resource.operations ?? {};
+  for (const op of ['create', 'update']) {
+    const decl = ops[op];
+    const computed = decl && typeof decl === 'object' ? decl.computed : null;
+    if (!Array.isArray(computed)) continue;
+    for (const d of computed) {
+      if (d && typeof d.field === 'string' && typeof d.transform === 'string') {
+        map.set(d.field, `${op} · ${d.transform}`);
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * Tabla de campos del back. Misma cabecera que `FIELD_HEADER`, más la marca
+ * de generación en la columna de reglas. `itemFields` (type: list) anida con
+ * prefijo `hijo.` — los hijos de `history` se leen como `history.at`.
+ */
+function backFieldRows_(fields, generated, prefix = '') {
+  const rows = [];
+  for (const field of fields ?? []) {
+    if (!readable_(field)) continue;
+    const path = prefix + field.key;
+    const marks = [];
+    const g = generated.get(field.key);
+    if (g) marks.push(`generado: ${g}`);
+    if (field.computed === 'now') marks.push('generado: now');
+    if (field.system) marks.push('sistema');
+    const rules = [rules_(field), ...marks].filter((p) => p && p !== '—').join(' · ');
+    rows.push(
+      `| \`${path}\` | \`${field.type}\` | ${field.required ? 'sí' : 'no'} | ${rules || '—'} |`,
+    );
+    if (Array.isArray(field.itemFields)) {
+      rows.push(...backFieldRows_(field.itemFields, new Map(), `${path}.`));
+    }
+  }
+  return rows;
+}
+
+/** Operaciones efectivas: proyectadas; fallback si el handler no cargó. */
+function projectedOps_(resource) {
+  if (typeof globalThis.projectResourceSchema_ === 'function') {
+    return globalThis.projectResourceSchema_(resource).operations ?? {};
+  }
+  const base = '/admin/' + resource.id;
+  const ruta = { list: base, create: base, update: base, remove: base, get: base + '/{key}' };
+  const metodo = { list: 'GET', get: 'GET', create: 'POST', update: 'PUT', remove: 'DELETE' };
+  const out = {};
+  for (const [name, declared] of Object.entries(resource.operations ?? {})) {
+    if (!declared) continue;
+    if (name === 'remove' && typeof declared === 'object' && declared.mode === 'forbidden')
+      continue;
+    out[name] = { method: metodo[name] ?? 'GET', path: ruta[name] ?? base };
+  }
+  return out;
+}
+
+/** Ficha completa de un recurso (plan §4). */
+function resourceBlock_(resource) {
+  const proy =
+    typeof globalThis.projectResourceSchema_ === 'function'
+      ? globalThis.projectResourceSchema_(resource)
+      : {};
+  const generated = generatedBy_(resource);
+  const pol = resource.policies ?? {};
+
+  const opRows = Object.entries(projectedOps_(resource)).map(([name, entry]) => {
+    const notas = [];
+    if (name === 'create' && Array.isArray(resource.operations?.create?.computed)) {
+      notas.push(
+        'genera: ' +
+          resource.operations.create.computed
+            .map((d) => `\`${d.field}\` (${d.transform})`)
+            .join(', '),
+      );
+    }
+    if (name === 'remove') {
+      notas.push(
+        resource.activeField ? `baja lógica vía \`${resource.activeField}\`` : 'hard delete',
+      );
+    }
+    if (name === 'update' && Array.isArray(resource.operations?.update?.computed)) {
+      notas.push(
+        'deriva: ' + resource.operations.update.computed.map((d) => `\`${d.field}\``).join(', '),
+      );
+    }
+    return `| ${entry.method} | \`${entry.path}\` | ${notas.join(' · ') || '—'} |`;
+  });
+
+  const acceso = [
+    pol.access?.read ? `read: \`${pol.access.read}\`` : null,
+    pol.access?.write ? `write: \`${pol.access.write}\`` : null,
+    pol.cache ? `cache: ${esc(JSON.stringify(pol.cache))}` : null,
+    pol.audit ? 'audit' : null,
+    pol.lock ? 'lock' : null,
+    resource.exposeToFront ? 'publicable a front' : 'sólo back',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const campos = backFieldRows_(resource.fields, generated);
+  const listFields = (proy.listProjection ?? resource.listProjection ?? [])
+    .map((k) => `\`${k}\``)
+    .join(', ');
+
+  return [
+    `### \`${resource.id}\``,
+    '',
+    `titleField: \`${resource.titleField}\` · kind: \`${resource.kind}\` · sheet: \`${
+      resource.sheet ?? '—'
+    }\` · keyField: \`${resource.keyField}\`${
+      resource.activeField ? ` · activeField: \`${resource.activeField}\`` : ''
+    }${resource.ordering ? ` · ordering: ${esc(String(resource.ordering))}` : ''}`,
+    '',
+    '**Operaciones**',
+    '',
+    '| Método | Path | Notas |',
+    '| --- | --- | --- |',
+    ...opRows,
+    '',
+    '**Campos — payload y respuesta (los `secret` no existen para el doc, R7.6)**',
+    '',
+    FIELD_HEADER,
+    ...campos,
+    '',
+    `**Listado** — \`listProjection\`: ${listFields || '—'}`,
+    '',
+    `**Política** — ${acceso || '—'}`,
+  ].join('\n');
+}
+
+/** Sección completa: índice de recursos + ficha por recurso (orden alfabético). */
+function resourceSection_(resources) {
+  const ids = Object.keys(resources ?? {}).sort();
+  if (ids.length === 0) return [];
+  const head = [
+    '## Recursos (CRUD por recurso)',
+    '',
+    '> **Generado** de `api/schema/resources/*.js` (este bloque no se edita a',
+    '> mano). Las rutas salen de la misma proyección que sirve',
+    '> `GET /admin/schema`: una operación apagada no aparece acá porque',
+    '> responde 405. Los campos `secret` jamás se nombran.',
+    '',
+    '| # | Recurso | keyField | Operaciones | Acceso (write) |',
+    '| --- | --- | --- | --- | --- |',
+  ];
+  ids.forEach((id, i) => {
+    const r = resources[id];
+    const ops = Object.keys(projectedOps_(r))
+      .sort()
+      .map((o) => `\`${o}\``)
+      .join(', ');
+    head.push(
+      `| ${i + 1} | [\`${id}\`](#${id}) | \`${r.keyField}\` | ${ops} | ${
+        r.policies?.access?.write ? `\`${r.policies.access.write}\`` : '—'
+      } |`,
+    );
+  });
+  for (const id of ids) head.push('', resourceBlock_(resources[id]));
+  return head;
+}
+
+/** El documento crudo (sin formatear). La formatación es de `renderDoc`.
+ *  `resources` (REGISTRY.resources) añade la sección de CRUD por recurso. */
+export function buildMarkdown(endpoints, resources = null) {
   const ids = Object.keys(endpoints).sort((a, b) => {
     const ra = endpoints[a].route;
     const rb = endpoints[b].route;
@@ -216,6 +401,8 @@ export function buildMarkdown(endpoints) {
     '`VALIDATION_PAGE_SIZE`, `VALIDATION_PAGE_OFFSET`, `VALIDATION_CURSOR` y',
     '`VALIDATION_PAGINATION`, con `path` relativo al payload.',
     '',
+    ...(resources ? resourceSection_(resources) : []),
+    '',
     '## Resumen',
     '',
     '| # | Método | Ruta | Acceso | Límites | Recurso | `input` | `output` | `since` |',
@@ -238,14 +425,15 @@ export function firstDiff_(actual, expected) {
 }
 
 /** Documento final: crudo + formato del prettier del repo. */
-export async function renderDoc(endpoints) {
+export async function renderDoc(endpoints, resources = null) {
   const opts = (await prettier.resolveConfig(DOC_PATH)) ?? {};
-  return prettier.format(buildMarkdown(endpoints), { ...opts, parser: 'markdown' });
+  return prettier.format(buildMarkdown(endpoints, resources), { ...opts, parser: 'markdown' });
 }
 
 async function main(argv) {
   const { loadBackend } = await import('../api/__tests__/_harness.js');
-  const doc = await renderDoc(loadBackend().endpoints);
+  const backend = loadBackend();
+  const doc = await renderDoc(backend.endpoints, backend.resources);
   const check = argv.includes('--check');
 
   let actual = null;
