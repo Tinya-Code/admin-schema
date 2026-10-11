@@ -523,27 +523,32 @@ El token viaja en el campo `token` del envelope (no en headers):
 
 **Errores:**
 
-| Código | Descripción                                       | Causa                                       |
-| ------ | ------------------------------------------------- | ------------------------------------------- |
-| 400    | "Falta la referencia del pedido en la ruta"       | Parámetro `:ref` faltante                   |
-| 400    | "Falta el campo pin en el cuerpo de la solicitud" | Campo `pin` faltante                        |
-| 404    | "No hay PIN configurado para este pedido"         | No hay fila en `_pin` para este ref         |
-| 409    | "El PIN de este pedido ya fue utilizado"          | Todos los PINes del pedido tienen `used_at` |
-| 401    | "PIN incorrecto"                                  | El hash del PIN no coincide                 |
-| 429    | "Demasiados intentos fallidos para este pedido"   | 5 intentos fallidos en 60 segundos          |
-| 503    | "El sistema de PIN no está configurado"           | La hoja `_pin` no existe                    |
+| Código | Descripción                                       | Causa                                                  |
+| ------ | ------------------------------------------------- | ------------------------------------------------------ |
+| 400    | "Falta la referencia del pedido en la ruta"       | Parámetro `:ref` faltante                              |
+| 400    | "Falta el campo pin en el cuerpo de la solicitud" | Campo `pin` faltante                                   |
+| 403    | "El pedido ya no admite retiro de PIN"            | El pedido no está en estado PENDIENTE (R8.9)           |
+| 404    | "No hay PIN configurado para este pedido"         | Sin filas en `_pin`, o `pin_enabled` = NO (R8.9 · D12) |
+| 409    | "El PIN de este pedido ya fue utilizado"          | Todos los PINes del pedido tienen `used_at`            |
+| 410    | "El PIN de este pedido expiró"                    | `created_at` + `pin_ttl_hours` vencido (R8.9 · D12)    |
+| 401    | "PIN incorrecto"                                  | El hash del PIN no coincide                            |
+| 429    | "Demasiados intentos fallidos para este pedido"   | 5 intentos fallidos en 60 segundos                     |
+| 503    | "El sistema de PIN no está configurado"           | La hoja `_pin` no existe                               |
 
 **Lógica de verificación:**
 
 1. Lee la hoja `_pin` buscando filas para el `ref`
-2. Si no hay PIN configurado → 404
-3. Toma el PIN activo (más reciente con `used_at` vacío)
-4. Si no hay PIN activo (todos usados) → 409
-5. Cuenta intentos fallidos recientes (filas `__failed__` en 60 segundos)
-6. Si >= 5 intentos → 429
-7. Verifica el hash SHA-256 del PIN recibido contra `pin_hash` almacenado
-8. Si no coincide → registra intento fallido y responde 401
-9. Si coincide → marca `used_at` en la fila y responde 200
+2. Lee la config del singleton (`pickpass_config`): si `pin_enabled` = NO → 404 (mismo contrato que «sin PIN», D12)
+3. Si no hay PIN configurado → 404
+4. Lee el estado del pedido: si no está PENDIENTE (ENTREGADO/CANCELADO) → 403 (R8.9)
+5. Toma el PIN activo (más reciente con `used_at` vacío)
+6. Si no hay PIN activo (todos usados) → 409
+7. Comprueba el TTL: `created_at` + `pin_ttl_hours` (default 24 h) contra el reloj actual; vencido o sello ilegible → 410 (fail-closed, R8.9)
+8. Cuenta intentos fallidos recientes (filas `__failed__` en 60 segundos)
+9. Si >= 5 intentos → 429
+10. Verifica el hash SHA-256 del PIN recibido contra `pin_hash` almacenado
+11. Si no coincide → registra intento fallido y responde 401
+12. Si coincide → marca `used_at` en la fila y responde 200
 
 **Seguridad:**
 
@@ -558,6 +563,64 @@ El token viaja en el campo `token` del envelope (no en headers):
 - Acceso `public` - NO requiere token
 - El PIN nunca viaja en claro en la respuesta
 - Intentos fallidos se registran en `_pin` con hash `__failed__`
+
+---
+
+## 9. POST /admin/orders/:ref/actions/regenerate-pin - Regenerar PIN (admin)
+
+**Declarado en:** `api/schema/resources/orders.js` (`actions['regenerate-pin']` → handler `handlePinRegenerate`, `api/capabilities/handlers/pin-regenerate.js`).
+
+Regenera el PIN de un pedido sin recrearlo: es el remedio operativo de «pedido sin PIN recuperable» (R10). El PIN anterior deja de verificar (su fila activa queda `used_at`) y el nuevo pasa a ser el único activo.
+
+**Request:**
+
+```json
+{
+  "token": "tu-token-aqui",
+  "method": "POST",
+  "path": "/admin/orders/abc123/actions/regenerate-pin",
+  "payload": {}
+}
+```
+
+**Response:**
+
+```json
+{
+  "action": "regenerate-pin",
+  "affected": "abc123",
+  "handler": "handlePinRegenerate",
+  "result": {
+    "ok": true,
+    "ref": "abc123",
+    "pin": "482913"
+  }
+}
+```
+
+- `result.pin` es el PIN nuevo **en claro**: la llamada es admin autenticado y el operador necesita el valor para reenviárselo al cliente (el detail-view lo sirve readonly con el mismo criterio).
+
+**Errores:**
+
+| Código | Descripción                              | Causa                          |
+| ------ | ---------------------------------------- | ------------------------------ |
+| 400    | "Falta la clave del registro en la ruta" | Parámetro `:ref` faltante      |
+| 403    | "No autorizado"                          | Token inválido o sin rol admin |
+| 404    | "No existe: abc123"                      | El pedido no existe            |
+| 503    | "El sistema de PIN no está configurado"  | La hoja `_pin` no existe       |
+
+**Transacción** (todo bajo el lock de política del recurso):
+
+1. Genera el PIN nuevo (mismo transform `pin` que el create)
+2. Registra su SHA-256 en `_pin` (fila activa nueva)
+3. Actualiza la columna `pin` de la fila del pedido
+4. Sustitución: las filas activas viejas de ESTE ref quedan con `used_at` (las `__failed__` y las de otros refs no se tocan)
+5. Auditoría (`action:regenerate-pin`) + invalidación de caché del recurso
+
+**Notas:**
+
+- Escape hatch §6: el handler hace su propia auditoría y invalidación de caché (el dispatch de acciones no se las regala en esta ruta)
+- Ventana de fallo residual: si el proceso muere entre los pasos 2 y 3, el PIN viejo recibe 401 y el nuevo verifica (fail-closed, nunca acepta algo que no debería)
 
 ---
 

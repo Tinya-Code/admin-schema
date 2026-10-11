@@ -2716,47 +2716,64 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
 
 ### 8.1 Front
 
-- [ ] **R8.1** — `orders.schema.ts`
+- [x] **R8.1** — `orders.schema.ts`
   - Verificar `listColumns` ⊆ `listProjection` (hoy `pin` **no** está).
   - Verificar `postCreate.summaryFields` — **D11**: ¿entra `pin`? (R9)
   - Justificar cada `label`/`help`/`section`/`width`/`hiddenOn`/`readonlyOn`
     con un comentario de **una línea**.
+  - ✅ `listColumns` ⊆ `listProjection` verificado (`pin` va en la
+    proyección pero NO es columna de lista). **D11 = mantener `pin` fuera
+    de `summaryFields`** (la vía canónica es copy-share, que lo incluye en
+    el mensaje del cliente). Justificados 13 campos con una línea.
 
-- [ ] **R8.2** — `pickpass.schema.ts`
+- [x] **R8.2** — `pickpass.schema.ts`
   - Verificar `pin_ttl_hours` y `pin_enabled` (hoy sin runtime que los lea).
   - **D12:** implementar TTL/`pin_enabled` **o retirar los campos** (configurar
     algo que no hace nada = error de UX).
+  - ✅ **D12 = implementar** (R8.9 los consume). Helps corregidos:
+    `pin_ttl_hours` «pasado ese plazo deja de verificar»; `pin_enabled` en
+    No → pin-verify responde 404 (contrato externo sin cambio).
 
-- [ ] **R8.3** — `dashboard.schema.ts`
+- [x] **R8.3** — `dashboard.schema.ts`
   - Verificar `record-list.action.routeTemplate = '/orders/{ref}'` y
     `quick-actions.navigateTo = '/orders/new'` contra `shell.routes.ts`.
   - Verificar `source: 'payload'` de `status-progress` contra la respuesta
     real del endpoint.
   - **D13:** `bar-chart`/`chart-line` existen y ningún schema los declara →
     ¿se usan o se retiran?
+  - ✅ Rutas verificadas contra `shell.routes.ts`. `source: { kind:
+    'payload' }` OK. **D13 = mantener `bar-chart`/`chart-line`** (widgets
+    registrados, uso futuro legítimo).
 
 ### 8.2 Back
 
-- [ ] **R8.4** — `orders.js`
+- [x] **R8.4** — `orders.js`
   - `listProjection` contra `listColumns` (regla R1.6 ya activa).
   - Las 4 `views` — ¿se consumen las 4?
   - `checks` (`not-in-sheet`, `no-auth-after-delivered`,
     `history-append-only`) ¿cubiertos por tests?
   - `policies.cache.ttl: 60` frente a `audit: true` y `lock: true`.
+  - ✅ Las 4 views consumidas por el dashboard. Los 3 checks con specs
+    (checks.spec.js). `cache.ttl: 60` seguro con audit+lock (24-crud
+    invalida caché antes del lock en toda escritura).
 
-- [ ] **R8.5** — `pickpass.js`
+- [x] **R8.5** — `pickpass.js`
   - `kvColumns` contra la hoja real (singleton KV).
   - `policies.cache.ttl: 300` — ¿se invalida al cambiar `public_base_url`?
   - Resolución de D12.
+  - ✅ `kvColumns` coincide con 02-setup-sheets/04-setup-seed (hoja KV
+    canónica). ttl 300 seguro. Nota D12: consumido por pin-verify (R8.9).
 
-- [ ] **R8.6** — `dashboard.js`
+- [x] **R8.6** — `dashboard.js`
   - `sheet: null` — confirmar el guard (ya en `02-setup-sheets.js:119`).
   - `exposeToFront: true` con `fields: []` — ¿necesita exponerse? (R7.1)
   - `policies.access` coherente con el endpoint `admin`.
+  - ✅ Guard `sheet: null` verificado. `exposeToFront: true` se MANTIENE
+    (el front consume sus views/endpoint). Access coherente con admin.
 
 ### 8.3 Integración pública (D1 resuelta)
 
-- [ ] **R8.7** — Documentar el contrato público
+- [x] **R8.7** — Documentar el contrato público
   - **Contexto:** la app pública vive en **otro repo**; `/p/{ref}` es
     correcto tal cual (rutas dinámicas). **No se construye nada aquí.**
   - **Pasos:** anotar las rutas que ese repo llama y compararlas con
@@ -2764,20 +2781,39 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
     (`POST /p/orders/:ref/pin`), incluida la forma del body y los códigos.
   - **Hecho cuando:** no hay diferencia entre lo que el back expone y lo que
     esa app llama.
+  - ✅ Paridad back↔doc verificada (§6/§8). Tras R8.9 se documentaron los
+    códigos nuevos (403 estado · 410 TTL · 404 por `pin_enabled=NO`) y el
+    flujo ampliado de §8, y se añadió §9 con la acción regenerate-pin.
 
-- [ ] **R8.8** — Cerrar R10 (pedidos sin PIN recuperable) — **D14**
+- [x] **R8.8** — Cerrar R10 (pedidos sin PIN recuperable) — **D14**
   - **Opción A:** recrear los pedidos previos.
   - **Opción B:** implementar regeneración (transform + fila + sustitución de
     la fila en `_pin` en **la misma transacción** — hacerlo en dos pasos deja
     el hash desincronizado).
+  - ✅ **D14 = Opción B.** `orders.actions['regenerate-pin']` →
+    `handlePinRegenerate` (capabilities/handlers/pin-regenerate.js), todo
+    bajo `withPolicyLock_`. R8.8 además: `dispatchAction_` entrega
+    `request.resource` al escape hatch (28-actions.js). Front: trigger
+    `regenerate_pin` en orders.schema.ts + render en detail-view
+    (isTriggerAction, refreshTick para relectura). Spec nuevo
+    pin-regenerate.spec.js (11 tests, incl. integración dispatch).
 
-- [ ] **R8.9** — TTL y estado del pedido (R3)
+- [x] **R8.9** — TTL y estado del pedido (R3)
   - Si D12 implementa: `pin-verify` compara
     `created_at + pin_ttl_hours` contra `now` y rechaza
     `ENTREGADO`/`CANCELADO`.
   - **Tests:** vigente · expirado · entregado · cancelado.
+  - ✅ Implementado: config KV de `pickpass_config` (defaults 24 h/SI),
+    403 si status ≠ PENDIENTE (fail-closed, recurso vía endpointDecl),
+    410 si vencido o sello ilegible, 404 defensivo si no existe el pedido.
+    Tests: 20 en pin-verify.spec.js (5 nuevos: ENTREGADO/CANCELADO/fantasma/
+    TTL×2 + pin_enabled×2). Mutacionales: TTL mutado → 3 rojos; estado
+    mutado → 2 rojos.
 
-- [ ] **R8.10** — Gates de la fase
+- [x] **R8.10** — Gates de la fase
+  - ✅ 6 gates frescos: front **413/53** · api **737/44** · api:check **5
+    VERDE** · build ✔ · prettier baseline **18** · drift VERDE.
+    Mutacionales R8.8 (sustitución mutada → 2 rojos). Residuos 0.
 
 ---
 
