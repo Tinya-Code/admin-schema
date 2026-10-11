@@ -171,7 +171,12 @@ function errorMessage(err: unknown, fallback: string): string {
               }
             </app-empty-state>
           } @else {
-            <div class="overflow-x-auto rounded-xl border border-neutral/20 bg-surface">
+            <!-- La tabla es la vista de escritorio: se oculta bajo lg para
+                 que la lista de tarjetas de abajo sea la ÚNICA vista en
+                 móvil (con las dos visibles, el listado se duplicaba). -->
+            <div
+              class="hidden overflow-x-auto rounded-xl border border-neutral/20 bg-surface lg:block"
+            >
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-neutral/20 text-left text-xs uppercase text-neutral">
@@ -385,7 +390,8 @@ function errorMessage(err: unknown, fallback: string): string {
                           app-button
                           variant="outline"
                           type="button"
-                          class="min-h-11 flex-1 text-xs"
+                          size="sm"
+                          class="flex-1"
                           (click)="$event.stopPropagation(); goView(row)"
                         >
                           <svg lucideEye size="15" aria-hidden="true" />
@@ -397,7 +403,8 @@ function errorMessage(err: unknown, fallback: string): string {
                           app-button
                           variant="outline"
                           type="button"
-                          class="min-h-11 flex-1 text-xs"
+                          size="sm"
+                          class="flex-1"
                           (click)="$event.stopPropagation(); runAction(action, row)"
                         >
                           @let actionIcon = iconOf(action);
@@ -415,7 +422,8 @@ function errorMessage(err: unknown, fallback: string): string {
                           app-button
                           variant="outline"
                           type="button"
-                          class="min-h-11 flex-1 text-xs"
+                          size="sm"
+                          class="flex-1"
                           (click)="$event.stopPropagation(); quickEditRow.set(row)"
                         >
                           <svg lucideZap size="15" aria-hidden="true" />
@@ -426,7 +434,8 @@ function errorMessage(err: unknown, fallback: string): string {
                           app-button
                           variant="outline"
                           type="button"
-                          class="min-h-11 flex-1 text-xs"
+                          size="sm"
+                          class="flex-1"
                           (click)="$event.stopPropagation(); goEdit(row)"
                         >
                           <svg lucidePencil size="15" aria-hidden="true" />
@@ -438,7 +447,8 @@ function errorMessage(err: unknown, fallback: string): string {
                           app-button
                           variant="danger"
                           type="button"
-                          class="min-h-11 flex-1 text-xs"
+                          size="sm"
+                          class="flex-1"
                           (click)="$event.stopPropagation(); removeRow(row)"
                         >
                           <svg lucideTrash2 size="15" aria-hidden="true" />
