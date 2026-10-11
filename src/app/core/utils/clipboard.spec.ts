@@ -29,6 +29,25 @@ describe('buildShareMessage', () => {
     expect(buildShareMessage(URL, text)).toBe(`${text} ${URL}`);
   });
 
+  it('un mensaje que sólo menciona la base del sitio NO recibe el enlace', () => {
+    // Caso real reportado: la plantilla interpola `{public_base_url}` (la
+    // base, sin `/p/{ref}`) y el motor le pegaba la URL con código al final
+    // aunque el mensaje YA apuntaba al sitio. El criterio es el origin,
+    // no la URL exacta.
+    const text = '🔗 Consulta tu pedido en https://ejemplo.test';
+    expect(buildShareMessage(URL, text)).toBe(text);
+  });
+
+  it('un mensaje que apunta a OTRO sitio sí recibe el enlace', () => {
+    const text = 'Sigue el pedido en https://otro-sitio.test/pedidos';
+    expect(buildShareMessage(URL, text)).toBe(`${text} ${URL}`);
+  });
+
+  it('con URL relativa sólo casa la coincidencia exacta', () => {
+    expect(buildShareMessage('/p/abc123', 'Ver en /p/abc123')).toBe('Ver en /p/abc123');
+    expect(buildShareMessage('/p/abc123', 'Ver tu pedido')).toBe('Ver tu pedido /p/abc123');
+  });
+
   it('recorta el shareText pero nunca la URL', () => {
     expect(buildShareMessage(URL, '  Hola Ana  ')).toBe(`Hola Ana ${URL}`);
     expect(buildShareMessage('', 'Hola Ana')).toBe('Hola Ana');

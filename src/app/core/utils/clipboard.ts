@@ -9,8 +9,15 @@
  *
  * Tres casos, sin perder información y sin duplicar el enlace:
  *  - sin `shareText`            → sólo la URL
- *  - `shareText` con la URL ya dentro → el mensaje tal cual
- *  - `shareText` sin la URL     → mensaje + espacio + URL
+ *  - `shareText` con el sitio ya mencionado → el mensaje tal cual
+ *  - `shareText` sin el sitio   → mensaje + espacio + URL
+ *
+ * "Sitio" se decide por ORIGIN, no por la URL exacta: la plantilla puede
+ * referenciar sólo la base (`{public_base_url}` → `https://ejemplo.com`)
+ * o la URL completa con el path (`…/p/{ref}`); en ambos casos el mensaje
+ * YA apunta al sitio y no se le pega nada al final. Antes se comparaba
+ * contra la URL completa, así que un mensaje con la base recibía la URL
+ * con código duplicada al final.
  *
  * @param url        Enlace resuelto (`urlTemplate`).
  * @param shareText  Mensaje formateado opcional (`shareTextTemplate`).
@@ -18,8 +25,20 @@
 export function buildShareMessage(url: string, shareText?: string): string {
   const text = (shareText ?? '').trim();
   if (!text) return url;
-  if (url && text.includes(url)) return text;
+  if (url && mentionsSite(text, url)) return text;
   return url ? `${text} ${url}` : text;
+}
+
+/** ¿El mensaje ya apunta al sitio de `url` (origin o URL exacta)? */
+function mentionsSite(text: string, url: string): boolean {
+  if (text.includes(url)) return true;
+  try {
+    const { origin } = new URL(url);
+    return origin !== 'null' && text.includes(origin);
+  } catch {
+    // `url` relativa (`/p/123`): sin origin que comparar, sólo la URL exacta.
+    return false;
+  }
 }
 
 /**
