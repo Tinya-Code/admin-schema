@@ -19,7 +19,14 @@ REGISTRY.resources.users = {
   operations: {
     list: true,
     get: true,
-    create: true,
+    // El id lo GENERA el back (mismo patrón que products.slug/orders.ref):
+    // sin esto el create exigía un id que el form no puede proveer (el front
+    // lo declara readonlyOn always) — 422 required en 24-crud. `from: name`
+    // sólo dispara el transform (como customer_name en orders): uuid no usa
+    // el origen, sólo requiere que no esté vacío.
+    create: {
+      computed: [{ field: 'id', transform: 'uuid', from: 'name' }],
+    },
     update: true,
     remove: true, // baja lógica vía activeField (soft del motor)
   },

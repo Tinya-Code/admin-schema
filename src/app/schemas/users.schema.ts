@@ -38,6 +38,10 @@ export const usersSchema: ResourceSchema = {
       label: 'ID',
       type: 'text',
       required: true,
+      // En alta lo genera el back (create.computed uuid, como products.slug):
+      // el form no lo pide ni lo muestra. En edición se ve, pero es inmutable
+      // (readonly + unique).
+      hiddenOn: 'create',
       readonlyOn: 'always',
       // El back declara `unique: true` en el keyField; el contract-check
       // compara validators efectivos (top-level + validators.*).

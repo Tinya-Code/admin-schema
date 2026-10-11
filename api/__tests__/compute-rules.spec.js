@@ -137,4 +137,28 @@ describe('computeRules_', () => {
     });
     expect(payload.ref).toBe('ABC234');
   });
+
+  // users: el id lo GENERA el back en el create — el form no lo pide
+  // (readonlyOn always + hiddenOn create en el front). Sin esta regla el
+  // alta tiraba 422 `id: required` (24-crud:463).
+  it('users: el create genera el id con uuid (from: name sólo como trigger)', () => {
+    const users = globalThis.REGISTRY.resources.users;
+    const payload = { name: 'Ada Lovelace', email: 'ada@example.test' };
+    ejecuta(users, payload);
+    // GAS: Utilities.getUuid() ⇒ uuid con guiones; Node (tests): 32 hex.
+    expect(payload.id).toMatch(
+      /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it('users: no toca el id si el caller ya lo definió / en update', () => {
+    const users = globalThis.REGISTRY.resources.users;
+    const manual = { name: 'Ada', id: 'id-manual' };
+    ejecuta(users, manual);
+    expect(manual.id).toBe('id-manual');
+
+    const update = { name: 'Ada', id: 'id-guardado' };
+    ejecuta(users, update, { isNew: false });
+    expect(update.id).toBe('id-guardado');
+  });
 });
