@@ -2636,10 +2636,37 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
     - **Gates:** front **401/53** · api **711/38** · `api:check` **5
       VERDE** · build ✔ · prettier baseline · drift VERDE.
 
-- [ ] **R7.5** — Consumo de políticas en UI (F10)
+- [x] **R7.5** — Consumo de políticas en UI (F10) — hecha 2026-10-10
   - **`policies` gobiernan botones, campos y acciones** (ocultar /
     solo-lectura) sin código por vista.
   - ⚠️ **Sólo UX** — el back vuelve a verificar siempre.
+  - ✅ **Decisión de contrato:** sin `policies` ni `permissions` el front
+    conserva la UX optimista de §5.3 legacy (se muestra todo; el back
+    responde 403 si el rol no alcanza). Fail-closed SÓLO donde hay
+    `policies` declaradas — cambiar el default rompía 36 tests que montan
+    vistas sin sesión y el contrato existente de los schemas locales.
+  - **`AuthService` (única fuente de verdad de roles en UI):**
+    - `canDoOperation(schema, op)`: override de `policies.access.operations`
+      → umbral del grupo (`read` para list/get, `write` para
+      create/update/remove) → legacy `permissions` → default optimista.
+      `meetsLevel` replica la jerarquía del back (public · session ·
+      `role:*` con admin alcanzando cualquier rol).
+    - `canReadField` / `canWriteField`: sin `access` ⇒ sin restricción;
+      con `access` ⇒ `meetsLevel`.
+  - **Consumidores:** list-view (`canCreate`/`canUpdate`/`canRemove` ya no
+    leen `permissions` a pelo) · form-view (`canSave`/`canDelete`) ·
+    detail-view (oculta campos sin `read`, también en cabecera y
+    secciones) · resource-page (`hasNoAccess` con policies) · sidebar
+    (policies ⇒ criterio dinámico vía `canAccess`, no el estático viejo).
+  - **Specs nuevos:** 10 casos en `auth.service.spec.ts` (precedencia
+    override > umbral con override más estricto que el grupo — el más
+    suelto lo rechaza el arranque del back · staff lista pero no hace get
+    · legacy permissions · default optimista · sin sesión · campos con y
+    sin `access`). **Specs existentes ajustados:** los que montan
+    vistas añaden `API_URL` (AuthService lo inyecta; convención ya usada
+    por list-view.*.spec).
+  - **Gates:** front **412/53** · api **711/38** · `api:check` **5
+    VERDE** · build ✔ · prettier baseline · drift VERDE.
 
 - [ ] **R7.6** — Tipo `secret` + recurso `users` (auth §7.5)
   - **Tipo nuevo** en `FIELD_TYPES`:
