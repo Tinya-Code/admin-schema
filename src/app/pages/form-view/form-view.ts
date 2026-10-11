@@ -376,7 +376,7 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
                      desaparecían al final del scroll. bg-surface es opaco: sin
                      él el contenido vería pasar por detrás. -->
               <div
-                class="sticky bottom-0 z-10 mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-neutral/20 bg-surface pt-4 pb-4"
+                class="sticky bottom-0 z-10 mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-neutral/20 bg-surface pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
               >
                 @if (canDelete()) {
                   <div class="mr-auto">

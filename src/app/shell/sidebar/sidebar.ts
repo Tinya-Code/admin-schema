@@ -31,18 +31,20 @@ interface MenuEntry {
       class="fixed inset-y-0 left-0 z-40 w-60 shrink-0 h-[100svh] min-h-[80svh] lg:sticky  border-r border-neutral/20 bg-surface-raised transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
       [class.-translate-x-full]="!open()"
     >
-      <div class="flex items-center justify-between gap-2 border-b border-neutral/20 px-5 py-4">
-        <span class="font-display text-base font-semibold">Admin</span>
+      <div class="flex items-center justify-between gap-2 border-b border-neutral/20 px-4 py-4">
+        <!-- min-w-0+truncate: si el toggle exige su ancho, el rótulo se
+             trunca en vez de desbordar la sidebar de 240 px. -->
+        <span class="min-w-0 truncate font-display text-base font-semibold">Admin</span>
         <app-theme-toggle />
       </div>
       <nav aria-label="Principal" class="p-3">
-        <ul class="space-y-1">
+        <ul class="space-y-2 lg:space-y-1">
           @for (item of menuItems(); track item.id) {
             <li>
               <a
                 [routerLink]="['/', item.id]"
                 routerLinkActive="bg-primary/10 text-primary"
-                class="block rounded-lg px-3 py-2 text-sm font-medium text-neutral hover:bg-neutral/10"
+                class="flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium text-neutral hover:bg-neutral/10"
                 (click)="open.set(false)"
               >
                 {{ item.label }}

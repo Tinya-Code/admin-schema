@@ -4,7 +4,10 @@ import { LucideMonitor, LucideMoon, LucideSun } from '@lucide/angular';
 import { ThemeService, type ThemeMode } from '../../core/services/theme.service';
 
 const BASE =
-  'rounded-md p-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'rounded-md p-1.5 transition-colors ' +
+  // 44×44 en mobile (guía ux-ui-mobile §8.2); en lg vuelve a 28 px (ratón).
+  'min-h-11 min-w-11 lg:min-h-0 lg:min-w-0 ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 const ACTIVE = 'bg-primary/10 text-primary';
 const IDLE = 'text-neutral hover:bg-neutral/10';
 

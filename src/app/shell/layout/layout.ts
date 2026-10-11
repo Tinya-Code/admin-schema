@@ -1,6 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
+import { Button } from '../../shared/components/button/button';
 import { Sidebar } from '../sidebar/sidebar';
 
 /**
@@ -12,12 +13,15 @@ import { Sidebar } from '../sidebar/sidebar';
  */
 @Component({
   selector: 'app-layout',
-  imports: [RouterOutlet, Sidebar],
+  imports: [RouterOutlet, Sidebar, Button],
   template: `
     <div class="flex min-h-screen bg-neutral/5">
       <button
+        app-button
         type="button"
-        class="fixed left-3 top-3 z-40 rounded-lg border border-neutral/20 bg-surface p-2 shadow-md lg:hidden"
+        variant="outline"
+        size="icon"
+        class="fixed top-[calc(env(safe-area-inset-top)+0.75rem)] left-3 z-40 shadow-md lg:hidden"
         [attr.aria-expanded]="sidebarOpen()"
         aria-controls="main-sidebar"
         aria-label="Abrir menú"
@@ -42,7 +46,12 @@ import { Sidebar } from '../sidebar/sidebar';
         ></div>
       }
       <app-sidebar id="main-sidebar" [(open)]="sidebarOpen" />
-      <main class="min-w-0 flex-1 p-4 pt-16 sm:p-6 lg:p-8">
+      <!-- pt reafirmado en sm: sin esto la variante sm:p-6 (va después en la
+           cascada) pisa el pt-16 base y el contenido choca con la hamburguesa.
+           base/sm dejan pasar el safe-area del notch; en lg no hay hamburguesa. -->
+      <main
+        class="min-w-0 flex-1 p-4 pt-[calc(4rem+env(safe-area-inset-top))] sm:p-6 sm:pt-[calc(4rem+env(safe-area-inset-top))] lg:p-8"
+      >
         <router-outlet />
       </main>
     </div>
