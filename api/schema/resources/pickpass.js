@@ -28,11 +28,19 @@ REGISTRY.resources.pickpass = {
   views: {},
   policies: {
     access: { read: 'admin', write: 'admin' },
+    // R8.5: ttl 300 es seguro porque 24-crud invalida la caché en TODA
+    // escritura (update incluido): cambiar public_base_url no deja al front
+    // con la URL vieja más allá de la propia petición.
     cache: { ttl: 300 },
     audit: true,
     lock: true,
   },
   exposeToFront: true,
+  // R8.5: kvColumns ['key','value','type','note'] coincide con lo que
+  // 02-setup-sheets crea (principalColSpecs_ singleton) y con lo que
+  // 04-setup-seed escribe ([key, def, type, '']) — hoja KV canónica.
+  // D12: pin_ttl_hours y pin_enabled los consume pin-verify (R8.9):
+  // TTL de vigencia y rechazo cuando el PIN está deshabilitado.
   fields: [
     { key: 'public_base_url', type: 'url', required: true },
     { key: 'share_message_template', type: 'textarea', required: true },

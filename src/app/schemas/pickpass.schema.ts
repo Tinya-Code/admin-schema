@@ -24,7 +24,7 @@ export const pickpassSchema: ResourceSchema = {
       type: 'url',
       key: 'public_base_url',
       label: 'URL Base Pública',
-      required: true,
+      required: true, // los templates de share lo interpolan como {public_base_url}
       help: 'URL base del sitio público para generar enlaces de consulta (ej. https://retiro.miempresa.com).',
       section: 'general',
       width: 12,
@@ -34,7 +34,7 @@ export const pickpassSchema: ResourceSchema = {
       key: 'share_message_template',
       label: 'Plantilla de Mensaje para Compartir',
       required: true,
-      rows: 3,
+      rows: 3, // mensaje multi-línea de WhatsApp
       help: 'Mensaje predeterminado al compartir por WhatsApp o enlace. Incluí {ref} para insertar el código del pedido.',
       section: 'general',
       width: 12,
@@ -44,10 +44,12 @@ export const pickpassSchema: ResourceSchema = {
       key: 'pin_ttl_hours',
       label: 'Tiempo de Vida del PIN (Horas)',
       required: true,
-      default: 24,
+      default: 24, // un día: cobertura del retiro sin PIN eterno
       min: 1,
-      max: 720,
-      help: 'Duración en horas del PIN de seguridad generado para escrituras públicas.',
+      max: 720, // un mes: tope superior razonable
+      // D12 (R8.9): `pin-verify` compara created_at + este TTL contra now y
+      // rechaza vencidos; también rechaza ENTREGADO/CANCELADO.
+      help: 'Duración en horas del PIN de retiro: pasado ese plazo deja de verificar.',
       section: 'seguridad',
       width: 6,
     },
@@ -56,11 +58,15 @@ export const pickpassSchema: ResourceSchema = {
       key: 'pin_enabled',
       label: 'PIN de Seguridad Habilitado',
       required: true,
-      default: 'SI',
+      default: 'SI', // el retiro verificado es el caso por defecto del negocio
       options: [
         { label: 'Sí', value: 'SI' },
         { label: 'No', value: 'NO' },
       ],
+      // D12: en `No`, `pin-verify` responde 404 «no hay PIN configurado» —
+      // el mismo código que ya maneja la app pública cuando un pedido no
+      // exige PIN, así el contrato externo no cambia (R8.5).
+      help: 'En No, el público no necesita PIN para verificar un pedido.',
       section: 'seguridad',
       width: 6,
     },

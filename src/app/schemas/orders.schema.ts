@@ -37,6 +37,9 @@ export const ordersSchema: ResourceSchema = {
       ],
     },
   ],
+  // listColumns ⊆ listProjection del back (contract-check regla 5). `pin` se
+  // proyecta pero NO se lista: el operador lo copia vía acción/share, no
+  // escaneando la tabla (R8.1).
   listColumns: [
     { key: 'ref', label: 'Ref' },
     { key: 'customer_name', label: 'Cliente' },
@@ -53,6 +56,10 @@ export const ordersSchema: ResourceSchema = {
     title: '¡Pedido Registrado con Éxito!',
     description:
       'El pedido {ref} fue generado. Puede compartir el enlace de retiro con el cliente.',
+    // D11: `pin` queda FUERA del resumen — el modal no lo muestra porque la
+    // vía canónica es la acción copy-share, que lo incluye en el mensaje del
+    // cliente; duplicarlo en el modal expondría el PIN en una captura de
+    // pantalla que no viaja al cliente (R8.1).
     summaryFields: ['ref', 'customer_name', 'pickup_date', 'status'],
     actions: [
       {
@@ -73,6 +80,18 @@ export const ordersSchema: ResourceSchema = {
       urlTemplate: '{public_base_url}/p/{ref}',
       shareTextTemplate:
         'Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}. Su PIN es {pin}.',
+    },
+    // R8.8 (D14): regenera el PIN desde el detalle/listado — el remedio
+    // operativo de «pedido sin PIN recuperable» (R10) sin recrear el pedido.
+    // El back lo resuelve con `handlePinRegenerate` (orders.actions
+    // ['regenerate-pin']); el trigger sólo dispara la ruta y recarga.
+    {
+      id: 'regenerate_pin',
+      type: 'trigger',
+      name: 'regenerate-pin',
+      label: 'Regenerar PIN',
+      confirmMessage:
+        'Se generará un PIN nuevo para este pedido; el anterior dejará de verificar. ¿Continuar?',
     },
   ],
   layout: {
@@ -133,7 +152,7 @@ export const ordersSchema: ResourceSchema = {
       type: 'text',
       key: 'customer_name',
       label: 'Nombre del Cliente',
-      required: true,
+      required: true, // titleField del recurso: siempre presente
       placeholder: 'Ej. Ana Pérez',
       validators: { maxLength: 80 },
       section: 'pedido',
@@ -143,7 +162,7 @@ export const ordersSchema: ResourceSchema = {
       type: 'textarea',
       key: 'description',
       label: 'Descripción del Pedido',
-      required: true,
+      required: true, // campo textil del negocio: sin descripción no hay pedido
       help: 'Qué es el pedido: mínimo 3 palabras, máximo 120.',
       validators: { minWords: 3, maxWords: 120 },
       section: 'pedido',
@@ -153,17 +172,17 @@ export const ordersSchema: ResourceSchema = {
       type: 'date',
       key: 'pickup_date',
       label: 'Fecha Acordada de Retiro',
-      required: true,
+      required: true, // es lo que el operador confirma por teléfono
       help: 'Cuándo viene el cliente a retirarlo.',
       section: 'pedido',
-      width: 6,
+      width: 6, // mitad de fila: date corto
     },
     {
       type: 'select',
       key: 'status',
       label: 'Estado',
       required: true,
-      default: 'PENDIENTE',
+      default: 'PENDIENTE', // todo pedido nace pendiente (transform back)
       options: [
         { label: 'Pendiente', value: 'PENDIENTE' },
         { label: 'Entregado', value: 'ENTREGADO' },
@@ -177,7 +196,7 @@ export const ordersSchema: ResourceSchema = {
       key: 'reference_photo',
       label: 'Foto de Referencia del Pedido',
       section: 'pedido',
-      width: 6,
+      width: 6, // opcional: sólo si el cliente mandó foto
     },
     {
       type: 'textarea',
@@ -186,7 +205,7 @@ export const ordersSchema: ResourceSchema = {
       placeholder: 'Ej. Entregar por el portón trasero, llamar antes',
       validators: { maxLength: 500 },
       section: 'pedido',
-      width: 12,
+      width: 12, // textarea libre: fila completa
     },
     {
       type: 'text',
@@ -195,14 +214,14 @@ export const ordersSchema: ResourceSchema = {
       help: 'Quién viene a retirar. Déjelo vacío si retira el propio cliente.',
       validators: { maxLength: 80 },
       section: 'autorizado',
-      width: 6,
+      width: 6, // opcional: vacío = retira el propio cliente
     },
     {
       type: 'image',
       key: 'authorized_photo',
       label: 'Foto del Autorizado',
       section: 'autorizado',
-      width: 6,
+      width: 6, // la usa el personal para chequear identidad en el retiro
     },
     {
       type: 'textarea',
@@ -210,14 +229,14 @@ export const ordersSchema: ResourceSchema = {
       label: 'Notas sobre la Autorización',
       validators: { maxLength: 300 },
       section: 'autorizado',
-      width: 12,
+      width: 12, // textarea: fila completa
     },
     {
       type: 'select',
       key: 'auth_state',
       label: 'Estado de Autorización',
       help: 'Activa habilita el retiro por tercero con el código del pedido.',
-      default: 'NINGUNO',
+      default: 'NINGUNO', // sin persona autorizada al crear
       options: [
         { label: 'Ninguno', value: 'NINGUNO' },
         { label: 'Activa', value: 'ACTIVA' },
@@ -231,21 +250,21 @@ export const ordersSchema: ResourceSchema = {
       key: 'created_at',
       label: 'Fecha de creación',
       section: 'sistema',
-      width: 6,
+      width: 6, // auditoría del back, siempre readonly-text
     },
     {
       type: 'readonly-text',
       key: 'updated_at',
       label: 'Última actualización',
       section: 'sistema',
-      width: 6,
+      width: 6, // auditoría del back, siempre readonly-text
     },
     {
       type: 'list',
       key: 'history',
       label: 'Historial',
       min: 0,
-      max: 200,
+      max: 200, // lo appenda el back (history-append-only): el operador no lo edita
       section: 'historial',
       itemFields: [
         {

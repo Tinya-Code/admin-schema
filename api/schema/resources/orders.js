@@ -83,6 +83,14 @@ REGISTRY.resources.orders = {
   hooks: {
     create: ['pinHash'],
   },
+  // R8.8 (D14): regenerar el PIN de un pedido — la vía de R10 («pedidos sin
+  // PIN recuperable») sin recrear el pedido. Escape hatch §6: el handler
+  // rehace transform + fila + sustitución en `_pin` BAJO EL MISMO lock;
+  // hacerlo en dos pasos deja el hash desincronizado de la fila. El dispatch
+  // NO audita ni invalida caché en esta ruta — lo hace el propio handler.
+  actions: {
+    'regenerate-pin': { handler: 'handlePinRegenerate' },
+  },
   checks: [
     { check: 'not-in-sheet', sheet: '_placeholders' },
     { check: 'no-auth-after-delivered' },
@@ -90,10 +98,19 @@ REGISTRY.resources.orders = {
   ],
   policies: {
     access: { read: 'admin', write: 'admin' },
+    // R8.4: ttl 60 es seguro con audit+lock porque 24-crud llama
+    // cacheInvalidate_ en TODA escritura (create/update/remove) ANTES del
+    // lock: el TTL es techo de staleness entre mutaciones, no ventana de
+    // datos viejos tras una.
     cache: { ttl: 60 },
     audit: true,
     lock: true,
   },
+  // R8.4: los 4 views están consumidos por los widgets del dashboard
+  // (dashboard.schema.ts): pendientes/entregados/cancelados alimentan las
+  // metric-cards y el status-progress; pendientes_recientes alimenta el
+  // record-list. Los 3 checks tienen specs (checks.spec.js,
+  // check-ctx.spec.js, validate-registry.spec.js).
   views: {
     // Contadores para las metric-cards del dashboard.
     // aggregate: 'count' → devuelve [{ value: n }] (refactormotor.md B6).
