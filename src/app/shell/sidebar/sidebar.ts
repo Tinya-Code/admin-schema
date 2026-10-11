@@ -78,6 +78,15 @@ export class Sidebar {
 }
 
 function isVisible(schema: ResourceSchema): boolean {
+  // R7.5: usar policies cuando existan, fallback a permissions
+  if (schema.policies?.access) {
+    // Con policies, asumimos que si el usuario tiene sesión puede ver el recurso
+    // (el filtrado real lo hace `canAccess` en el computed, que evalúa el rol).
+    // Esta función sólo puede aplicar criterios estáticos, no dinámicos.
+    return true;
+  }
+
+  // Fallback a permissions (legacy)
   const permissions = schema.permissions;
   if (!permissions) {
     return true;

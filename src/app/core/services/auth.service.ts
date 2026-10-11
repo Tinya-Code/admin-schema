@@ -3,6 +3,7 @@ import { computed, inject, Service, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, map, Observable, of, tap } from 'rxjs';
 
+import type { FieldSchema, ResourceSchema } from '../models/schema.model';
 import { renewedTokenOf } from '../models/api.model';
 import { API_URL } from '../tokens';
 
@@ -234,6 +235,99 @@ export class AuthService {
     const required = role === '' ? (access?.roles ?? []) : [role];
     if (required.length === 0) return true;
     return required.some((one) => this.hasRole(one));
+  }
+
+  // ── R7.5 · Consumo de políticas en UI (F10) ───────────────────────────────
+
+  /**
+   * Evalúa si el usuario puede ejecutar una operación específica según
+   * `policies.access.operations` del recurso (B8 · R7.4a).
+   *
+   * El override por operación tiene prioridad sobre el umbral del grupo.
+   * Si no hay override, se usa el umbral `policies.access.read` o
+   * `policies.access.write` según la operación.
+   *
+   * Fallback a `permissions` (legacy) si `policies` no existe: mientras
+   * los schemas locales no tengan `policies`, se mantiene compatibilidad.
+   *
+   * Es **pura decisión de UI**. El back vuelve a verificar en cada petición
+   * (24-crud), así que esto sólo evita mostrar botones que darían 403.
+   */
+  canDoOperation(
+    schema: ResourceSchema,
+    operation: 'list' | 'get' | 'create' | 'update' | 'remove',
+  ): boolean {
+    // R7.5: intentar policies primero
+    const ops = schema.policies?.access?.operations;
+    if (ops && ops[operation]) {
+      return this.meetsLevel(ops[operation]);
+    }
+
+    // Sin override en policies: usar el umbral del grupo
+    if (schema.policies?.access) {
+      const isWrite = operation === 'create' || operation === 'update' || operation === 'remove';
+      const groupLevel = isWrite ? schema.policies.access.write : schema.policies.access.read;
+      return this.meetsLevel(groupLevel ?? 'admin');
+    }
+
+    // Fallback a permissions (legacy, R7.5 transición)
+    const perms = schema.permissions;
+    if (perms) {
+      const permMap: Record<string, boolean | undefined> = {
+        list: true, // list no tiene en permissions, siempre true si no hay policies
+        get: true,
+        create: perms.create,
+        update: perms.update,
+        remove: perms.remove,
+      };
+      return permMap[operation] !== false;
+    }
+
+    // Sin policies ni permissions: UX optimista (§5.3 legacy) — el back es
+    // la autoridad y responde 403 si el rol no alcanza.
+    return true;
+  }
+
+  /**
+   * Evalúa si el usuario puede leer un campo según `field.access.read`
+   * (B8 · R7.4b).
+   *
+   * Es **pura decisión de UI**. El back vuelve a filtrar la respuesta en
+   * cada petición (24-crud), así que esto sólo evita mostrar datos que el
+   * usuario no debería ver.
+   */
+  canReadField(field: FieldSchema): boolean {
+    if (!field.access || !field.access.read) return true; // sin restricción ⇒ visible
+    return this.meetsLevel(field.access.read);
+  }
+
+  /**
+   * Evalúa si el usuario puede escribir un campo según `field.access.write`
+   * (B8 · R7.4b).
+   *
+   * Es **pura decisión de UI**. El back rechaza la escritura con 422 si el
+   * usuario no tiene permiso, así que esto sólo pone el campo en
+   * solo-lectura en el frontend.
+   */
+  canWriteField(field: FieldSchema): boolean {
+    if (!field.access || !field.access.write) return true; // sin restricción ⇒ editable
+    return this.meetsLevel(field.access.write);
+  }
+
+  /**
+   * Verifica si el rol actual cumple un nivel de acceso dado.
+   * Usa la misma jerarquía que `ACCESS_ROLE_RANK` del back (11-auth):
+   * admin ≥ staff.
+   */
+  private meetsLevel(level: string): boolean {
+    if (level === 'public') return true;
+    if (level === 'session') return this.isAuthenticated();
+    if (level.startsWith('role:')) {
+      const requiredRole = level.slice('role:'.length);
+      return this.hasRole(requiredRole);
+    }
+    // fallback conservador: nivel desconocido ⇒ sólo admin
+    return this.hasRole('admin');
   }
 
   private open(token: string | null, user: SessionUser | null): void {

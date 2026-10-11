@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { distinctUntilChanged, map } from 'rxjs';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
+import { AuthService } from '../../core/services/auth.service';
 import { getSchema } from '../../schemas/registry';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { Dashboard } from '../dashboard/dashboard';
@@ -79,6 +80,7 @@ type View = 'list' | 'detail';
 export class ResourcePage {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
   // paramMap emite síncrono (ConvertToParamMap) → requireSync evita `| undefined`.
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
 
@@ -152,11 +154,30 @@ export class ResourcePage {
    * Colección sin ninguna operación posible u singleton sin `update`: no hay
    * nada que mostrar con sentido (base.md §10 «Sin permisos»).
    *
+   * R7.5: usa policies cuando existan, fallback a permissions.
+   *
    * Un dashboard nunca entra aquí: es un panel de sólo lectura, `ResourcePermissions`
    * no tiene `read` y el acceso real a los datos lo decide el endpoint
    * (A4: el cliente es interfaz, no autoridad).
    */
   hasNoAccess(schema: ResourceSchema): boolean {
+    // R7.5: intentar policies primero
+    if (schema.policies?.access) {
+      // Con policies, ocultar si el usuario no puede hacer NINGUNA operación
+      // relevante para el tipo de recurso
+      if (schema.kind === 'singleton') {
+        return !this.auth.canDoOperation(schema, 'update');
+      }
+      // collection: ocultar si no puede hacer list, create, update ni remove
+      return (
+        !this.auth.canDoOperation(schema, 'list') &&
+        !this.auth.canDoOperation(schema, 'create') &&
+        !this.auth.canDoOperation(schema, 'update') &&
+        !this.auth.canDoOperation(schema, 'remove')
+      );
+    }
+
+    // Fallback a permissions (legacy)
     const permissions = schema.permissions;
     if (!permissions || schema.kind === 'dashboard') {
       return false;

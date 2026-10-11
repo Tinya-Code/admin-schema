@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import type { FieldSchema, ResourceSchema } from '../models/schema.model';
 import { API_URL } from '../tokens';
 import { AuthService, SESSION_TOKEN_KEY, SESSION_USER_KEY } from './auth.service';
 
@@ -264,6 +265,155 @@ describe('AuthService — sesión (R2.7 / R2.9 / R2.12)', () => {
 
     it('una sesión menor NO ve un recurso `public`… sí: `public` no pide nada', () => {
       expect(injected().canAccess({ requires: 'public' })).toBe(true);
+    });
+  });
+
+  // ── R7.5 · políticas en UI (F10) ──────────────────────────────────────────────
+
+  describe('canDoOperation — políticas por operación (R7.5)', () => {
+    const schemaWithPolicies: ResourceSchema = {
+      id: 'test',
+      label: 'Test',
+      labelPlural: 'Tests',
+      kind: 'collection',
+      keyField: 'id',
+      titleField: 'name',
+      listColumns: [],
+      fields: [],
+      endpoint: {},
+      policies: {
+        access: {
+          read: 'role:staff',
+          write: 'role:admin',
+          operations: {
+            // Override más estricto que el umbral del grupo (read: role:staff) —
+            // el back lo admite; staff lista, pero no hace get: demuestra precedencia.
+            get: 'role:admin',
+          },
+        },
+      },
+    };
+
+    const schemaWithPermissions: ResourceSchema = {
+      id: 'test',
+      label: 'test',
+      labelPlural: 'tests',
+      kind: 'collection',
+      keyField: 'id',
+      titleField: 'name',
+      listColumns: [],
+      fields: [],
+      endpoint: {},
+      permissions: {
+        create: false,
+        update: true,
+        remove: false,
+      },
+    };
+
+    it('con policies y override de operación, usa el override', () => {
+      seed();
+      // admin cumple el override más estricto (get: role:admin)
+      expect(injected().canDoOperation(schemaWithPolicies, 'get')).toBe(true);
+    });
+
+    it('override más estricto que el umbral: staff lista pero no hace get', () => {
+      sessionStorage.setItem(SESSION_TOKEN_KEY, 'tok');
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify({ id: 'u_2', role: 'staff' }));
+      const auth = injected();
+      expect(auth.canDoOperation(schemaWithPolicies, 'list')).toBe(true); // umbral read: role:staff
+      expect(auth.canDoOperation(schemaWithPolicies, 'get')).toBe(false); // override: role:admin
+    });
+
+    it('con policies sin override, usa el umbral del grupo', () => {
+      seed();
+      const auth = injected();
+      // admin puede crear (write: admin)
+      expect(auth.canDoOperation(schemaWithPolicies, 'create')).toBe(true);
+    });
+
+    it('con policies y staff: puede leer pero no escribir', () => {
+      sessionStorage.setItem(SESSION_TOKEN_KEY, 'tok');
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify({ id: 'u_2', role: 'staff' }));
+      const auth = injected();
+      expect(auth.canDoOperation(schemaWithPolicies, 'list')).toBe(true);
+      expect(auth.canDoOperation(schemaWithPolicies, 'create')).toBe(false);
+    });
+
+    it('sin policies, fallback a permissions (legacy)', () => {
+      seed();
+      const auth = injected();
+      expect(auth.canDoOperation(schemaWithPermissions, 'create')).toBe(false);
+      expect(auth.canDoOperation(schemaWithPermissions, 'update')).toBe(true);
+      expect(auth.canDoOperation(schemaWithPermissions, 'remove')).toBe(false);
+    });
+
+    it('sin policies ni permissions: UX optimista legacy (§5.3), el back decide', () => {
+      seed();
+      const auth = injected();
+      const bareSchema: ResourceSchema = {
+        id: 'test',
+        label: 'test',
+        labelPlural: 'tests',
+        kind: 'collection',
+        keyField: 'id',
+        titleField: 'name',
+        listColumns: [],
+        fields: [],
+        endpoint: {},
+      };
+      expect(auth.canDoOperation(bareSchema, 'create')).toBe(true);
+    });
+
+    it('sin sesión, fail-closed', () => {
+      const auth = injected();
+      expect(auth.canDoOperation(schemaWithPolicies, 'list')).toBe(false);
+    });
+  });
+
+  describe('canReadField / canWriteField — políticas por campo (R7.5)', () => {
+    const fieldWithAccess: FieldSchema = {
+      key: 'secret',
+      label: 'Secreto',
+      type: 'text',
+      access: {
+        read: 'role:admin',
+        write: 'role:admin',
+      },
+    };
+
+    const fieldWithoutAccess: FieldSchema = {
+      key: 'public',
+      label: 'Público',
+      type: 'text',
+    };
+
+    it('campo sin access ⇒ siempre visible y editable', () => {
+      seed();
+      const auth = injected();
+      expect(auth.canReadField(fieldWithoutAccess)).toBe(true);
+      expect(auth.canWriteField(fieldWithoutAccess)).toBe(true);
+    });
+
+    it('campo con access: admin lo ve y edita', () => {
+      seed();
+      const auth = injected();
+      expect(auth.canReadField(fieldWithAccess)).toBe(true);
+      expect(auth.canWriteField(fieldWithAccess)).toBe(true);
+    });
+
+    it('campo con access: staff NO lo ve ni edita', () => {
+      sessionStorage.setItem(SESSION_TOKEN_KEY, 'tok');
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify({ id: 'u_2', role: 'staff' }));
+      const auth = injected();
+      expect(auth.canReadField(fieldWithAccess)).toBe(false);
+      expect(auth.canWriteField(fieldWithAccess)).toBe(false);
+    });
+
+    it('campo con access: sin sesión ⇒ fail-closed', () => {
+      const auth = injected();
+      expect(auth.canReadField(fieldWithAccess)).toBe(false);
+      expect(auth.canWriteField(fieldWithAccess)).toBe(false);
     });
   });
 });

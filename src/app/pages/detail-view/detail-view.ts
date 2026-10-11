@@ -14,6 +14,7 @@ import { isShareAction, resolveShare, type ResolvedShare } from '../../actions/a
 import { ActionService } from '../../actions/action-service';
 import { RenderHost } from '../../core/registry/render-host';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { Button } from '../../shared/components/button/button';
 import { CopyShare } from '../../shared/components/copy-share/copy-share';
 import { getValue } from '../../shared/utils/field-path';
@@ -198,6 +199,7 @@ interface DetailSection {
 export class DetailView {
   private readonly api = inject(ApiService, { optional: true });
   private readonly actionService = inject(ActionService);
+  private readonly auth = inject(AuthService);
 
   readonly schema = input.required<ResourceSchema>();
   readonly record = input.required<Row>();
@@ -254,7 +256,9 @@ export class DetailView {
 
   protected readonly headerFields = computed<FieldValue[]>(() => {
     const headerKeys = this.detail().headerFields ?? [];
-    return headerKeys.map((key) => this.resolveFieldValue(key));
+    return headerKeys
+      .map((key) => this.resolveFieldValue(key))
+      .filter((f): f is FieldValue => f !== null);
   });
 
   protected readonly sections = computed<DetailSection[]>(() => {
@@ -262,11 +266,15 @@ export class DetailView {
     const detailConfig = this.detail();
 
     if (detailConfig.sections && detailConfig.sections.length > 0) {
-      return detailConfig.sections.map((sec) => ({
-        id: sec.id,
-        label: sec.label,
-        fields: sec.fields.map((key) => this.resolveFieldValue(key)),
-      }));
+      return detailConfig.sections
+        .map((sec) => ({
+          id: sec.id,
+          label: sec.label,
+          fields: sec.fields
+            .map((key) => this.resolveFieldValue(key))
+            .filter((f): f is FieldValue => f !== null),
+        }))
+        .filter((sec) => sec.fields.length > 0);
     }
 
     const layoutSections = schema.layout?.sections ?? [];
@@ -284,6 +292,7 @@ export class DetailView {
 
     for (const field of schema.fields) {
       const value = this.resolveFieldValue(field.key);
+      if (value === null) continue; // R7.5: campo oculto por políticas
       if (field.section && sectionMap.has(field.section)) {
         sectionMap.get(field.section)!.fields.push(value);
       } else {
@@ -308,16 +317,26 @@ export class DetailView {
   /**
    * Agrupación, no formato: devuelve el campo y el valor crudo. El pintado
    * es cosa del registro (R4.2).
+   *
+   * R7.5: oculta campos según `field.access.read` (sólo UX; el back
+   * vuelve a filtrar la respuesta).
    */
-  private resolveFieldValue(key: string): FieldValue {
+  private resolveFieldValue(key: string): FieldValue | null {
     const schema = this.schema();
     const rec = this.effectiveRecord();
     const field = schema.fields.find((f) => f.key === key);
     const raw = getValue(rec, key);
+
     // Una clave que ningún schema declara no tiene descriptor: se resuelve
     // como texto crudo, que era exactamente lo que hacía el `default` del
     // `formatValue` viejo.
     const declarado: FieldSchema = field ?? { key, label: key.replace(/_/g, ' '), type: 'text' };
+
+    // R7.5: ocultar si el usuario no tiene permiso de lectura
+    if (!this.auth.canReadField(declarado)) {
+      return null;
+    }
+
     return {
       key,
       label: field?.label ?? declarado.label,

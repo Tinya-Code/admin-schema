@@ -4,6 +4,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
+import { API_URL } from '../../core/tokens';
 import { DetailView } from './detail-view';
 
 describe('DetailView', () => {
@@ -58,6 +59,8 @@ describe('DetailView', () => {
             request: () => of(null),
           },
         },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(DetailView);

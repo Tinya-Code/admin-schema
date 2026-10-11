@@ -6,6 +6,7 @@ import { beforeAll, vi } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
 import { ApiService } from '../../core/services/api.service';
+import { API_URL } from '../../core/tokens';
 import { ErrorMapperService } from '../../core/services/error-mapper.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { UploadService } from '../../core/services/upload.service';
@@ -29,6 +30,8 @@ describe('FormView — resource hacia field-host', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'site' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {
@@ -104,6 +107,8 @@ describe('FormView — resumen de errores', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'products', key: 'sku-1' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {
@@ -256,6 +261,8 @@ describe('FormView — borrador', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'products' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {
@@ -386,6 +393,8 @@ describe('FormView — guardado', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'products', key: 'sku-1' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {
@@ -537,6 +546,8 @@ describe('FormView — selección dependiente', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'dep-test' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {
@@ -660,6 +671,8 @@ describe('FormView — readonlyOn', () => {
       providers: [
         { provide: ActivatedRoute, useValue: { paramMap: of(paramMap) } },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {

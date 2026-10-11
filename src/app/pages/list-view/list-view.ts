@@ -438,9 +438,9 @@ export class ListView {
   });
 
   private readonly permissions = computed(() => this.schema().permissions);
-  readonly canCreate = computed(() => this.permissions()?.create !== false);
-  readonly canUpdate = computed(() => this.permissions()?.update !== false);
-  readonly canRemove = computed(() => this.permissions()?.remove !== false);
+  readonly canCreate = computed(() => this.auth.canDoOperation(this.schema(), 'create'));
+  readonly canUpdate = computed(() => this.auth.canDoOperation(this.schema(), 'update'));
+  readonly canRemove = computed(() => this.auth.canDoOperation(this.schema(), 'remove'));
 
   /** El atajo existe sólo si el schema lo declara y hay permiso de editar. */
   readonly canQuickEdit = computed(
@@ -483,7 +483,7 @@ export class ListView {
     return (
       schema.sortable === true &&
       schema.positionField !== undefined &&
-      schema.permissions?.reorder !== false &&
+      schema.permissions?.reorder !== false && // reorder está en permissions, no en policies aún
       !this.hasActiveFilters()
     );
   });

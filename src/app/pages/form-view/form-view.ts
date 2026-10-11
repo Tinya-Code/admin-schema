@@ -15,6 +15,7 @@ import { firstValueFrom } from 'rxjs';
 import type { FieldSchema, ResourceSchema } from '../../core/models/schema.model';
 import { isSupported } from '../../core/registry/render-registry';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { ErrorMapperService, type MappedError } from '../../core/services/error-mapper.service';
 import { NotificationService } from '../../core/services/notification.service';
 import {
@@ -443,6 +444,7 @@ export class FormView {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   private readonly notifications = inject(NotificationService);
   private readonly errorMapper = inject(ErrorMapperService);
   /** `form()` puede reconstruirse fuera de contexto (cambio de ruta). */
@@ -645,13 +647,16 @@ export class FormView {
   readonly exists = computed(() => this.mode() !== 'create');
 
   readonly canSave = computed(() => {
-    const permissions = this.schema()?.permissions;
-    return this.mode() === 'create' ? permissions?.create !== false : permissions?.update !== false;
+    const schema = this.schema();
+    if (!schema) return false;
+    const operation = this.mode() === 'create' ? 'create' : 'update';
+    return this.auth.canDoOperation(schema, operation);
   });
 
-  readonly canDelete = computed(
-    () => this.mode() === 'edit' && this.schema()?.permissions?.remove !== false,
-  );
+  readonly canDelete = computed(() => {
+    const schema = this.schema();
+    return this.mode() === 'edit' && schema && this.auth.canDoOperation(schema, 'remove');
+  });
 
   // ── Ciclo de vida ──
 

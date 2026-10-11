@@ -4,6 +4,7 @@ import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 
 import { ApiService } from '../../core/services/api.service';
+import { API_URL } from '../../core/tokens';
 import { ErrorMapperService } from '../../core/services/error-mapper.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { UploadService } from '../../core/services/upload.service';
@@ -78,6 +79,8 @@ describe('FormView — accesibilidad de campos (products)', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'products', key: 'sku-1' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {
@@ -396,6 +399,8 @@ describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
           useValue: { paramMap: of(convertToParamMap({ id: 'all-types' })) },
         },
         { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
         {
           provide: ApiService,
           useValue: {

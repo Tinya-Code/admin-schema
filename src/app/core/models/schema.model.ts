@@ -76,6 +76,14 @@ export interface FieldBase<T> {
   width?: GridWidth;
   /** Id de la sección/pestaña del layout a la que pertenece (base.md §4). */
   section?: string;
+  /**
+   * R7.5: acceso por campo (B8 · R7.4b) — sólo UX; el back vuelve a
+   * verificar en cada petición.
+   */
+  access?: {
+    read?: string;
+    write?: string;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -685,7 +693,12 @@ export interface ViewDescriptor {
 
 /** Políticas públicas: sólo `access`, lo mínimo para menú/acciones. */
 export interface ResourcePolicies {
-  access: { read: string; write: string };
+  access: {
+    read: string;
+    write: string;
+    /** R7.5: override por operación (B8 · R7.4a) */
+    operations?: Record<string, string>;
+  };
 }
 
 /** §5.3 — `access` de un recurso. `requires` usa el vocabulario de §4.4. */
