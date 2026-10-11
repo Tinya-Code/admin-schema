@@ -26,6 +26,7 @@ import {
 } from '../../fields/field-node';
 import { FieldImage } from '../../fields/image/image';
 import { FieldMultiselect } from '../../fields/multiselect/multiselect';
+import { esGrupoRadio } from '../../fields/select/radio-mode';
 import { displayLoader } from '../../fields/display/display-defaults';
 import { UnknownRender } from '../../fields/unknown-render/unknown-render';
 import type {
@@ -34,6 +35,7 @@ import type {
   ImageField,
   ListField,
   MultiselectField,
+  SelectField,
   WidgetSchema,
 } from '../models/schema.model';
 import { Skeleton } from '../../shared/components/skeleton/skeleton';
@@ -153,9 +155,10 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
           @if (type() !== 'group') {
             @if (composite()) {
               <!-- Sin control único no existe ancla para el atributo for del
-                 label: apuntaría a un id inexistente. Se dibuja como texto
-                 (los controles internos reciben su propia etiqueta por campo
-                 anidado). -->
+                   label: apuntaría a un id inexistente. Se dibuja como texto
+                   (en listas/key-value los hijos reciben su etiqueta por
+                   campo anidado; en un select en modo radio cada opción
+                   trae su label implícito y el grupo va con aria-label). -->
               <div class="mb-1 text-label font-medium">
                 {{ config().label }}
                 @if (showRequiredMark()) {
@@ -543,9 +546,17 @@ export class RenderHost implements FieldAriaContext, RenderContext {
    * `<label for>` no tendría ancla, porque ningún elemento lleva el id del
    * campo padre (los hijos tienen los suyos propios).
    */
-  protected readonly composite = computed(() =>
-    new Set(['list', 'key-value', 'string-list', 'multiselect']).has(this.cfgCampo().type),
-  );
+  protected readonly composite = computed(() => {
+    const cfg = this.cfgCampo();
+    if (new Set(['list', 'key-value', 'string-list', 'multiselect']).has(cfg.type)) {
+      return true;
+    }
+    // Un select en modo radio (2–4 opciones estáticas) tampoco tiene ancla
+    // única: el grupo se nombra con `aria-label`, así que su rótulo va como
+    // texto. El cálculo vive en `radio-mode.ts` y lo comparte con el campo
+    // para que las dos ramas nunca se desincronicen.
+    return cfg.type === 'select' && esGrupoRadio(cfg as SelectField);
+  });
 
   // Contexto de accesibilidad consumido por `FieldAria` en los controles.
 

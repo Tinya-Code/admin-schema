@@ -575,52 +575,56 @@ describe('FormView — selección dependiente', () => {
   }
 
   /**
-   * Los ids llevan el prefijo del formulario (`a.form9.pais`), que `form()`
-   * genera en runtime: se buscan por sufijo, que es lo que garantiza el
-   * `for` del label de todas formas.
+   * Los ids llevan el prefijo del formulario (`a.form9.pais-ar`), que `form()`
+   * genera en runtime: se buscan por sufijo. `pais`/`ciudad` tienen 2
+   * opciones estáticas, así que hoy son grupo de radios, no `<select>`.
    */
-  const fieldOf = (fixture: ComponentFixture<FormView>, id: string): HTMLSelectElement =>
-    fixture.nativeElement.querySelector(`select[id$=".${id}"]`);
+  const radioOf = (
+    fixture: ComponentFixture<FormView>,
+    id: string,
+    value: string,
+  ): HTMLInputElement | null => fixture.nativeElement.querySelector(`input[id$=".${id}-${value}"]`);
 
-  function pick(element: HTMLSelectElement, value: string): void {
-    element.value = value;
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-    element.dispatchEvent(new Event('input', { bubbles: true }));
+  function pick(fixture: ComponentFixture<FormView>, id: string, value: string): void {
+    const radio = radioOf(fixture, id, value);
+    expect(radio, `radio ${id}=${value} no encontrado`).not.toBeNull();
+    radio!.checked = true;
+    radio!.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   it('el hijo queda disabled mientras el padre esté vacío', async () => {
     const fixture = await createDepForm();
 
-    expect(fieldOf(fixture, 'pais')).not.toBeNull();
-    expect(fieldOf(fixture, 'ciudad').disabled).toBe(true);
+    expect(radioOf(fixture, 'pais', 'ar')).not.toBeNull();
+    expect(radioOf(fixture, 'ciudad', 'ba')?.disabled).toBe(true);
   });
 
   it('al elegir el padre, el hijo se habilita', async () => {
     const fixture = await createDepForm();
 
-    pick(fieldOf(fixture, 'pais'), 'ar');
+    pick(fixture, 'pais', 'ar');
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fieldOf(fixture, 'ciudad').disabled).toBe(false);
+    expect(radioOf(fixture, 'ciudad', 'ba')?.disabled).toBe(false);
   });
 
   it('al cambiar el padre, el hijo vuelve a su valor por defecto', async () => {
     const fixture = await createDepForm();
 
-    pick(fieldOf(fixture, 'pais'), 'ar');
+    pick(fixture, 'pais', 'ar');
     await fixture.whenStable();
     fixture.detectChanges();
-    pick(fieldOf(fixture, 'ciudad'), 'ba');
+    pick(fixture, 'ciudad', 'ba');
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fieldOf(fixture, 'ciudad').value).toBe('ba');
+    expect(radioOf(fixture, 'ciudad', 'ba')?.checked).toBe(true);
 
-    pick(fieldOf(fixture, 'pais'), 'br');
+    pick(fixture, 'pais', 'br');
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fieldOf(fixture, 'ciudad').value).toBe('');
+    expect(radioOf(fixture, 'ciudad', 'ba')?.checked).toBe(false);
   });
 });
 

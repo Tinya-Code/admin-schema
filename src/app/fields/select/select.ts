@@ -7,6 +7,7 @@ import { optionsFromRows } from '../../core/utils/source-options';
 import { getSchema } from '../../schemas/registry';
 import { FieldAria } from '../field-aria';
 import { childTree, type RootTree } from '../field-node';
+import { esGrupoRadio } from './radio-mode';
 
 /**
  * Desplegable de un solo valor (base.md §5.1).
@@ -26,7 +27,46 @@ import { childTree, type RootTree } from '../field-node';
     } @else if (cargando()) {
       <p class="mb-1 text-xs text-neutral" role="status">Cargando opciones…</p>
     }
-    @if (useSearch()) {
+    @if (useRadio()) {
+      <!-- Guía de control: 2–4 opciones estáticas → radio buttons, no un
+           desplegable. Cada opción es un label implícito (texto y control
+           juntos) y el grupo se nombra con aria-label: el rótulo del host
+           se dibuja como texto porque un grupo no es un único control con
+           el que emparejar un for. formField va en CADA input: Signal
+           Forms soporta radio (checked = value === element.value) y setea
+           name/disabled del grupo por estado de campo. -->
+      <div
+        class="mt-1 flex flex-col gap-1"
+        role="radiogroup"
+        [attr.aria-label]="field().label"
+        data-testid="select-radios"
+      >
+        @if (!field().required) {
+          <label class="flex w-fit items-center gap-2 text-sm">
+            <input
+              type="radio"
+              class="accent-primary"
+              [id]="state().name() + '-__vacio'"
+              value=""
+              [formField]="node()"
+            />
+            <span class="text-neutral">{{ field().placeholder ?? '— Seleccionar —' }}</span>
+          </label>
+        }
+        @for (option of options(); track option.value) {
+          <label class="flex w-fit items-center gap-2 text-sm">
+            <input
+              type="radio"
+              class="accent-primary"
+              [id]="state().name() + '-' + option.value"
+              [value]="option.value"
+              [formField]="node()"
+            />
+            <span>{{ option.label }}</span>
+          </label>
+        }
+      </div>
+    } @else if (useSearch()) {
       <!-- Guía §1: más de 7 opciones → dropdown con búsqueda. Se filtra el
            select nativo en vez de construir un combobox: el teclado, el
            anuncio de la opción activa y el valor elegido siguen siendo los
@@ -121,6 +161,9 @@ export class FieldSelect {
 
   /** Umbral de la guía §1: 5–7 opciones dropdown simple, más de 7 con búsqueda. */
   protected readonly useSearch = computed(() => this.options().length > 7);
+
+  /** Guía §1: 2–4 opciones estáticas → radio buttons (ver `radio-mode.ts`). */
+  protected readonly useRadio = computed(() => esGrupoRadio(this.field()));
 
   protected onQuery(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
