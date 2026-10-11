@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 
 import {
   LucideChevronDown,
+  LucideChevronRight,
   LucideChevronUp,
   LucideDynamicIcon,
   LucideEye,
@@ -72,6 +73,7 @@ function errorMessage(err: unknown, fallback: string): string {
     DrawerForm,
     EmptyState,
     LucideChevronDown,
+    LucideChevronRight,
     LucideChevronUp,
     LucideEye,
     LucideGripVertical,
@@ -330,6 +332,124 @@ function errorMessage(err: unknown, fallback: string): string {
                 </tbody>
               </table>
             </div>
+
+            <!-- Vista de tarjetas — mobile-first (guía mobile §6).
+                 La tabla de arriba necesita scroll horizontal con 5–7 columnas
+                 (el anti-patrón #2): en pantallas chicas se convierte en una
+                 lista de tarjetas de dos niveles (principal + secundario),
+                 donde cada fila completa es un objetivo táctil. lg:hidden la
+                 retira cuando la tabla vuelve a ser usable. -->
+            <ul class="space-y-2 lg:hidden">
+              @for (row of visibleRows(); track keyOf(row)) {
+                <li
+                  class="rounded-xl border border-neutral/20 bg-surface p-3"
+                  [class.cursor-pointer]="isRowClickable()"
+                  (click)="onRowClick(row)"
+                >
+                  <!-- Nivel principal: el título del registro, siempre visible
+                       (guía §6.2: el identificador nunca se esconde). -->
+                  <div class="flex items-start justify-between gap-2">
+                    <span class="text-sm font-medium">
+                      {{ titleOf(row) }}
+                    </span>
+                    @if (schema().detail?.enabled) {
+                      <svg
+                        lucideChevronRight
+                        size="16"
+                        class="mt-0.5 shrink-0 text-neutral"
+                        aria-hidden="true"
+                      />
+                    }
+                  </div>
+                  <!-- Nivel secundario: el resto de las columnas como pares
+                       etiqueta/valor. Sin hover: todo lo accionable va en el
+                       pie de la tarjeta, al alcance del pulgar. -->
+                  <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                    @for (column of schema().listColumns; track column.key) {
+                      <dt class="text-neutral">{{ column.label }}</dt>
+                      <dd>
+                        <app-render-host
+                          kind="column-format"
+                          [type]="formatOf(column)"
+                          [config]="column"
+                          [data]="cellOf(row, column)"
+                        />
+                      </dd>
+                    }
+                  </dl>
+                  @if (hasRowActions()) {
+                    <!-- Pie táctil: objetivos ≥44 px (guía §8.2), sin hover. -->
+                    <div class="mt-3 flex flex-wrap gap-2 border-t border-neutral/10 pt-2">
+                      @if (schema().detail?.enabled) {
+                        <button
+                          app-button
+                          variant="outline"
+                          type="button"
+                          class="min-h-11 flex-1 text-xs"
+                          (click)="$event.stopPropagation(); goView(row)"
+                        >
+                          <svg lucideEye size="15" aria-hidden="true" />
+                          <span>Ver</span>
+                        </button>
+                      }
+                      @for (action of schema().actions ?? []; track action.id) {
+                        <button
+                          app-button
+                          variant="outline"
+                          type="button"
+                          class="min-h-11 flex-1 text-xs"
+                          (click)="$event.stopPropagation(); runAction(action, row)"
+                        >
+                          @let actionIcon = iconOf(action);
+                          @if (actionIcon) {
+                            <svg [lucideIcon]="actionIcon" size="15" aria-hidden="true" />
+                          }
+                          <span>{{ action.label }}</span>
+                        </button>
+                      }
+                      <!-- Editar es O una vía u otra, como en la tabla: si el
+                           schema declara quickEdit va el atajo; si no, la
+                           pantalla completa. Apilados los dos sería ruido. -->
+                      @if (canQuickEdit()) {
+                        <button
+                          app-button
+                          variant="outline"
+                          type="button"
+                          class="min-h-11 flex-1 text-xs"
+                          (click)="$event.stopPropagation(); quickEditRow.set(row)"
+                        >
+                          <svg lucideZap size="15" aria-hidden="true" />
+                          <span>Editar</span>
+                        </button>
+                      } @else if (canUpdate()) {
+                        <button
+                          app-button
+                          variant="outline"
+                          type="button"
+                          class="min-h-11 flex-1 text-xs"
+                          (click)="$event.stopPropagation(); goEdit(row)"
+                        >
+                          <svg lucidePencil size="15" aria-hidden="true" />
+                          <span>Editar</span>
+                        </button>
+                      }
+                      @if (canRemove()) {
+                        <button
+                          app-button
+                          variant="danger"
+                          type="button"
+                          class="min-h-11 flex-1 text-xs"
+                          (click)="$event.stopPropagation(); removeRow(row)"
+                        >
+                          <svg lucideTrash2 size="15" aria-hidden="true" />
+                          <span>Eliminar</span>
+                        </button>
+                      }
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
           }
         }
       }
