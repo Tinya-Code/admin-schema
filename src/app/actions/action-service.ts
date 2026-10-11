@@ -51,6 +51,15 @@ export class ActionService {
       }
     }
 
+    // `copy-share` (R8.7) resuelve su mensaje contra la config global
+    // (`share_message_template`). Si el load del bootstrap no llegó (arranque
+    // sin sesión o red lenta), lo pedimos ahora —con la sesión ya iniciada—
+    // ANTES de congelar `vars`: si no, el mensaje copiado degradaría a
+    // «sólo la URL» hasta el próximo F5.
+    if (descriptor.type === 'copy-share') {
+      await this.config.ensureLoaded();
+    }
+
     const ctx: ActionContext = { ...request, vars: this.vars(request.record) };
     try {
       return await descriptor.run(ctx, action);

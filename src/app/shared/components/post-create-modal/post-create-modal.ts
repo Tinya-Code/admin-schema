@@ -107,6 +107,15 @@ export class PostCreateModal {
    */
   private readonly configService = inject(ConfigService);
 
+  constructor() {
+    // El modal se abre con la sesión ya iniciada: si el load del bootstrap
+    // falló (arranque sin sesión), éste es el momento de reintentarlo para
+    // que el mensaje de compartir salga del singleton y no «sólo la URL».
+    // `globalConfig` es signal: cuando llegue, el contexto y `shareOf` se
+    // recalculan solos.
+    void this.configService.ensureLoaded();
+  }
+
   /** Contexto único con el que se resuelven título, descripción, URL y mensaje. */
   private readonly context = computed(() => ({
     ...this.configService.buildInterpolationContext(this.record()),

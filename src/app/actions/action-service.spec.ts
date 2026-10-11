@@ -43,15 +43,20 @@ const COMPARTIR: ResourceAction = {
 describe('ActionService', () => {
   let service: ActionService;
   let toast: ReturnType<typeof fakeToast>;
+  const ensureLoaded = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
   beforeEach(() => {
     toast = fakeToast();
+    ensureLoaded.mockClear();
+    ensureLoaded.mockResolvedValue(undefined);
     TestBed.configureTestingModule({
       providers: [
-        // ConfigService real pediría HttpClient/API_URL; sólo aporta `vars`.
+        // ConfigService real pediría HttpClient/API_URL; sólo aporta `vars`
+        // y el reintento de config que `copy-share` dispara.
         {
           provide: ConfigService,
           useValue: {
+            ensureLoaded,
             buildInterpolationContext: (record: Record<string, unknown>) => ({
               ...record,
               public_base_url: 'https://demo',
@@ -92,6 +97,43 @@ describe('ActionService', () => {
     expect(vistos[0].record).toEqual({ slug: 'tecla', ref: 'p1' });
     expect(vistos[0].resource).toBe('productos');
     expect(vistos[0].vars).toEqual({ slug: 'tecla', ref: 'p1', public_base_url: 'https://demo' });
+  });
+
+  it('copy-share reintenta la config global ANTES de resolver vars', async () => {
+    // Regresión del «mensaje = sólo la URL»: si el load del bootstrap falló,
+    // el descriptor debe ver la config ya recargada, no el snapshot vacío.
+    let ensureHecho = false;
+    ensureLoaded.mockImplementation(async () => {
+      ensureHecho = true;
+    });
+    const varsAlEjecutar: Record<string, unknown>[] = [];
+    registerAction({
+      type: 'copy-share',
+      surfaces: ['row'],
+      run: async (ctx) => {
+        expect(ensureHecho).toBe(true);
+        varsAlEjecutar.push(ctx.vars);
+        return { ok: true };
+      },
+    });
+
+    await service.run(COMPARTIR, fakeRequest(toast));
+
+    expect(ensureLoaded).toHaveBeenCalledOnce();
+    expect(varsAlEjecutar[0]).toEqual({
+      slug: 'tecla',
+      ref: 'p1',
+      public_base_url: 'https://demo',
+    });
+  });
+
+  it('acciones que no son copy-share no tocan la config', async () => {
+    const run = vi.fn<NonNullable<ActionDescriptor['run']>>().mockResolvedValue({ ok: true });
+    registerAction({ type: 'navigate', surfaces: ['row'], run });
+
+    await service.run({ id: 'ver', label: 'Ver', urlTemplate: '/p/{ref}' }, fakeRequest(toast));
+
+    expect(ensureLoaded).not.toHaveBeenCalled();
   });
 
   it('una acción sin type resuelve el descriptor navigate', async () => {

@@ -22,6 +22,7 @@ import { ActionService } from '../../actions/action-service';
 import { RenderHost } from '../../core/registry/render-host';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { ConfigService } from '../../core/services/config.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { Button } from '../../shared/components/button/button';
 import { CopyShare } from '../../shared/components/copy-share/copy-share';
@@ -217,6 +218,15 @@ export class DetailView {
   // recarga del detalle — el mismo puerto que ya usa list-view.
   private readonly router = inject(Router);
   private readonly notifications = inject(NotificationService);
+  private readonly configService = inject(ConfigService);
+
+  constructor() {
+    // Este detalle presenta `<app-copy-share>` sin pasar por `ActionService`:
+    // si el load del bootstrap falló, el mensaje resolvería a «sólo la
+    // URL». Reintentamos acá —con la sesión ya iniciada—; `globalConfig` es
+    // signal, así que `shareOf` se recalcula cuando llega.
+    void this.configService.ensureLoaded();
+  }
 
   readonly schema = input.required<ResourceSchema>();
   readonly record = input.required<Row>();
