@@ -84,6 +84,10 @@ function dispatchAction_(resource, request) {
     }
     request.action = name;
     request.record = record;
+    // R8.8: el escape hatch también recibe el `resource` (no sólo el
+    // registro): sin él no puede tomar el lock de política, auditar ni
+    // invalidar la caché, que el dispatch NO le regala en esta ruta.
+    request.resource = resource;
     var fromHandler = fn(request.payload, request);
     emitActionHooks_(ss, resource, declared, name, key, record);
     return {

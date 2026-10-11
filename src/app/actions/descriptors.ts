@@ -45,6 +45,18 @@ export function isShareAction(action: ResourceAction): action is CopyShareAction
 }
 
 /**
+ * `true` cuando la acción es un `trigger` (acción de dominio del back).
+ *
+ * Mismo criterio que `isShareAction`: el único sitio que nombra el tipo,
+ * para que las vistas no decidan por string literal (R3.11). `detail-view`
+ * lo usa en R8.8 para renderizar «Regenerar PIN» junto a los botones de
+ * compartir.
+ */
+export function isTriggerAction(action: ResourceAction): action is TriggerAction {
+  return action.type === 'trigger';
+}
+
+/**
  * Resuelve `urlTemplate` y el mensaje de compartir contra `vars`
  * (config global + registro).
  *

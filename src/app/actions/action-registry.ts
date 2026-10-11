@@ -2,7 +2,13 @@ import type { Router } from '@angular/router';
 
 import type { LucideIcon } from '@lucide/angular';
 
-import { actionDescriptors, isShareAction, resolveShare, type ResolvedShare } from './descriptors';
+import {
+  actionDescriptors,
+  isShareAction,
+  isTriggerAction,
+  resolveShare,
+  type ResolvedShare,
+} from './descriptors';
 import type { ResourceAction } from '../core/models/schema.model';
 import type { SessionUser } from '../core/services/auth.service';
 import type { ApiService } from '../core/services/api.service';
@@ -81,7 +87,7 @@ export interface ActionDescriptor {
   icon?: LucideIcon;
 }
 
-export { isShareAction, resolveShare, type ResolvedShare };
+export { isShareAction, isTriggerAction, resolveShare, type ResolvedShare };
 
 const ACCIONES = new Map<string, ActionDescriptor>();
 

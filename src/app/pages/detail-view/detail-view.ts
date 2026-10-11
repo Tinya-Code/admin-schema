@@ -1,6 +1,7 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { catchError, of, switchMap } from 'rxjs';
+import { Router } from '@angular/router';
+import { catchError, combineLatest, of, switchMap } from 'rxjs';
 
 import { LucideArrowLeft, LucideExternalLink, LucidePencil, LucideTrash2 } from '@lucide/angular';
 import type {
@@ -9,12 +10,19 @@ import type {
   FieldSchema,
   ResourceAction,
   ResourceSchema,
+  TriggerAction,
 } from '../../core/models/schema.model';
-import { isShareAction, resolveShare, type ResolvedShare } from '../../actions/action-registry';
+import {
+  isShareAction,
+  isTriggerAction,
+  resolveShare,
+  type ResolvedShare,
+} from '../../actions/action-registry';
 import { ActionService } from '../../actions/action-service';
 import { RenderHost } from '../../core/registry/render-host';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { Button } from '../../shared/components/button/button';
 import { CopyShare } from '../../shared/components/copy-share/copy-share';
 import { getValue } from '../../shared/utils/field-path';
@@ -119,7 +127,7 @@ interface DetailSection {
       </header>
 
       <!-- ── Acciones Destacadas del Registro (si existen) ── -->
-      @if (copyShareActions().length > 0) {
+      @if (copyShareActions().length > 0 || triggerActions().length > 0) {
         <section
           class="rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-5 shadow-xs"
         >
@@ -137,6 +145,11 @@ interface DetailSection {
                   [label]="action.label"
                 />
               </div>
+            }
+            @for (action of triggerActions(); track action.id) {
+              <button app-button variant="outline" type="button" (click)="runTrigger(action)">
+                {{ action.label }}
+              </button>
             }
           </div>
         </section>
@@ -200,6 +213,10 @@ export class DetailView {
   private readonly api = inject(ApiService, { optional: true });
   private readonly actionService = inject(ActionService);
   private readonly auth = inject(AuthService);
+  // R8.8: el trigger (Regenerar PIN) confirma vía toast y dispara la
+  // recarga del detalle — el mismo puerto que ya usa list-view.
+  private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationService);
 
   readonly schema = input.required<ResourceSchema>();
   readonly record = input.required<Row>();
@@ -209,13 +226,21 @@ export class DetailView {
   readonly delete = output<Row>();
 
   /**
+   * R8.8: contador que fuerza la relectura del registro. Una acción de
+   * dominio muta la fila en el back (el PIN regenerado vive en la hoja);
+   * sin este tick, `toObservable(this.record)` no emite (la referencia no
+   * cambió) y el detalle mostraría el PIN viejo.
+   */
+  private readonly refreshTick = signal(0);
+
+  /**
    * Obtiene el registro completo desde el endpoint get si existe.
    * Esto asegura que campos pesados o no proyectados en la lista (como fotos, notas o historial)
    * se carguen y muestren completos.
    */
   private readonly fetchedRecord = toSignal(
-    toObservable(this.record).pipe(
-      switchMap((rec) => {
+    combineLatest([toObservable(this.record), toObservable(this.refreshTick)]).pipe(
+      switchMap(([rec]) => {
         const schema = this.schema();
         const key = rec ? String(rec[schema.keyField] ?? '') : '';
         const getEndpoint = schema.endpoint?.get;
@@ -313,6 +338,33 @@ export class DetailView {
     const actions: ResourceAction[] = this.schema().actions ?? this.detail().actions ?? [];
     return actions.filter(isShareAction);
   });
+
+  /** R8.8: acciones de dominio del back (trigger) visibles en el detalle. */
+  protected readonly triggerActions = computed<TriggerAction[]>(() => {
+    const actions: ResourceAction[] = this.schema().actions ?? this.detail().actions ?? [];
+    return actions.filter(isTriggerAction);
+  });
+
+  /**
+   * R8.8: dispara un `trigger` y, si tocó datos (`reload`), fuerza la
+   * relectura del registro. La confirmación (si el descriptor la pide) la
+   * resuelve `actionService.run` — este método no decide por tipo.
+   */
+  protected async runTrigger(action: TriggerAction): Promise<void> {
+    if (!this.api) return; // sin API no hay ruta que disparar
+    const result = await this.actionService.run(action, {
+      record: this.effectiveRecord(),
+      resource: this.schema().id,
+      api: this.api,
+      router: this.router,
+      toast: this.notifications,
+      user: this.auth.user(),
+      keyField: this.schema().keyField,
+    });
+    if (result.ok && result.reload) {
+      this.refreshTick.update((tick) => tick + 1);
+    }
+  }
 
   /**
    * Agrupación, no formato: devuelve el campo y el valor crudo. El pintado

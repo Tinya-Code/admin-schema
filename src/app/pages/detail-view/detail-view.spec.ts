@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 
 import type { ResourceSchema } from '../../core/models/schema.model';
+import { ActionService } from '../../actions/action-service';
 import { ApiService } from '../../core/services/api.service';
 import { API_URL } from '../../core/tokens';
 import { DetailView } from './detail-view';
@@ -61,6 +63,9 @@ describe('DetailView', () => {
         },
         // `AuthService` pide `API_URL` (convención de specs, R7.5)
         { provide: API_URL, useValue: '/api' },
+        // R8.8: `DetailView` inyecta `Router` (trigger → confirmación +
+        // ruta) — convención de list-view.quick-edit.spec.
+        provideRouter([]),
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(DetailView);
@@ -187,5 +192,43 @@ describe('DetailView', () => {
 
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent).toContain('Pedido registrado');
+  });
+
+  it('6. R8.8: renderiza el botón de un trigger y lo dispara vía actionService', async () => {
+    const triggerSchema: ResourceSchema = {
+      ...mockSchema,
+      actions: [
+        {
+          id: 'regenerate_pin',
+          type: 'trigger',
+          name: 'regenerate-pin',
+          label: 'Regenerar PIN',
+        },
+      ],
+    };
+    fixture.componentRef.setInput('schema', triggerSchema);
+    fixture.componentRef.setInput('record', mockRecord);
+    await montar(fixture);
+
+    const root = fixture.nativeElement as HTMLElement;
+    const triggerBtn = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('button[app-button]'),
+    ).find((b) => b.textContent?.trim() === 'Regenerar PIN');
+    expect(triggerBtn, 'debe existir el botón Regenerar PIN').toBeDefined();
+
+    // El clic delega en actionService.run (la confirmación y la ruta son
+    // cosa del descriptor, no de la vista — R3.11).
+    const runSpy = vi
+      .spyOn(TestBed.inject(ActionService), 'run')
+      .mockResolvedValue({ ok: true, reload: true });
+    triggerBtn!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    const [action, request] = runSpy.mock.calls[0];
+    expect(action).toMatchObject({ id: 'regenerate_pin', name: 'regenerate-pin' });
+    expect(request.resource).toBe('orders');
+    expect(request.keyField).toBe('ref');
   });
 });
