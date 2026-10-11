@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { interpolateTemplate } from '../core/utils/template-interpolator';
 import { ordersSchema } from './orders.schema';
+import { pickpassSchema } from './pickpass.schema';
 
 /**
  * Contrato del formulario de pedidos.
@@ -93,36 +94,58 @@ describe('ordersSchema — creación de pedidos', () => {
     expect(field('customer_notes').placeholder).toBeTruthy();
   });
 
-  // El bug original: el PIN no llegaba al cliente porque el mensaje no lo
-  // traía. Los DOS templates (alta y detalle/lista) tienen que llevarlo: son
-  // la misma acción vista desde dos contextos.
-  it('el mensaje de compartir trae el PIN en los dos contextos', () => {
-    const templates = [
-      shareTextOf(ordersSchema.postCreate?.actions),
-      shareTextOf(ordersSchema.actions),
-    ];
-
-    for (const [i, template] of templates.entries()) {
-      expect(template, `template ${i} ausente`).toBeTruthy();
-      expect(template, `template ${i} sin {pin}`).toContain('{pin}');
-      expect(template, `template ${i} sin {ref}`).toContain('{ref}');
-      expect(template, `template ${i} sin la URL pública`).toContain('{public_base_url}');
+  // Regresión del bug original: el PIN no llegaba al cliente porque el
+  // mensaje no lo traía. Antes cada action de orders traía su propio
+  // `shareTextTemplate` hardcodeado. Hoy orders NO declara plantilla (cae al
+  // global `share_message_template` de pickpass, que el operador edita con
+  // chips), así que el contrato se prueba donde vive la plantilla: el default
+  // de pickpass DEBE traer {pin}, {ref} y {public_base_url}.
+  it('orders no hardcodea la plantilla: cae al share_message_template global', () => {
+    for (const [nombre, actions] of [
+      ['alta', ordersSchema.postCreate?.actions],
+      ['lista', ordersSchema.actions],
+    ] as const) {
+      expect(
+        shareTextOf(actions),
+        `${nombre}: orders no debe declarar plantilla propia`,
+      ).toBeUndefined();
     }
+  });
 
-    // Los DOS contextos, con la FIRMA REAL de cada call site — no un objeto
-    // a mano, que es como se tapó esto antes:
-    //
-    //  - alta: `post-create-modal.ts:129` → interpolateTemplate(tpl, record, configValues)
-    //  - lista: `list-view.ts:717`      → interpolateTemplate(tpl, buildInterpolationContext(row))
-    //
-    // `record` es la respuesta del `create` y la fila proyectada: el PIN
-    // viene del back en los dos. Si el back deja de mandarlo,
-    // `interpolateTemplate` lo resuelve a '' y el mensaje ya no termina con
-    // el PIN — que es exactamente el bug original (R4).
+  it('la plantilla global de pickpass trae el PIN y los marcadores clave', () => {
+    const campo = pickpassSchema.fields.find((f) => f.key === 'share_message_template');
+    if (!campo || campo.type !== 'textarea') throw new Error('pickpass no declara la plantilla');
+    const tpl = campo.default;
+
+    expect(tpl, 'plantilla global ausente').toBeTruthy();
+    expect(tpl, 'plantilla sin {pin}').toContain('{pin}');
+    expect(tpl, 'plantilla sin {ref}').toContain('{ref}');
+    expect(tpl, 'plantilla sin {customer_name}').toContain('{customer_name}');
+    expect(tpl, 'plantilla sin la URL pública').toContain('{public_base_url}');
+  });
+
+  it('los chips de la plantilla global apuntan a marcadores que el motor resuelve', () => {
+    const campo = pickpassSchema.fields.find((f) => f.key === 'share_message_template');
+    if (!campo || campo.type !== 'textarea') throw new Error('pickpass no declara la plantilla');
+    const keys = (campo.tokens ?? []).map((t) => t.key);
+
+    // Cada token insertable tiene que ser una clave que el registro del
+    // pedido o la config aportan; si no, el chip insertaría un marcador muerto.
+    for (const requerido of ['customer_name', 'ref', 'pin', 'public_base_url']) {
+      expect(keys, `falta el chip "${requerido}"`).toContain(requerido);
+    }
+  });
+
+  it('la plantilla global interpolada end-to-end termina con el PIN (contexto real)', () => {
+    const campo = pickpassSchema.fields.find((f) => f.key === 'share_message_template');
+    if (!campo || campo.type !== 'textarea') throw new Error('pickpass no declara la plantilla');
+    const tpl = campo.default!;
+
+    // Firma REAL de los dos call sites (ver docblock anterior):
+    //  - alta: interpolateTemplate(tpl, record, configValues)
+    //  - lista: interpolateTemplate(tpl, buildInterpolationContext(row))
     const respuestaCreate = { ref: 'ORD-0001', pin: '482913', customer_name: 'Ana Pérez' };
     const configValues = { public_base_url: 'https://example.test' };
-    // `buildInterpolationContext` mezcla config + fila y fija
-    // `public_base_url` al final (config.service.ts:64-73).
     const contextoLista = {
       ...configValues,
       ...respuestaCreate,
@@ -133,8 +156,8 @@ describe('ordersSchema — creación de pedidos', () => {
       'Hola Ana Pérez, puede retirar su pedido ORD-0001 aquí: ' +
       'https://example.test/p/ORD-0001. Su PIN es 482913.';
 
-    const alta = interpolateTemplate(templates[0]!, respuestaCreate, configValues);
-    const lista = interpolateTemplate(templates[1]!, contextoLista);
+    const alta = interpolateTemplate(tpl, respuestaCreate, configValues);
+    const lista = interpolateTemplate(tpl, contextoLista);
 
     expect(alta, 'alta').toBe(esperado);
     expect(lista, 'lista').toBe(esperado);
@@ -149,9 +172,5 @@ describe('ordersSchema — creación de pedidos', () => {
         'https://example.test/p/',
       );
     }
-  });
-
-  it('los dos mensajes de compartir dicen exactamente lo mismo', () => {
-    expect(shareTextOf(ordersSchema.postCreate?.actions)).toBe(shareTextOf(ordersSchema.actions));
   });
 });

@@ -107,6 +107,24 @@ export interface TextareaField extends FieldBase<string> {
   rows?: number;
   minWords?: number;
   maxWords?: number;
+  /**
+   * Marcadores insertables como chips bajo el área (plantillas de mensaje).
+   * Cada chip escribe `{key}` en la posición del cursor, no al final: el
+   * operador escribe, apreta, sigue escribiendo. El motor back no se entera —
+   * recibe el string final y lo interpola (`interpolateTemplate`).
+   *
+   * `label` es el rótulo humano del botón ("PIN"); `key` es la clave que se
+   * inserta y que el back resuelve contra `config + registro`.
+   */
+  tokens?: readonly TemplateToken[];
+}
+
+/** Chip insertable en un `textarea` de plantilla. */
+export interface TemplateToken {
+  /** Clave insertada como `{key}` y resuelta por el motor. */
+  key: string;
+  /** Rótulo visible en el chip (el token va como tooltip). */
+  label: string;
 }
 
 export interface SlugField extends FieldBase<string> {

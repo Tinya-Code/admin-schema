@@ -43,7 +43,16 @@ REGISTRY.resources.pickpass = {
   // TTL de vigencia y rechazo cuando el PIN está deshabilitado.
   fields: [
     { key: 'public_base_url', type: 'url', required: true },
-    { key: 'share_message_template', type: 'textarea', required: true },
+    {
+      key: 'share_message_template',
+      type: 'textarea',
+      required: true,
+      // Mensaje que el operador edita desde el admin; el front lo interpola
+      // contra config + registro. El default replica el mensaje histórico
+      // para que un install fresco comparta igual que antes (R8.7).
+      default:
+        'Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}. Su PIN es {pin}.',
+    },
     { key: 'pin_ttl_hours', type: 'number', required: true, default: 24, min: 1, max: 720 },
     { key: 'pin_enabled', type: 'select', required: true, default: 'SI', enum: ['SI', 'NO'] },
   ],

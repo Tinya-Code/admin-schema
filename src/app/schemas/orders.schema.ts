@@ -67,8 +67,8 @@ export const ordersSchema: ResourceSchema = {
         type: 'copy-share',
         label: 'Compartir con Cliente',
         urlTemplate: '{public_base_url}/p/{ref}',
-        shareTextTemplate:
-          'Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}. Su PIN es {pin}.',
+        // Sin shareTextTemplate: cae al global `share_message_template`
+        // (pickpass), que el operador edita con los chips de tokens.
       },
     ],
   },
@@ -78,8 +78,8 @@ export const ordersSchema: ResourceSchema = {
       type: 'copy-share',
       label: 'Compartir Enlace',
       urlTemplate: '{public_base_url}/p/{ref}',
-      shareTextTemplate:
-        'Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}. Su PIN es {pin}.',
+      // Mismo criterio que el modal: el mensaje lo define la plantilla
+      // global, no un hardcode del schema (R8.7).
     },
     // R8.8 (D14): regenera el PIN desde el detalle/listado — el remedio
     // operativo de «pedido sin PIN recuperable» (R10) sin recrear el pedido.

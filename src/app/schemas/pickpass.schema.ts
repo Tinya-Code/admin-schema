@@ -35,7 +35,20 @@ export const pickpassSchema: ResourceSchema = {
       label: 'Plantilla de Mensaje para Compartir',
       required: true,
       rows: 3, // mensaje multi-línea de WhatsApp
-      help: 'Mensaje predeterminado al compartir por WhatsApp o enlace. Incluí {ref} para insertar el código del pedido.',
+      default:
+        'Hola {customer_name}, puede retirar su pedido {ref} aquí: {public_base_url}/p/{ref}. Su PIN es {pin}.',
+      // Los chips insertan el marcador donde está el cursor; el operador
+      // escribe y arma el mensaje sin memorizar claves. El motor resuelve
+      // cada {clave} contra config + registro del pedido (interpolateTemplate).
+      tokens: [
+        { key: 'customer_name', label: 'Nombre del cliente' },
+        { key: 'ref', label: 'Código del pedido' },
+        { key: 'pin', label: 'PIN' },
+        { key: 'pickup_date', label: 'Fecha de retiro' },
+        { key: 'status', label: 'Estado' },
+        { key: 'public_base_url', label: 'Enlace público' },
+      ],
+      help: 'Mensaje que se copia al compartir. Usa los botones para insertar valores; el enlace público se agrega solo si falta.',
       section: 'general',
       width: 12,
     },
