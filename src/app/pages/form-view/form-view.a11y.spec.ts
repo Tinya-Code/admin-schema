@@ -22,7 +22,7 @@ import { FormView } from './form-view';
  *
  * El helper vive a nivel de módulo porque los dos bloques lo comparten:
  * el primero recorre `products` (10 tipos) pestaña por pestaña — el layout
- * `tabs` sólo monta la sección activa — y el segundo cubre los 20 tipos del
+ * `tabs` sólo monta la sección activa — y el segundo cubre los 21 tipos del
  * catálogo de `core/registry/render-registry` con un schema sintético.
  */
 function assertFieldA11y(root: Element, section: string): { controls: number; described: number } {
@@ -290,10 +290,10 @@ describe('FormView — accesibilidad de campos (products)', () => {
 });
 
 /**
- * Fase 9.1 — accesibilidad de los 20 tipos de campo.
+ * Fase 9.1 — accesibilidad de los 21 tipos de campo.
  *
  * `products` sólo declara 10 tipos; este bloque monta un schema sintético
- * con los 20 que registra `core/registry/render-registry` (incluido `date`,
+ * con los 21 que registra `core/registry/render-registry` (incluido `date`,
  * que ningún schema real usa) y comprueba las dos caras del contrato de
  * `field-host` (líneas 138-153): los tipos con control único llevan
  * `<label for>` anclado a su propio nombre, y los compuestos y los `group` no
@@ -302,7 +302,7 @@ describe('FormView — accesibilidad de campos (products)', () => {
  * Sin `layout` el componente cae en modo `sections` y monta todos los
  * campos de una vez, sin recorrer pestañas.
  */
-describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
+describe('FormView — a11y de los 21 tipos de campo (9.1)', () => {
   const OPTIONS = [{ value: 'a', label: 'Opción A' }];
 
   const ALL_TYPES_SCHEMA: ResourceSchema = {
@@ -350,6 +350,7 @@ describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
         source: { resource: 'categories' },
       },
       { key: 'f_image', label: 'Imagen', type: 'image' },
+      { key: 'f_file', label: 'Archivo', type: 'file' },
     ],
   };
 
@@ -375,6 +376,7 @@ describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
     f_keyvalue: [{ key: 'K', value: 'V', position: 1 }],
     f_relation: 'cat-1',
     f_image: 'https://x.dev/a.png',
+    f_file: 'https://x.dev/doc.pdf',
   };
 
   /** `field-host.ts` no pinta el `<label for>` propio de estos tipos. */
@@ -430,7 +432,7 @@ describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
     return fixture;
   }
 
-  it('monta los 20 tipos y cada uno cumple el contrato de a11y', async () => {
+  it('monta los 21 tipos y cada uno cumple el contrato de a11y', async () => {
     const fixture = await createAllTypesForm();
     const root = fixture.nativeElement as Element;
 
@@ -443,7 +445,7 @@ describe('FormView — a11y de los 20 tipos de campo (9.1)', () => {
 
     // 2. Auditoría global: etiquetas ancladas, `aria-invalid` y
     //    `aria-required` en todo control con id, `aria-describedby` resoluble.
-    const { controls, described } = assertFieldA11y(root, 'los 20 tipos');
+    const { controls, described } = assertFieldA11y(root, 'los 21 tipos');
     expect(controls, 'controles auditados').toBeGreaterThanOrEqual(15);
     expect(described, 'ninguna ayuda queda enlazada').toBeGreaterThan(0);
 

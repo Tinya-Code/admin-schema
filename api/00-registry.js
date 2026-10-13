@@ -20,6 +20,8 @@ const REGISTRY = {
   types: {},
   enums: {},
   endpoints: {},
+  grantProfiles: {},
+  uploadProfiles: {},
   ops: {},
   transforms: {},
   checks: {},

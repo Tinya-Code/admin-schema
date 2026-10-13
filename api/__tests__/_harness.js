@@ -12,7 +12,7 @@
 // ya vienen numerados en orden de dependencias).
 //
 // Top-level NO hay ninguna llamada a APIs de Google: sólo var CONFIG, var
-// PROP_MANIFEST y declaraciones de función. Los 7 globales de Google sólo
+// PROP_MANIFEST y declaraciones de función. Los 9 globales de Google sólo
 // se tocan dentro de funciones, así que bastan stubs inertes para cargar.
 // Si un fichero empezara a ejecutar algo al cargar, el error lleva su nombre.
 
@@ -28,9 +28,11 @@ const GOOGLE_GLOBALS = [
   'CacheService',
   'LockService',
   'Logger',
+  'MailApp', // R9.5.8 — notificaciones salientes (engine/36-notifications)
   'PropertiesService',
   'Session',
   'SpreadsheetApp',
+  'UrlFetchApp', // R9.5.7 — webhooks salientes (engine/35-webhooks)
   'Utilities',
 ];
 

@@ -9,6 +9,9 @@ export const legalSchema: ResourceSchema = {
   label: 'Legal',
   labelPlural: 'Legal',
   kind: 'singleton',
+  uiViews: {
+    settings: { type: 'form' },
+  },
   endpoint: {
     get: '/admin/legal',
     update: '/admin/legal',

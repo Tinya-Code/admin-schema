@@ -14,6 +14,11 @@ export const usersSchema: ResourceSchema = {
   label: 'Usuario',
   labelPlural: 'Usuarios',
   kind: 'collection',
+  uiViews: {
+    list: { type: 'list' },
+    create: { type: 'form', path: 'new' },
+    edit: { type: 'form', path: ':key/edit' },
+  },
   endpoint: {
     list: '/admin/users',
     get: '/admin/users/{key}',

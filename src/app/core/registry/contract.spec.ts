@@ -2,14 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 import { COLUMN_FORMAT_TYPES, columnFormatDescriptors } from '../../columns/descriptors';
 import { SUPPORTED_FIELD_TYPE_LIST } from '../../fields/descriptors';
+import { layoutDescriptors } from '../../layouts/descriptors';
 import type {
+  CalendarViewConfig,
   FieldSchema,
+  KanbanColumn,
+  KanbanViewConfig,
+  LayoutMode,
   ListColumnFormat,
   ResourceSchema,
+  TabsConfig,
+  UiViewDescriptor,
+  ViewChildNode,
   WidgetType,
 } from '../models/schema.model';
 import { fieldDescriptors } from '../../fields/descriptors';
+import { viewDescriptors } from '../../views/descriptors';
 import { schemas } from '../../schemas/registry';
+import { MAX_DEPTH } from './composition-validator';
 import { isSupported, renderKinds, type RenderKind } from './render-registry';
 
 /**
@@ -53,7 +63,15 @@ import { isSupported, renderKinds, type RenderKind } from './render-registry';
  */
 
 /** `kind`s que este archivo recorre de punta a punta. */
-const RECORRIDOS: readonly RenderKind[] = ['field', 'column-format', 'widget'];
+const RECORRIDOS: readonly RenderKind[] = ['field', 'column-format', 'widget', 'view', 'layout'];
+
+const LAYOUTS = [
+  'grid',
+  'tabs',
+  'sections',
+  'steps',
+  'columns',
+] as const satisfies readonly LayoutMode[];
 
 /**
  * Unión `ListColumnFormat` ↔ manifiesto de formatos, en el mismo molde que
@@ -122,6 +140,243 @@ function todosLosWidgets(lista: readonly ResourceSchema[]): { schema: string; ty
   );
 }
 
+function todasLasUiViews(lista: readonly ResourceSchema[]): { schema: string; type: string }[] {
+  return lista.flatMap((schema) =>
+    Object.values(schema.uiViews ?? {}).map((view) => ({
+      schema: schema.id,
+      type: view.type,
+    })),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// R9.8.2 — contrato de config de `uiView` calendar / kanban
+// ─────────────────────────────────────────────────────────────
+
+/** Tipos de campo válidos para cada referencia de config (R9.8.2). */
+const CALENDAR_START_TYPES = ['date'] as const;
+const CALENDAR_END_TYPES = ['date', 'time'] as const;
+const CALENDAR_TITLE_TYPES = ['text', 'readonly-text', 'relation', 'slug'] as const;
+const CALENDAR_COLOR_TYPES = ['select', 'text', 'relation'] as const;
+const KANBAN_GROUP_TYPES = ['select', 'relation'] as const;
+
+/**
+ * Narrowing de `config`: `UiViewBase.type` es `string` (abierto para
+ * `list`/`detail`/`form`/`dashboard`), así que comparar `view.type ===
+ * 'calendar'` NO elimina al base de la unión. El `in` sí: sólo los miembros
+ * discriminados (`UiViewCalendar`/`UiViewKanban`) declaran `config`.
+ */
+function configDe(
+  view: UiViewDescriptor,
+): CalendarViewConfig | KanbanViewConfig | TabsConfig | undefined {
+  return 'config' in view ? view.config : undefined;
+}
+
+/** Valida una referencia de campo contra el schema (existencia + tipo). */
+function problemasRef(
+  donde: string,
+  etiqueta: string,
+  ref: string,
+  tipoDeCampo: (ref: string) => string | undefined,
+  permitidos: readonly string[],
+): string[] {
+  const tipo = tipoDeCampo(ref);
+  if (tipo === undefined) {
+    return [`${donde}: ${etiqueta} referencia campo inexistente '${ref}'`];
+  }
+  if (!permitidos.includes(tipo)) {
+    return [
+      `${donde}: ${etiqueta} '${ref}' tiene tipo '${tipo}' (esperado ${permitidos.join('/')})`,
+    ];
+  }
+  return [];
+}
+
+function problemasCalendar(
+  donde: string,
+  config: CalendarViewConfig | undefined,
+  tipoDeCampo: (ref: string) => string | undefined,
+): string[] {
+  if (!config) {
+    return [`${donde}: vista 'calendar' sin config`];
+  }
+  const infractores: string[] = [];
+  const { startField, endField, titleField, colorField } = config;
+
+  if (typeof startField !== 'string' || startField === '') {
+    infractores.push(`${donde}: calendar.startField obligatorio y no vacío`);
+  } else {
+    infractores.push(
+      ...problemasRef(donde, 'calendar.startField', startField, tipoDeCampo, CALENDAR_START_TYPES),
+    );
+  }
+  if (endField !== undefined) {
+    infractores.push(
+      ...problemasRef(donde, 'calendar.endField', endField, tipoDeCampo, CALENDAR_END_TYPES),
+    );
+  }
+  if (typeof titleField !== 'string' || titleField === '') {
+    infractores.push(`${donde}: calendar.titleField obligatorio y no vacío`);
+  } else {
+    infractores.push(
+      ...problemasRef(donde, 'calendar.titleField', titleField, tipoDeCampo, CALENDAR_TITLE_TYPES),
+    );
+  }
+  if (colorField !== undefined) {
+    infractores.push(
+      ...problemasRef(donde, 'calendar.colorField', colorField, tipoDeCampo, CALENDAR_COLOR_TYPES),
+    );
+  }
+  return infractores;
+}
+
+function problemasKanban(
+  donde: string,
+  config: KanbanViewConfig | undefined,
+  tipoDeCampo: (ref: string) => string | undefined,
+): string[] {
+  if (!config) {
+    return [`${donde}: vista 'kanban' sin config`];
+  }
+  const infractores: string[] = [];
+  const { groupField, columns, titleField, subtitleField } = config;
+
+  if (typeof groupField !== 'string' || groupField === '') {
+    infractores.push(`${donde}: kanban.groupField obligatorio y no vacío`);
+  } else {
+    infractores.push(
+      ...problemasRef(donde, 'kanban.groupField', groupField, tipoDeCampo, KANBAN_GROUP_TYPES),
+    );
+  }
+
+  if (!Array.isArray(columns) || columns.length === 0) {
+    infractores.push(`${donde}: kanban.columns debe ser un arreglo no vacío`);
+  } else {
+    const vistos = new Set<string>();
+    for (const col of columns) {
+      const value = (col as KanbanColumn | undefined)?.value;
+      if (typeof value !== 'string' || value === '') {
+        infractores.push(`${donde}: kanban.columns con columna sin value`);
+      } else if (vistos.has(value)) {
+        infractores.push(`${donde}: kanban.columns con value duplicado '${value}'`);
+      } else {
+        vistos.add(value);
+      }
+    }
+  }
+
+  if (titleField !== undefined && tipoDeCampo(titleField) === undefined) {
+    infractores.push(`${donde}: kanban.titleField referencia campo inexistente '${titleField}'`);
+  }
+  if (subtitleField !== undefined && tipoDeCampo(subtitleField) === undefined) {
+    infractores.push(
+      `${donde}: kanban.subtitleField referencia campo inexistente '${subtitleField}'`,
+    );
+  }
+  return infractores;
+}
+
+/**
+ * `tabs` (R9.9): config con `children` no vacío, ids únicos, `initial`
+ * apuntando a un hijo existente y — recursivamente — la misma validez de
+ * config para los hijos inline que la tienen (calendar/kanban/tabs).
+ */
+function problemasTabs(
+  donde: string,
+  config: TabsConfig | undefined,
+  tipoDeCampo: (ref: string) => string | undefined,
+  profundidad = 1,
+): string[] {
+  if (config === undefined) {
+    return [`${donde}: vista 'tabs' sin config`];
+  }
+  if (profundidad > MAX_DEPTH) {
+    return [`${donde}: tabs anidado sobre la profundidad máxima (${MAX_DEPTH})`];
+  }
+  if (!Array.isArray(config.children) || config.children.length === 0) {
+    return [`${donde}: tabs.config.children debe ser un arreglo no vacío`];
+  }
+
+  const infractores: string[] = [];
+  const ids = new Set<string>();
+  for (const hijo of config.children) {
+    if (ids.has(hijo.id)) {
+      infractores.push(`${donde}: tabs.config.children con id duplicado '${hijo.id}'`);
+    }
+    ids.add(hijo.id);
+
+    // `ref` se resuelve contra el schema en `composition-validator`; aquí
+    // sólo se revisa el inline, que es el único que arrastra config.
+    if ('ref' in hijo) continue;
+
+    const dondeHijo = `${donde}.children[${hijo.id}]`;
+    if (hijo.type === 'calendar') {
+      infractores.push(
+        ...problemasCalendar(
+          dondeHijo,
+          configDe(hijo) as CalendarViewConfig | undefined,
+          tipoDeCampo,
+        ),
+      );
+    } else if (hijo.type === 'kanban') {
+      infractores.push(
+        ...problemasKanban(dondeHijo, configDe(hijo) as KanbanViewConfig | undefined, tipoDeCampo),
+      );
+    } else if (hijo.type === 'tabs') {
+      infractores.push(
+        ...problemasTabs(
+          dondeHijo,
+          configDe(hijo) as TabsConfig | undefined,
+          tipoDeCampo,
+          profundidad + 1,
+        ),
+      );
+    } else if (configDe(hijo) !== undefined) {
+      infractores.push(`${dondeHijo}: tipo base '${hijo.type}' no debe llevar config`);
+    }
+  }
+
+  if (config.initial !== undefined && !ids.has(config.initial)) {
+    infractores.push(`${donde}: tabs.initial '${config.initial}' no es un hijo existente`);
+  }
+  return infractores;
+}
+
+/**
+ * Recorre TODOS los `uiView` de un schema y devuelve los problemas de config.
+ *
+ * Extraída como función para poder ejercitarla con una fixture sintética
+ * (ver el `it` de abajo): ningún schema real declara `calendar`/`kanban`
+ * todavía, así que el recorrido sobre `schemas` pasaría en vacío aunque el
+ * validador estuviera roto.
+ */
+function problemasDeUiViews(schema: ResourceSchema): string[] {
+  const campos = new Map(todosLosCampos(schema).map((c) => [c.path, c.type]));
+  const tipoDeCampo = (ref: string): string | undefined => campos.get(ref);
+
+  const infractores: string[] = [];
+  for (const [name, view] of Object.entries(schema.uiViews ?? {})) {
+    const donde = `${schema.id}.uiViews.${name}`;
+    if (view.type === 'calendar') {
+      infractores.push(
+        ...problemasCalendar(donde, configDe(view) as CalendarViewConfig | undefined, tipoDeCampo),
+      );
+    } else if (view.type === 'kanban') {
+      infractores.push(
+        ...problemasKanban(donde, configDe(view) as KanbanViewConfig | undefined, tipoDeCampo),
+      );
+    } else if (view.type === 'tabs') {
+      infractores.push(
+        ...problemasTabs(donde, configDe(view) as TabsConfig | undefined, tipoDeCampo),
+      );
+    } else if (configDe(view) !== undefined) {
+      // Tipos base: conservan la forma plana y NO deben arrastrar un config.
+      infractores.push(`${donde}: tipo base '${view.type}' no debe llevar config`);
+    }
+  }
+  return infractores;
+}
+
 describe('R3.7 — exhaustividad del registro de render', () => {
   it('todo tipo de campo de todo schema lo sabe renderizar la UI', () => {
     const infractores: string[] = [];
@@ -160,6 +415,124 @@ describe('R3.7 — exhaustividad del registro de render', () => {
     // Red: sin este guardián, borrar los widgets del dashboard dejaría la
     // aserción anterior en verde sin mirar nada.
     expect(todosLosWidgets(schemas).length).toBeGreaterThan(0);
+  });
+
+  it('todo tipo uiViews declarado tiene descriptor y hay páginas declaradas', () => {
+    const declared = todasLasUiViews(schemas);
+    const unsupported = declared.filter(({ type }) => !isSupported('view', type));
+
+    expect(declared.length).toBeGreaterThan(0);
+    expect(unsupported).toEqual([]);
+    expect(viewDescriptors.map((descriptor) => descriptor.type).sort()).toEqual([
+      'calendar',
+      'dashboard',
+      'detail',
+      'form',
+      'kanban',
+      'list',
+      'tabs',
+    ]);
+  });
+
+  it('todo uiView calendar/kanban declara config que apunta a campos existentes y con tipo válido', () => {
+    // R9.8.2 — `calendar` y `kanban` llevan `config` con referencias a campos
+    // (`startField`, `groupField`, …). Esos strings no los valida `tsc`: un
+    // `startField: 'fecha'` que no existe en `fields` compila perfecto y la
+    // vista se abre vacía en producción, sin un solo error en consola. Este
+    // recorrido es el eslabón que falta entre el schema y la config de estas
+    // vistas: field-references resueltas, tipos coherentes (`date` para
+    // fechas, `select`/`relation` para columnas) y columnas sin duplicados.
+    //
+    // Hoy ningún schema real declara `calendar`/`kanban`, así que el recorrido
+    // sobre `schemas` pasa en vacío — pero el `it` siguiente ejercita el
+    // validador con una fixture sintética para que no quede en verde muerto.
+    const infractores = schemas.flatMap(problemasDeUiViews);
+    expect(infractores).toEqual([]);
+  });
+
+  it('el validador de config de uiViews caza errores (fixture sintética)', () => {
+    // Guardián de vacío: el test de arriba no vería NADA mientras ningún
+    // schema declare calendar/kanban. Esta fixture —fuera del registry real—
+    // le mete mano al validador con las infracciones que debe detectar y
+    // exige que al menos una vuelva en rojo. Si rompés el validador (p. ej.
+    // dejás de resolver campos anidados o de comparar tipos), este test falla
+    // antes de que exista un schema real que lo delate.
+    const fixture: ResourceSchema = {
+      id: 'fx',
+      label: 'Fx',
+      labelPlural: 'Fx',
+      kind: 'collection',
+      endpoint: {},
+      keyField: 'id',
+      titleField: 'title',
+      listColumns: [],
+      fields: [
+        { key: 'id', type: 'text', label: 'ID' },
+        { key: 'title', type: 'text', label: 'Título' },
+        { key: 'starts_at', type: 'date', label: 'Inicio' },
+        { key: 'status', type: 'select', label: 'Estado', options: [] },
+        {
+          key: 'meta',
+          type: 'group',
+          label: 'Meta',
+          fields: [{ key: 'due', type: 'date', label: 'Vence' }],
+        },
+      ],
+      uiViews: {
+        // 1) calendar: `startField` apunta a un campo inexistente.
+        cal: {
+          type: 'calendar',
+          config: { startField: 'no_existe', titleField: 'title' },
+        },
+        // 2) kanban: `groupField` con tipo inválido (text, no select/relation)
+        //    y columnas con value duplicado.
+        board: {
+          type: 'kanban',
+          config: {
+            groupField: 'title',
+            columns: [
+              { value: 'a', label: 'A' },
+              { value: 'a', label: 'A de nuevo' },
+            ],
+          },
+        },
+        // 3) base (list) que arrastra un config: no debería poder.
+        bad: { type: 'list', config: { x: 1 } },
+        // 4) tabs: hijo kanban con campo inexistente + initial huérfano.
+        panels: {
+          type: 'tabs',
+          config: {
+            initial: 'no-existe',
+            children: [{ id: 'h', label: 'H', type: 'kanban', config: { groupField: 'tampoco' } }],
+          },
+        },
+      },
+    } as ResourceSchema;
+
+    const infractores = problemasDeUiViews(fixture);
+
+    // El validador encuentra al menos una infracción…
+    expect(infractores.length).toBeGreaterThan(0);
+    // …y resuelve referencias anidadas (`meta.due` es un `date` válido).
+    expect(
+      problemasDeUiViews({
+        ...fixture,
+        uiViews: {
+          nested: {
+            type: 'calendar',
+            config: { startField: 'meta.due', titleField: 'title' },
+          },
+        },
+      } as ResourceSchema),
+    ).toEqual([]);
+  });
+
+  it('todo layout de schema tiene descriptor y el registro cubre los cinco layouts', () => {
+    const declared = schemas.map((schema) => schema.layout?.mode ?? 'sections');
+    expect(declared.every((type) => isSupported('layout', type))).toBe(true);
+    expect(layoutDescriptors.map((descriptor) => descriptor.type).sort()).toEqual(
+      [...LAYOUTS].sort(),
+    );
   });
 
   it('todo nombre de la lista de campos tiene descriptor', () => {

@@ -11,8 +11,10 @@ import type { RootTree } from '../../fields/field-node';
 import type { SeedKind } from '../../shared/utils/seed';
 import { columnFormatDescriptors } from '../../columns/descriptors';
 import { fieldDescriptors } from '../../fields/descriptors';
+import { layoutDescriptors } from '../../layouts/descriptors';
 import { widgetDescriptors } from '../../widgets/descriptors';
-import type { FieldSchema, ListColumn, WidgetSchema } from '../models/schema.model';
+import { viewDescriptors } from '../../views/descriptors';
+import type { FieldSchema, LayoutMode, ListColumn, WidgetSchema } from '../models/schema.model';
 
 /**
  * Registro único de render (R3.1 · `doc/plan-refactor-motor.md` §3.1).
@@ -38,6 +40,7 @@ import type { FieldSchema, ListColumn, WidgetSchema } from '../models/schema.mod
 
 /** Qué clase de cosa se está resolviendo. Identificador único dentro de su `kind`. */
 export type RenderKind = 'field' | 'column-format' | 'widget' | 'action' | 'view' | 'layout';
+export type ComponentRenderKind = Exclude<RenderKind, 'layout'>;
 
 /** Superficies en las que un descriptor puede aparecer. */
 export type RenderSurface = 'form' | 'display' | 'list' | 'filter';
@@ -125,7 +128,7 @@ export interface RenderExtras {
  */
 export interface RenderDescriptor<C = unknown> {
   /** Clase de cosa. */
-  kind: RenderKind;
+  kind: ComponentRenderKind;
   /** Identificador `kebab-case`, único dentro de `kind`. */
   type: string;
   /** Versión del contrato en que apareció (`doc/refactormotor.md`). */
@@ -172,8 +175,16 @@ export interface RenderDescriptor<C = unknown> {
   inputs?: (config: C, extras: RenderExtras) => Record<string, unknown>;
 }
 
+/** Declaración de un layout manejado por el host de formularios. */
+export interface LayoutDescriptor {
+  kind: 'layout';
+  type: LayoutMode;
+  since: string;
+}
+
 /** Catálogo en memoria: `kind:type` → descriptor. */
 const RENDERERS = new Map<string, RenderDescriptor>();
+const LAYOUTS = new Map<string, LayoutDescriptor>();
 
 function keyOf(kind: RenderKind, type: string): string {
   return `${kind}:${type}`;
@@ -184,7 +195,21 @@ function keyOf(kind: RenderKind, type: string): string {
  * `(kind, type)` lo sobrescribe, lo que permite que un módulo se recargue en
  * desarrollo sin duplicar entradas.
  */
-export function register(kind: RenderKind, descriptor: RenderDescriptor): void {
+export function register(kind: 'layout', descriptor: LayoutDescriptor): void;
+export function register(kind: ComponentRenderKind, descriptor: RenderDescriptor): void;
+export function register(kind: RenderKind, descriptor: RenderDescriptor | LayoutDescriptor): void {
+  if (kind === 'layout') {
+    if (!('kind' in descriptor) || descriptor.kind !== 'layout') {
+      throw new Error(`El descriptor de layout "${descriptor.type}" no declara kind: "layout".`);
+    }
+    LAYOUTS.set(descriptor.type, descriptor);
+    return;
+  }
+  if (descriptor.kind === 'layout') {
+    throw new Error(
+      `El descriptor de layout "${descriptor.type}" no puede registrarse como ${kind}.`,
+    );
+  }
   RENDERERS.set(keyOf(kind, descriptor.type), descriptor);
 }
 
@@ -195,17 +220,21 @@ export function register(kind: RenderKind, descriptor: RenderDescriptor): void {
  * orden de ejecución).
  */
 export function unregister(kind: RenderKind, type: string): void {
-  RENDERERS.delete(keyOf(kind, type));
+  if (kind === 'layout') {
+    LAYOUTS.delete(type);
+  } else {
+    RENDERERS.delete(keyOf(kind, type));
+  }
 }
 
 /** Descriptor declarado para `(kind, type)`, o `undefined` si nadie lo registró. */
-export function get(kind: RenderKind, type: string): RenderDescriptor | undefined {
+export function get(kind: ComponentRenderKind, type: string): RenderDescriptor | undefined {
   return RENDERERS.get(keyOf(kind, type));
 }
 
 /** ¿La UI sabe dibujar este `(kind, type)`? Reemplaza a los `Set`s de los hosts. */
 export function isSupported(kind: RenderKind, type: string): boolean {
-  return RENDERERS.has(keyOf(kind, type));
+  return kind === 'layout' ? LAYOUTS.has(type) : RENDERERS.has(keyOf(kind, type));
 }
 
 /**
@@ -219,7 +248,7 @@ export function isSupported(kind: RenderKind, type: string): boolean {
  * `fallback` que ya recibe.
  */
 export async function resolve<C = unknown>(
-  kind: RenderKind,
+  kind: ComponentRenderKind,
   type: string,
   fallback: Type<C>,
 ): Promise<Type<C>> {
@@ -229,8 +258,18 @@ export async function resolve<C = unknown>(
 }
 
 // Catálogo a scope de módulo: se registra al importar, sin esperar a DI.
-for (const descriptor of [...fieldDescriptors, ...widgetDescriptors, ...columnFormatDescriptors]) {
-  register(descriptor.kind, descriptor);
+for (const descriptor of [
+  ...fieldDescriptors,
+  ...widgetDescriptors,
+  ...columnFormatDescriptors,
+  ...viewDescriptors,
+  ...layoutDescriptors,
+]) {
+  if (descriptor.kind === 'layout') {
+    register('layout', descriptor);
+  } else {
+    register(descriptor.kind, descriptor);
+  }
 }
 
 /**
@@ -244,7 +283,7 @@ for (const descriptor of [...fieldDescriptors, ...widgetDescriptors, ...columnFo
 export function provideRenderDescriptors(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideAppInitializer(() => {
-      if (isDevMode() && RENDERERS.size === 0) {
+      if (isDevMode() && RENDERERS.size === 0 && LAYOUTS.size === 0) {
         console.warn('[render-registry] el catálogo de descriptores vino vacío');
       }
     }),
@@ -253,7 +292,7 @@ export function provideRenderDescriptors(): EnvironmentProviders {
 
 /** Cuántos descriptores hay registrados. Sólo para comprobaciones y tests. */
 export function renderDescriptorCount(): number {
-  return RENDERERS.size;
+  return RENDERERS.size + LAYOUTS.size;
 }
 
 /**
@@ -265,5 +304,9 @@ export function renderDescriptorCount(): number {
  * serían dos afirmaciones distintas que nadie reconcilia.
  */
 export function renderKinds(): RenderKind[] {
-  return [...new Set([...RENDERERS.values()].map((descriptor) => descriptor.kind))];
+  const kinds = new Set<RenderKind>([...RENDERERS.values()].map((descriptor) => descriptor.kind));
+  if (LAYOUTS.size > 0) {
+    kinds.add('layout');
+  }
+  return [...kinds];
 }

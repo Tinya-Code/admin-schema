@@ -322,18 +322,29 @@ describe('B2 · R5.1 — contrato declarativo de endpoints', () => {
         method: 'POST',
         access: 'public',
         handler: 'handlePinVerify',
+        issuesGrant: 'pickupGrant',
         resource: 'noExiste',
       });
-      expect(issues).toHaveLength(1);
-      expect(issues[0]).toMatch(/resource inexistente 'noExiste'/);
+      expect(issues).toEqual(
+        expect.arrayContaining([expect.stringMatching(/resource inexistente 'noExiste'/)]),
+      );
     });
 
-    it('los 10 endpoints declaran `since` y sólo 5 llevan contrato de salida', () => {
+    it('los 13 endpoints declaran `since` y sólo 8 llevan contrato de salida', () => {
       const endpoints = Object.values(REGISTRY.endpoints);
-      expect(endpoints).toHaveLength(10);
+      expect(endpoints).toHaveLength(13);
       for (const ep of endpoints) expect(ep.since).toBe('1.0');
       expect(Object.keys(REGISTRY.endpoints).filter((id) => REGISTRY.endpoints[id].output)).toEqual(
-        ['authLogin', 'authMe', 'authLogout', 'events', 'pinVerify'],
+        [
+          'auditPrune',
+          'authLogin',
+          'authMe',
+          'authLogout',
+          'authLogoutAll',
+          'events',
+          'pinVerify',
+          'domainUploadSignature',
+        ],
       );
       expect(REGISTRY.endpoints.authLogin.input).toEqual({
         email: { type: 'email' },

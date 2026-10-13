@@ -54,7 +54,7 @@ Cada recurso se describe con estas propiedades:
 | `listColumns`           | Qué campos son columnas del listado, con formato (texto, badge, imagen miniatura, booleano)  |
 | `filters` / `search`    | Campos filtrables y buscables en el listado                                                  |
 | `fields`                | Árbol de campos del formulario (ver §4)                                                      |
-| `layout`                | Cómo se agrupan los campos: secciones, pestañas, columnas                                    |
+| `layout`                | Presentación de formulario: grilla, secciones, pestañas, pasos o columnas                    |
 | `actions`               | Acciones extra (duplicar, activar/desactivar, ver en sitio)                                  |
 | `permissions`           | Qué operaciones están permitidas (crear, borrar, reordenar)                                  |
 

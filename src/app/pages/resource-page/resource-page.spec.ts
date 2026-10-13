@@ -3,7 +3,7 @@ import { convertToParamMap, ActivatedRoute, Router } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
-import type { ResourceSchema } from '../../core/models/schema.model';
+import type { ResourceSchema, SelectionBinding } from '../../core/models/schema.model';
 import { API_URL } from '../../core/tokens';
 import { ApiService } from '../../core/services/api.service';
 import { schemas } from '../../schemas/registry';
@@ -49,11 +49,15 @@ describe('ResourcePage', () => {
   let component: ResourcePage;
   let routerNavigate: ReturnType<typeof vi.fn>;
   let mockParamMap: any;
+  let mockData: BehaviorSubject<Record<string, unknown>>;
 
   beforeEach(async () => {
     // Subject (y no `of`) para poder emitir un `:key` tardío y verificar
     // que la ficha se abre también por URL, no sólo por clic en una fila.
     mockParamMap = new BehaviorSubject(convertToParamMap({ id: 'test_orders' }));
+    // También mutable: así un test puede declarar `select`/`emit` en el
+    // canal `viewContext` (route.data) sin re-montar el componente.
+    mockData = new BehaviorSubject<Record<string, unknown>>({});
     routerNavigate = vi.fn();
 
     // Register synthetic schemas in mutable catalog
@@ -75,6 +79,7 @@ describe('ResourcePage', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: mockParamMap,
+            data: mockData,
           },
         },
         {
@@ -176,5 +181,78 @@ describe('ResourcePage', () => {
   it('detecta correctamente permisos y renderiza estado sin permisos', () => {
     expect(component.hasNoAccess(NO_ACCESS_SCHEMA)).toBe(true);
     expect(component.hasNoAccess(DETAIL_SCHEMA)).toBe(false);
+  });
+
+  // R9.9.4 · decision table (design): el clic de fila sólo sigue el contrato
+  // declarado cuando el schema declara `select`; sin declaración, el
+  // comportamiento local ACTUAL se conserva intacto (backward compat).
+  describe('contrato de selección declarado (R9.9.4)', () => {
+    const ROUTE: SelectionBinding = {
+      on: 'open',
+      mode: 'route',
+      target: { resource: 'orders', view: 'detail', params: ['key'] },
+    };
+    const record = { ref: 'ORD-101', customer_name: 'Alejandro' };
+
+    function declarar(select: SelectionBinding | undefined, emit?: ReturnType<typeof vi.fn>): void {
+      mockData.next({
+        resourceId: 'test_orders',
+        uiView: 'list',
+        viewType: 'list',
+        ...(select !== undefined ? { select } : {}),
+        ...(emit !== undefined ? { emit } : {}),
+      });
+      fixture.detectChanges();
+    }
+
+    it("mode:'route' ⇒ emite con la acción declarada y NO hace la navegación local", () => {
+      const emit = vi.fn();
+      declarar(ROUTE, emit);
+
+      component.switchToDetail(record);
+
+      expect(emit).toHaveBeenCalledTimes(1);
+      expect(emit).toHaveBeenCalledWith({
+        resource: 'test_orders',
+        key: 'ORD-101',
+        action: 'open',
+      });
+      expect(routerNavigate).not.toHaveBeenCalled();
+    });
+
+    it("mode:'inline' ⇒ selección local (ficha embebida) sin navegar", () => {
+      declarar({ on: 'open', mode: 'inline' });
+
+      component.switchToDetail(record);
+      fixture.detectChanges();
+
+      expect(component.currentView()).toBe('detail');
+      expect(component.selectedRecord()).toEqual(record);
+      expect(routerNavigate).not.toHaveBeenCalled();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('app-detail-view'),
+      ).not.toBeNull();
+    });
+
+    it("mode:'none' ⇒ no-op explícito (sin emit, sin navegación, sin selección)", () => {
+      const emit = vi.fn();
+      declarar({ on: 'open', mode: 'none' }, emit);
+
+      component.switchToDetail(record);
+      fixture.detectChanges();
+
+      expect(emit).not.toHaveBeenCalled();
+      expect(routerNavigate).not.toHaveBeenCalled();
+      expect(component.currentView()).toBe('list');
+      expect(component.selectedRecord()).toBeNull();
+    });
+
+    it('sin select declarado ⇒ la navegación local actual sigue intacta (no-regresión)', () => {
+      declarar(undefined);
+
+      component.switchToDetail(record);
+
+      expect(routerNavigate).toHaveBeenCalledWith(['/', 'test_orders', 'ORD-101']);
+    });
   });
 });

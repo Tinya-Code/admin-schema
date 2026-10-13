@@ -69,20 +69,37 @@ function handlePinVerify(payload, request) {
       : payload && payload.ref
         ? String(payload.ref).trim()
         : '';
+  return withLock_('pin:' + ref, function () {
+    return handlePinVerifyLocked_(payload, request);
+  });
+}
+
+function handlePinVerifyLocked_(payload, request) {
+  var ref =
+    request && request.params && request.params.ref
+      ? String(request.params.ref).trim()
+      : payload && payload.ref
+        ? String(payload.ref).trim()
+        : '';
   if (!ref) {
-    throw apiError_(400, 'Falta la referencia del pedido en la ruta');
+    throw apiError_(400, 'Falta la referencia del pedido en la ruta', null, 'PIN_INPUT_REQUIRED');
   }
 
   var pin =
     payload && payload.pin !== undefined && payload.pin !== null ? String(payload.pin).trim() : '';
   if (!pin) {
-    throw apiError_(400, 'Falta el campo pin en el cuerpo de la solicitud');
+    throw apiError_(
+      400,
+      'Falta el campo pin en el cuerpo de la solicitud',
+      null,
+      'PIN_INPUT_REQUIRED',
+    );
   }
 
   var ss = openSpreadsheet_();
   var sheet = ss.getSheetByName('_pin');
   if (sheet === null) {
-    throw apiError_(503, 'El sistema de PIN no está configurado');
+    throw apiError_(503, 'El sistema de PIN no está configurado', null, 'PIN_STORE_UNAVAILABLE');
   }
 
   // R8.9 (D12): config del singleton — `pickpass_config` es la hoja KV del
@@ -113,7 +130,7 @@ function handlePinVerify(payload, request) {
   }
   if (!pinEnabled) {
     // Mismo 404 que «sin PIN»: el contrato externo no distingue (R8.2 · D12).
-    throw apiError_(404, 'No hay PIN configurado para este pedido');
+    throw apiError_(404, 'No hay PIN configurado para este pedido', null, 'PIN_NOT_AVAILABLE');
   }
 
   // Lee todas las filas de _pin para este ref.
@@ -127,7 +144,12 @@ function handlePinVerify(payload, request) {
   var usedIdx = headers.indexOf('used_at');
 
   if (refIdx === -1 || hashIdx === -1) {
-    throw apiError_(500, 'La hoja _pin no tiene las columnas esperadas');
+    throw apiError_(
+      500,
+      'La hoja _pin no tiene las columnas esperadas',
+      null,
+      'PIN_CONFIGURATION_ERROR',
+    );
   }
 
   // Filtra las filas de este pedido.
@@ -137,7 +159,7 @@ function handlePinVerify(payload, request) {
 
   if (pinRows.length === 0) {
     // No hay PIN configurado para este pedido.
-    throw apiError_(404, 'No hay PIN configurado para este pedido');
+    throw apiError_(404, 'No hay PIN configurado para este pedido', null, 'PIN_NOT_AVAILABLE');
   }
 
   // R8.9: el pedido sólo admite retiro mientras está PENDIENTE. El recurso
@@ -146,18 +168,23 @@ function handlePinVerify(payload, request) {
   var endpointDecl = REGISTRY.endpoints.pinVerify || {};
   var resourceId = typeof endpointDecl.resource === 'string' ? endpointDecl.resource : '';
   if (!resourceId) {
-    throw apiError_(500, 'Recurso no configurado en el endpoint');
+    throw apiError_(500, 'Recurso no configurado en el endpoint', null, 'PIN_CONFIGURATION_ERROR');
   }
   var resource = getResourceSchema(resourceId);
   if (!resource) {
-    throw apiError_(500, 'Recurso ausente: ' + resourceId);
+    throw apiError_(500, 'Recurso ausente: ' + resourceId, null, 'PIN_CONFIGURATION_ERROR');
   }
   var map = storageMap_(resource);
   var orderData = readSheetData_(ss, map.sheet);
   var keyIdx = orderData.headers.indexOf(map.keyField);
   var statusIdx = orderData.headers.indexOf('status');
   if (keyIdx === -1 || statusIdx === -1) {
-    throw apiError_(500, 'La hoja del pedido no tiene las columnas esperadas');
+    throw apiError_(
+      500,
+      'La hoja del pedido no tiene las columnas esperadas',
+      null,
+      'PIN_CONFIGURATION_ERROR',
+    );
   }
   var orderRow = null;
   for (var r = 0; r < orderData.rows.length; r++) {
@@ -168,10 +195,10 @@ function handlePinVerify(payload, request) {
   }
   // Inconsistencia defensiva: filas en _pin sin pedido → no verificar nada.
   if (orderRow === null) {
-    throw apiError_(404, 'No hay PIN configurado para este pedido');
+    throw apiError_(404, 'No hay PIN configurado para este pedido', null, 'PIN_NOT_AVAILABLE');
   }
   if (String(orderRow.values[statusIdx]).trim() !== 'PENDIENTE') {
-    throw apiError_(403, 'El pedido ya no admite retiro de PIN');
+    throw apiError_(403, 'El pedido ya no admite retiro de PIN', null, 'ORDER_NOT_ELIGIBLE');
   }
 
   // Toma el PIN activo: el más reciente NO usado (mayor created_at).
@@ -186,7 +213,7 @@ function handlePinVerify(payload, request) {
 
   if (activeRow === null) {
     // Todos los PINes de este pedido ya fueron consumidos.
-    throw apiError_(409, 'El PIN de este pedido ya fue utilizado');
+    throw apiError_(409, 'El PIN de este pedido ya fue utilizado', null, 'PIN_ALREADY_USED');
   }
 
   // R8.9 (D12): TTL de vigencia — el PIN deja de verificar `pin_ttl_hours`
@@ -196,7 +223,7 @@ function handlePinVerify(payload, request) {
   var createdMs = pinStampMs_(createdIdx !== -1 ? activeRow.values[createdIdx] : '');
   var ttlMs = ttlHours * 3600 * 1000;
   if (isNaN(createdMs) || nowMs - createdMs > ttlMs) {
-    throw apiError_(410, 'El PIN de este pedido expiró');
+    throw apiError_(410, 'El PIN de este pedido expiró', null, 'PIN_EXPIRED');
   }
 
   // Cuenta intentos fallidos RECIENTES: filas `__failed__` de este ref dentro
@@ -212,7 +239,7 @@ function handlePinVerify(payload, request) {
   }).length;
 
   if (failedAttempts >= PIN_MAX_ATTEMPTS_) {
-    throw apiError_(429, 'Demasiados intentos fallidos para este pedido');
+    throw apiError_(429, 'Demasiados intentos fallidos para este pedido', null, 'RATE_LIMITED');
   }
 
   // Verifica el hash — NUNCA comparación en texto plano.
@@ -222,17 +249,30 @@ function handlePinVerify(payload, request) {
   if (receivedHash !== expectedHash) {
     // Registra intento fallido en _pin como fila separada con hash '__failed__'.
     sheet.appendRow([ref, '__failed__', nowStamp_(), nowStamp_()]);
-    throw apiError_(401, 'PIN incorrecto');
+    throw apiError_(401, 'PIN incorrecto', null, 'PIN_INVALID');
   }
 
-  // PIN correcto: marca used_at en la fila activa.
+  var result = { ok: true, ref: ref };
+  if (typeof endpointDecl.issuesGrant === 'string') {
+    var grant = issueDomainGrantLocked_(
+      endpointDecl.issuesGrant,
+      ref,
+      ref + ':' + String(activeRow.at) + ':' + String(activeRow.values[createdIdx]),
+      expectedHash,
+    );
+    result.grant = grant.grant;
+    result.expires_at = grant.expires_at;
+  }
+
+  // PIN correcto: marca used_at después de emitir el grant. Si hay fallo
+  // entre ambas escrituras, el mismo PIN recupera el bearer derivado al retry.
   if (usedIdx !== -1) {
     var physicalRow = activeRow.at; // fila física 1-based en la hoja
     var usedColPhysical = usedIdx + 1; // columna física 1-based
     sheet.getRange(physicalRow, usedColPhysical).setValue(nowStamp_());
   }
 
-  return { ok: true, ref: ref };
+  return result;
 }
 
 registerCapability('handlers', {

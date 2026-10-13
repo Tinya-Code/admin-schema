@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
@@ -276,5 +276,58 @@ describe('DetailView', () => {
     // El date se pinta formateado por render-host, no en crudo.
     expect(root.textContent).toContain('12 oct. 2026');
     expect(root.textContent).not.toContain('No se pudo cargar el registro');
+  });
+
+  // ── R9.9 · D4 — target load error recovery ──
+
+  it('9. D4: el estado de error ofrece «Volver» junto a «Reintentar» y navega de vuelta', async () => {
+    getSpy.mockImplementationOnce(() => throwError(() => new Error('boom')));
+    fixture.componentRef.setInput('schema', mockSchema);
+    fixture.componentRef.setInput('record', mockRecord);
+    await montar(fixture);
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('No se pudo cargar el registro');
+    // El estado de error es un `app-empty-state` con ambas salidas DENTRO
+    // (el header también tiene «Volver», así que se busca dentro del slot).
+    const volver = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('app-empty-state button[app-button]'),
+    ).find((b) => b.textContent?.trim().includes('Volver'));
+    expect(volver, 'debe existir el botón Volver en el estado de error').toBeDefined();
+
+    const router = TestBed.inject(Router);
+    const navegar = vi.spyOn(router, 'navigate');
+    volver!.click();
+    await fixture.whenStable();
+    expect(navegar).toHaveBeenCalled();
+  });
+
+  it('10. D4: la cabecera oculta Editar/Eliminar mientras el registro está en error', async () => {
+    getSpy.mockImplementationOnce(() => throwError(() => new Error('boom')));
+    fixture.componentRef.setInput('schema', mockSchema);
+    fixture.componentRef.setInput('record', mockRecord);
+    await montar(fixture);
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('No se pudo cargar el registro');
+    expect(root.textContent).not.toContain('Editar');
+    // Reintentar ⇒ éxito ⇒ la acción vuelve a existir
+    getSpy.mockImplementationOnce(() => of({ ...mockRecord }));
+    Array.from(root.querySelectorAll<HTMLButtonElement>('button[app-button]'))
+      .find((b) => b.textContent?.trim().includes('Reintentar'))!
+      .click();
+    await montar(fixture);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Editar');
+  });
+
+  it('11. D4: el error original queda retenido con identidad intacta (diagnóstico)', async () => {
+    const fallo = new Error('boom de red');
+    getSpy.mockImplementationOnce(() => throwError(() => fallo));
+    fixture.componentRef.setInput('schema', mockSchema);
+    fixture.componentRef.setInput('record', mockRecord);
+    await montar(fixture);
+
+    // Identity assert: el MISMO objeto, no una copia ni un string mapeado.
+    expect(fixture.componentInstance.errorDeCarga()).toBe(fallo);
   });
 });

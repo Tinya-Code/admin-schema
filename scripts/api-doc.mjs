@@ -259,6 +259,28 @@ function resourceBlock_(resource) {
       : {};
   const generated = generatedBy_(resource);
   const pol = resource.policies ?? {};
+  const commandBase =
+    resource.commandsRoute || resource.route || `/${resource.scope ?? 'admin'}/${resource.id}`;
+  const commands = Object.entries(proy.commands ?? {}).map(([name, command]) => {
+    const errors = (command.errors ?? [])
+      .map((error) => `${error.status} \`${error.code}\`: ${error.message}`)
+      .join('; ');
+    return [
+      `#### \`${name}\``,
+      '',
+      `Ruta: POST \`${commandBase}/{${resource.keyField}}/commands/${name}\``,
+      '',
+      `Acceso: \`${command.access}\` · grant requerido: ${command.grantRequired ? 'sí' : 'no'} · idempotencia: \`${command.idempotency}\`${
+        command.limits ? ` · límite: \`${command.limits}\`` : ''
+      }`,
+      '',
+      `Input: \`${JSON.stringify(command.input)}\``,
+      '',
+      `Output: \`${JSON.stringify(command.output)}\``,
+      '',
+      `Errores: ${errors || '—'}`,
+    ].join('\n');
+  });
   const actions = Object.entries(resource.actions ?? {}).map(([name, decl]) => {
     const access = decl.access
       ? `\`${decl.access}\``
@@ -306,6 +328,10 @@ function resourceBlock_(resource) {
   const listFields = (proy.listProjection ?? resource.listProjection ?? [])
     .map((k) => `\`${k}\``)
     .join(', ');
+  const hasMany = Object.entries(resource.hasMany ?? {}).map(
+    ([alias, declaration]) =>
+      `\`${alias}\` → \`${declaration.resource}.${declaration.field}\` (máximo ${declaration.limit} por padre)`,
+  );
   const publicAudience = resource.audiences?.public;
   const resourceFields = new Map((resource.fields ?? []).map((field) => [field.key, field]));
   const publicFields = (publicAudience?.listProjection ?? [])
@@ -315,9 +341,9 @@ function resourceBlock_(resource) {
   const audienceBlock = publicAudience
     ? [
         '',
-        `**Audiencia pública** — operaciones CRUD: ${(publicAudience.operations ?? [])
-          .map((op) => `\`${op}\``)
-          .join(', ') || '—'}`,
+        `**Audiencia pública** — operaciones CRUD: ${
+          (publicAudience.operations ?? []).map((op) => `\`${op}\``).join(', ') || '—'
+        }`,
         `**Proyección pública** — ${publicFields || '—'}`,
         'Las acciones y endpoints custom se declaran por separado; no son operaciones CRUD de esta audiencia.',
       ]
@@ -347,6 +373,16 @@ function resourceBlock_(resource) {
           ...actions,
         ]
       : []),
+    ...(commands.length > 0
+      ? [
+          '',
+          '**Contratos de commands**',
+          '',
+          'Ruta de transporte y contrato derivados del schema del recurso.',
+          '',
+          ...commands,
+        ]
+      : []),
     '',
     '**Campos del CRUD del recurso — payload y respuesta (los `secret` no existen para el doc, R7.6)**',
     '',
@@ -354,6 +390,12 @@ function resourceBlock_(resource) {
     ...campos,
     '',
     `**Listado** — \`listProjection\`: ${listFields || '—'}`,
+    ...(hasMany.length > 0
+      ? [
+          '',
+          `**Relaciones inversas (\`hasMany\`)** — ${hasMany.join('; ')}. La expansión que exceda el límite responde **413**; no se trunca.`,
+        ]
+      : []),
     ...audienceBlock,
     '',
     `**Política** — ${acceso || '—'}`,
@@ -493,6 +535,8 @@ export function buildMarkdown(endpoints, resources = null) {
     '> regenera y `npm run api:check` lo marca ROJO si no coincide con el',
     '> registro.',
     '',
+    '> Guía de flujo público de retiro: `doc/integracion-autorizacion-publica.md`.',
+    '',
     '## Envelope (contrato para el front)',
     '',
     'Apps Script no expone cabeceras: todo viaja en el cuerpo de un `POST`',
@@ -520,6 +564,7 @@ export function buildMarkdown(endpoints, resources = null) {
     '| **404** | Ruta, recurso o registro inexistente; algunos endpoints ocultan recursos no disponibles con este estado. | `{ error: { status, message } }` |',
     '| **409** | Conflicto de estado, como un PIN ya utilizado. | `{ error: { status, message } }` |',
     '| **410** | Recurso temporal vencido, como un PIN expirado. | `{ error: { status, message } }` |',
+    '| **413** | Expansión `hasMany` supera el límite por padre declarado en el schema. | `{ error: { status, message } }` |',
     '| **422** | El `input` declarado rechaza la petición. Se valida **antes** del handler: el handler no corre. | `{ error: { status, message, errors: [{ path, message, code }] } }` |',
     '| **429** | Límite de peticiones o intentos excedido. | `{ error: { status, message, code? } }` |',
     '| **500** | Error interno; en dev también si la salida incumple `output` (en producción ese chequeo de contrato no frena la respuesta). | `{ error: { status, message: "Salida fuera de contrato en <ruta>: <campo> …" } }` para salida inválida. |',

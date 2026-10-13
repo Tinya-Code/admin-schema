@@ -270,6 +270,20 @@ export interface ImageField extends FieldBase<string> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// §5.3b Archivo — el valor es SOLO la URL pública (mismo contrato que `image`)
+// ─────────────────────────────────────────────────────────────
+// R9.5.3: como `image`, pero para CUALQUIER archivo (pdf, xlsx, zip…). La
+// única diferencia semántica es que NO fuerza el prefijo `image/` en el
+// cliente: el catálogo de formatos lo acota el backend por campo (`formats`
+// declarado) o la lista global, y el motor guarda igualmente la URL.
+export interface FileField extends FieldBase<string> {
+  type: 'file';
+  /** Formatos aceptados (ej. `image/*`, `pdf,docx`). Si falta, usa los del backend. */
+  accept?: string;
+  maxSizeMB?: number;
+}
+
+// ─────────────────────────────────────────────────────────────
 // §5.4 Campos compuestos (contienen otros campos)
 // ─────────────────────────────────────────────────────────────
 
@@ -445,7 +459,7 @@ export type WidgetSchema =
 export type WidgetType = WidgetSchema['type'];
 
 // ─────────────────────────────────────────────────────────────
-// Unión discriminada por `type` (20 tipos, base.md §5)
+// Unión discriminada por `type` (21 tipos, base.md §5)
 // ─────────────────────────────────────────────────────────────
 
 export type FieldSchema =
@@ -465,6 +479,7 @@ export type FieldSchema =
   | ReadonlyTextField
   | RelationField
   | ImageField
+  | FileField
   | GroupField
   | ListField
   | StringListField
@@ -503,11 +518,14 @@ export interface LayoutSection {
   label: string;
 }
 
+export type LayoutMode = 'grid' | 'tabs' | 'sections' | 'steps' | 'columns';
+
 export interface ResourceLayout {
-  /** Secciones colapsables (por defecto) o pestañas. */
-  mode?: 'sections' | 'tabs';
-  sections: LayoutSection[];
-  // Las columnas se definen con `field.width` (1–12) dentro de cada sección.
+  /** Presentación del formulario. */
+  mode?: LayoutMode;
+  sections?: LayoutSection[];
+  /** Número de columnas para `mode: 'columns'` (por defecto 2). */
+  columns?: 2 | 3;
 }
 
 export interface ResourceActionBase {
@@ -654,6 +672,8 @@ export interface ResourceSchema {
   operations?: ResourceOperations;
   /** Vistas declaradas como metadatos (sin operandos internos). */
   views?: Record<string, ViewDescriptor>;
+  /** Páginas y rutas del frontend; separado de `views` del backend. */
+  uiViews?: Record<string, UiViewDescriptor>;
   /** Lo mínimo del backend para menú/acciones: `access` normalizado. */
   policies?: ResourcePolicies;
 }
@@ -708,6 +728,141 @@ export interface ViewDescriptor {
   /** Vista con handler propio (escape hatch): su existencia, nada más. */
   custom?: boolean;
 }
+
+/** Config para una `uiView` de tipo `calendar`. */
+export interface CalendarViewConfig {
+  /** Campo `date` (o `datetime` futuro): inicio del evento. Obligatorio. */
+  startField: string;
+  /** Campo `date`/`time`: fin. Ausente ⇒ evento de 1 día sobre `startField`. */
+  endField?: string;
+  /** Campo `text`/`relation`: rótulo del evento. Obligatorio. */
+  titleField: string;
+  /** Campo `select`/`text`: color/estado (token de paleta o valor crudo). */
+  colorField?: string;
+  /** Vista por defecto al abrir. Por defecto `month`. */
+  defaultView?: 'month' | 'week' | 'day' | 'agenda';
+  /** Origen de filas; ausente ⇒ la propia instancia del recurso (su listado). */
+  source?: DataSource;
+}
+
+/** Config para una `uiView` de tipo `kanban`. */
+export interface KanbanViewConfig {
+  /** Campo `select`/`relation`: columna por valor. Obligatorio. */
+  groupField: string;
+  /** Orden estable de columnas. Valores no declarados ⇒ columna extra al final. */
+  columns: KanbanColumn[];
+  /** Rótulo de la tarjeta; ausente ⇒ `keyField` del recurso. */
+  titleField?: string;
+  /** Segundo renglón de la tarjeta (opcional). */
+  subtitleField?: string;
+  /** Origen de filas; ausente ⇒ la propia instancia del recurso. */
+  source?: DataSource;
+}
+
+/** Una columna del tablero Kanban. */
+export interface KanbanColumn {
+  /** Valor del `groupField` que agrupa esta columna. */
+  value: string;
+  /** Etiqueta visible de la columna. */
+  label: string;
+}
+
+/**
+ * Evento que dispara un `select` declarado (R9.9.4): `open`, `select` o una
+ * acción con nombre (`open-detail`). El string libre cubre las acciones con
+ * nombre sin perder autocompletado para los dos literales fijos.
+ */
+export type SelectionTrigger = 'open' | 'select' | (string & {});
+
+/**
+ * Destino de navegación declarado (R9.9.4 · spec view-navigation): recurso +
+ * `uiView` declarada + params de ruta permitidos. Las URLs crudas o
+ * externas NO son destinos válidos — el validador las rechaza pre-render.
+ */
+export interface NavigationTarget {
+  /** Recurso declarado (`schema.id` del front). */
+  resource: string;
+  /** Clave de `uiViews` en ese recurso. */
+  view: string;
+  /** Nombres de params de la ruta del destino (`:key` ⇒ `['key']`). */
+  params?: string[];
+}
+
+/**
+ * Vinculación selección ⇒ transición declarada en una `uiView` o en un hijo
+ * de composición (R9.9.4). `route` exige un `NavigationTarget` declarado;
+ * `inline` selecciona en local y `none` es un no-op explícito.
+ */
+export type SelectionBinding =
+  | { on: SelectionTrigger; mode: 'none' | 'inline' }
+  | { on: SelectionTrigger; mode: 'route'; target: NavigationTarget };
+
+/** Base común de todo hijo de una composición embebida (R9.9.2). */
+export interface ViewChildBase {
+  /** Identificador estable y único entre hermanos del mismo contenedor. */
+  id: string;
+  /** Etiqueta visible (rótulo de la pestaña). */
+  label: string;
+  /** Conserva el estado al cambiar de pestaña; ausente ⇒ destruir (R9.9.5). */
+  retain?: boolean;
+  /** Visibilidad declarativa (condiciones sobre campos del formulario). */
+  visibleWhen?: FieldCondition[];
+}
+
+/**
+ * Hijo declarado inline (`type` + `config`) o por referencia a una `uiView`
+ * del mismo schema (`ref`). Los `ref` hacen posible que un contenedor
+ * contenga —directa o transitivamente— a sí mismo: por eso el
+ * `composition-validator` es obligatorio antes del render (D2).
+ */
+export type ViewChildNode = (ViewChildBase & UiViewDescriptor) | (ViewChildBase & { ref: string });
+
+/** Config de una `uiView` contenedora `tabs` (R9.9.2). */
+export interface TabsConfig {
+  /** Lista ordenada de hijos; el orden declarado es el orden de render. */
+  children: ViewChildNode[];
+  /** `id` del hijo seleccionado al montar; ausente ⇒ el primero. */
+  initial?: string;
+}
+
+/** Vista `tabs` declarada en el schema local del frontend. */
+export interface UiViewTabs extends UiViewBase {
+  type: 'tabs';
+  config: TabsConfig;
+}
+
+/** Base común de toda `uiView`: tipo + ruta relativa al recurso. */
+export interface UiViewBase {
+  /** Tipo resuelto por `kind: 'view'` en el registro de render. */
+  type: string;
+  /** Ruta relativa al recurso; ausente o vacía significa la ruta raíz. */
+  path?: string;
+  /**
+   * Binding de selección declarado (R9.9.4). Ausente ⇒ la hoja conserva su
+   * comportamiento local y NO navega; una URL cruda nunca es un destino
+   * válido (el `composition-validator` la rechaza antes del render, D2).
+   */
+  select?: SelectionBinding;
+}
+
+/** Vista `calendar` declarada en el schema local del frontend. */
+export interface UiViewCalendar extends UiViewBase {
+  type: 'calendar';
+  config: CalendarViewConfig;
+}
+
+/** Vista `kanban` declarada en el schema local del frontend. */
+export interface UiViewKanban extends UiViewBase {
+  type: 'kanban';
+  config: KanbanViewConfig;
+}
+
+/**
+ * Una página/ruta declarada en el schema local del frontend, discriminada
+ * por `type`. Los tipos base (`list`/`detail`/`form`/`dashboard`) conservan
+ * la forma plana sin `config`; `calendar` y `kanban` llevan su config tipada.
+ */
+export type UiViewDescriptor = UiViewBase | UiViewCalendar | UiViewKanban | UiViewTabs;
 
 /** Políticas públicas: sólo `access`, lo mínimo para menú/acciones. */
 export interface ResourcePolicies {

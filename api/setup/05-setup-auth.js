@@ -63,9 +63,8 @@ function cronometrarKdf_(iterations, salt) {
 
 // ── setupAuth_ (editor only) ─────────────────────────────────────────────
 //
-// Genera AUTH_SECRET y MIDE el coste del KDF en este despliegue. Idempotente:
-// no pisa nada que ya exista (rotar AUTH_SECRET cierra TODAS las sesiones,
-// así que eso es una operación aparte, no este setup).
+// Genera secretos del runtime y MIDE el coste del KDF en este despliegue.
+// Idempotente: no pisa valores existentes; rotarlos es una operación aparte.
 //   setupAuth_()            → usa CONFIG.KDF_BUDGET_MS
 //   setupAuth_(1000)        → fuerza otro presupuesto (p. ej. para re-medir)
 function setupAuth_(budgetMs) {
@@ -77,6 +76,11 @@ function setupAuth_(budgetMs) {
     creado.push('AUTH_SECRET');
   }
 
+  if (!Props.has('DOMAIN_GRANT_SECRET')) {
+    Props.setAll({ DOMAIN_GRANT_SECRET: Props.generateToken() });
+    creado.push('DOMAIN_GRANT_SECRET');
+  }
+
   if (!Props.has('KDF_ITERATIONS')) {
     // Sólo se mide si falta: re-medir no cambia hashes ya emitidos (son
     // autocontenidos), pero sí los próximos, así que conviene medir una vez.
@@ -85,12 +89,35 @@ function setupAuth_(budgetMs) {
   }
 
   if (creado.length === 0) {
-    Logger.log('✓ setupAuth_: AUTH_SECRET y KDF_ITERATIONS ya existían — nada que hacer.');
+    Logger.log('✓ setupAuth_: secretos y KDF_ITERATIONS ya existían — nada que hacer.');
   } else {
     Logger.log('✓ setupAuth_ generó: ' + creado.join(', '));
-    Logger.log('  AUTH_SECRET no se muestra nunca: sólo firma HMAC.');
+    Logger.log('  Los secretos no se muestran nunca: sólo firma HMAC.');
   }
   return { ok: true, creado: creado };
+}
+
+// Rotación explícita del secreto HMAC. No devuelve ni registra el secreto;
+// todas las sesiones existentes dejan de verificar contra el nuevo valor.
+function rotateAuthSecret_() {
+  var currentSecret = Props.get('AUTH_SECRET');
+  if (currentSecret === null || currentSecret === undefined || String(currentSecret) === '') {
+    throw new Error('Falta AUTH_SECRET — ejecuta setupAuth_() primero');
+  }
+  var nextSecret = Props.generateToken();
+  if (
+    typeof nextSecret !== 'string' ||
+    nextSecret.length < 16 ||
+    nextSecret === String(currentSecret)
+  ) {
+    throw new Error('No se pudo generar un AUTH_SECRET válido');
+  }
+  Props.setAll({ AUTH_SECRET: nextSecret });
+  if (String(Props.get('AUTH_SECRET')) !== nextSecret) {
+    throw new Error('No se pudo guardar el nuevo AUTH_SECRET');
+  }
+  Logger.log('✓ AUTH_SECRET rotado; las sesiones existentes quedaron invalidadas.');
+  return { ok: true, sessionsInvalidated: true };
 }
 
 // ── bootstrapAdmin_ (editor only) ────────────────────────────────────────

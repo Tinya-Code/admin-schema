@@ -100,9 +100,8 @@ describe('Fase 4 — Endpoint público de solo lectura (/p/orders/:ref)', () => 
     expect(res.auth_state).toBe('ACTIVA');
     expect(res.created_at).toBe('2026-10-05T10:00:00Z');
     expect(res.updated_at).toBe('2026-10-05T10:00:00Z');
-    expect(res.history).toEqual([
-      { at: '2026-10-05T10:00:00Z', action: 'PEDIDO_CREADO', detail: 'Creado por mostrador' },
-    ]);
+    // La lista pública excluye el historial completo por defecto.
+    expect(res.history).toBeUndefined();
 
     // WHITELIST: no debe exponer notas internas
     expect(res.customer_notes).toBeUndefined();

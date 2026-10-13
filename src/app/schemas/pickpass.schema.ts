@@ -5,6 +5,9 @@ export const pickpassSchema: ResourceSchema = {
   label: 'Configuración PickPass',
   labelPlural: 'Configuración PickPass',
   kind: 'singleton',
+  uiViews: {
+    settings: { type: 'form' },
+  },
   endpoint: {
     get: '/admin/pickpass',
     update: '/admin/pickpass',

@@ -374,21 +374,25 @@ function listCollection_(ss, resource, map) {
   return items;
 }
 
+// Orden de colecciones posicionadas (extraído de readList_ para que el
+// export de R9.5.4 vuelque en el MISMO orden que el listado — una sola
+// definición, imposible que se contradigan). Fuera de `positioned` no toca.
+function sortPositionedEntries_(entries, map) {
+  if (map.ordering !== 'positioned' || !map.positionColumn) return entries;
+  return entries.slice().sort(function (a, b) {
+    var pa = Number(a.flat[map.positionColumn]);
+    var pb = Number(b.flat[map.positionColumn]);
+    var va = isFinite(pa) ? pa : 1e15; // sin posición válida → al final
+    var vb = isFinite(pb) ? pb : 1e15;
+    return va - vb;
+  });
+}
+
 // Listado: rangos completos → armar → ordenar → proyectar (§2.2 #13).
 // De las hojas hijas sólo se leen las que la proyección necesita.
 function readList_(ss, resource, map) {
   var data = readSheetData_(ss, map.sheet);
-  var entries = flatEntries_(map, data);
-
-  if (map.ordering === 'positioned' && map.positionColumn) {
-    entries = entries.slice().sort(function (a, b) {
-      var pa = Number(a.flat[map.positionColumn]);
-      var pb = Number(b.flat[map.positionColumn]);
-      var va = isFinite(pa) ? pa : 1e15; // sin posición válida → al final
-      var vb = isFinite(pb) ? pb : 1e15;
-      return va - vb;
-    });
-  }
+  var entries = sortPositionedEntries_(flatEntries_(map, data), map);
 
   // Hijas proyectadas, agrupadas por fk de padre (una sola lectura c/u).
   // Cuáles: del shape de listado si existe; si no, listProjection (F5-2).
@@ -426,7 +430,42 @@ function resourceCreate_(ss, resource, map, request) {
     throw apiError_(400, 'Un singleton no se crea: usa PUT /admin/' + resource.id);
   }
   validateHooks_(resource); // falla rápido: antes del lock y de leer filas
-  var payload = preparePayload_(resource, request.payload, {
+
+  // R9.5.2 — idempotencia recuperable. `idempotencyKey` es CONTROL de la
+  // operación, no un campo del registro: se extrae ANTES de preparar el
+  // payload, para que ni `preparePayload_` ni el validador la vean. Si un
+  // recurso DECLARA un campo con ese nombre, el campo gana y el create es el
+  // de siempre (aditividad).
+  var declaresIdemField = resource.fields.some(function (field) {
+    return field.key === 'idempotencyKey';
+  });
+  var idempotencyKey = null;
+  var source = {};
+  var raw =
+    request && request.payload && typeof request.payload === 'object' ? request.payload : {};
+  Object.keys(raw).forEach(function (k) {
+    source[k] = raw[k];
+  });
+  if (!declaresIdemField && Object.prototype.hasOwnProperty.call(source, 'idempotencyKey')) {
+    idempotencyKey = source.idempotencyKey;
+    delete source.idempotencyKey;
+    // Mismas reglas que en commands (32): 16..128 y string.
+    if (
+      typeof idempotencyKey !== 'string' ||
+      idempotencyKey.length < 16 ||
+      idempotencyKey.length > 128
+    ) {
+      throw validationError_([
+        commandIssue_(
+          'idempotencyKey',
+          'VALIDATION_IDEMPOTENCY_KEY',
+          'Debe ser una clave de 16 a 128 caracteres',
+        ),
+      ]);
+    }
+  }
+
+  var payload = preparePayload_(resource, source, {
     isNew: true,
     ss: ss,
     user: request && request.user ? request.user : null,
@@ -447,69 +486,195 @@ function resourceCreate_(ss, resource, map, request) {
   });
 
   return withPolicyLock_(resource, function () {
-    var data = readSheetData_(ss, map.sheet);
-    var entries = flatEntries_(map, data);
-    validateAndThrow_(ss, resource, map, {
-      isNew: true,
-      key: null,
-      scalars: payload,
-      incoming: payload,
-      current: null,
-      children: childrenForValidation_(map, payload, true),
-      currentChildren: {}, // no existe el registro ⇒ no hay hijos guardados
-      principalRows: entries,
+    if (idempotencyKey === null) return createApply_(ss, resource, map, payload);
+    return createWithLedger_(ss, resource, map, payload, idempotencyKey);
+  });
+}
+
+// Cuerpo del create bajo lock (extraído de resourceCreate_ para que el
+// create idempotente lo reutilice SIN duplicar el pipeline).
+function createApply_(ss, resource, map, payload) {
+  var data = readSheetData_(ss, map.sheet);
+  var entries = flatEntries_(map, data);
+  validateAndThrow_(ss, resource, map, {
+    isNew: true,
+    key: null,
+    scalars: payload,
+    incoming: payload,
+    current: null,
+    children: childrenForValidation_(map, payload, true),
+    currentChildren: {}, // no existe el registro ⇒ no hay hijos guardados
+    principalRows: entries,
+  });
+
+  var rawKey = payload[map.keyField];
+  var key = rawKey === undefined || rawKey === null ? '' : String(rawKey);
+  if (key === '') {
+    throw validationError_([validatorIssue_(map.keyField, 'required')]);
+  }
+
+  // FASE PRE (B9 · R5.6): puede MUTAR el payload — fluye a la fila y a
+  // las hijas de abajo — o VETAR con cualquier error, que se propaga:
+  // nada se escribió todavía. Corre DESPUÉS de la validación declarativa:
+  // es código de confianza declarado en el schema; sus mutaciones no se
+  // revalidan (re-validar acá daría al hook un duelo con el validador).
+  emitEvent_(ss, resource, 'beforeCreate', { key: key, payload: payload });
+
+  // Fila principal: columnas del payload + posición + campos computados.
+  var row = rowValues_(data.headers, contractToFlat_(map, payload));
+  if (map.ordering === 'positioned' && map.positionColumn) {
+    var positions = entries.map(function (entry) {
+      return entry.flat[map.positionColumn];
     });
+    setHeaderCell_(row, data.headers, map.positionColumn, nextPosition_(positions, map.orderStep));
+  }
+  map.columns.forEach(function (col) {
+    if (col.computed === 'now') setHeaderCell_(row, data.headers, col.flatKey, nowStamp_());
+  });
+  data.sheet.getRange(data.sheet.getLastRow() + 1, 1, 1, data.headers.length).setValues([row]);
 
-    var rawKey = payload[map.keyField];
-    var key = rawKey === undefined || rawKey === null ? '' : String(rawKey);
-    if (key === '') {
-      throw validationError_([validatorIssue_(map.keyField, 'required')]);
-    }
+  // Hijas en lote: las que trae el payload (ausentes ⇒ sin filas).
+  map.children.forEach(function (child) {
+    var items = Object.prototype.hasOwnProperty.call(payload, child.key) ? payload[child.key] : [];
+    writeChildren_(ss, child, key, items);
+  });
 
-    // FASE PRE (B9 · R5.6): puede MUTAR el payload — fluye a la fila y a
-    // las hijas de abajo — o VETAR con cualquier error, que se propaga:
-    // nada se escribió todavía. Corre DESPUÉS de la validación declarativa:
-    // es código de confianza declarado en el schema; sus mutaciones no se
-    // revalidan (re-validar acá daría al hook un duelo con el validador).
-    emitEvent_(ss, resource, 'beforeCreate', { key: key, payload: payload });
+  // R9.5.1: el registro ensamblado se construye UNA vez y alimenta tanto
+  // el summary de auditoría como la respuesta (sin relectura, O3).
+  var record = assembleFull_(ss, resource, map, writtenEntry_(data.headers, row));
+  var summary = auditSummary_(resource, payload, 'Alta', key, record);
+  auditWrite_(ss, resource, 'create', key, summary);
+  cacheInvalidate_(resource.id);
+  emitEvent_(ss, resource, 'afterCreate', { key: key, payload: payload, summary: summary });
+  // R1.3: la respuesta sale de la fila escrita, no de una relectura.
+  return shapeResponse_(resource, 'create', record);
+}
 
-    // Fila principal: columnas del payload + posición + campos computados.
-    var row = rowValues_(data.headers, contractToFlat_(map, payload));
-    if (map.ordering === 'positioned' && map.positionColumn) {
-      var positions = entries.map(function (entry) {
-        return entry.flat[map.positionColumn];
-      });
-      setHeaderCell_(
-        row,
-        data.headers,
-        map.positionColumn,
-        nextPosition_(positions, map.orderStep),
+// ── Idempotencia en create (R9.5.2) ──────────────────────────────────────
+//
+// Reutiliza el MISMO libro mayor de commands (`_domain_operations`): un solo
+// registro ⇒ una sola fuente de verdad para «¿esta operación ya corrió?».
+// Sin `idempotencyKey` el create es idéntico al de siempre.
+//
+// Semántica:
+//   · misma clave + mismo payload   ⇒ la respuesta ORIGINAL, sin fila doble
+//   · misma clave + otro payload    ⇒ 409 IDEMPOTENCY_CONFLICT
+//   · clave con estado `failed`     ⇒ 409 OPERATION_FAILED
+//   · clave con estado intermedio   ⇒ se REANUDA: si la fila ya existe se
+//     devuelve tal cual (sin duplicar); si no, se aplica de nuevo el payload
+//     guardado en el libro (nunca el del reintento).
+function createWithLedger_(ss, resource, map, payload, idempotencyKey) {
+  var idempotencyHash = domainHmac_('idempotency:v1|' + resource.id + '|create|' + idempotencyKey);
+  var requestHash = domainHmac_(
+    'request:v1|' + domainCanonical_({ resource: resource.id, command: 'create', input: payload }),
+  );
+  var existing = domainOperationFind_(idempotencyHash);
+  if (existing !== null) {
+    var record = existing.row.record;
+    if (!constantTimeEqual_(String(record.request_hash), requestHash)) {
+      throw apiError_(
+        409,
+        'La clave idempotente ya se usó con otra solicitud',
+        null,
+        'IDEMPOTENCY_CONFLICT',
       );
     }
-    map.columns.forEach(function (col) {
-      if (col.computed === 'now') setHeaderCell_(row, data.headers, col.flatKey, nowStamp_());
-    });
-    data.sheet.getRange(data.sheet.getLastRow() + 1, 1, 1, data.headers.length).setValues([row]);
-
-    // Hijas en lote: las que trae el payload (ausentes ⇒ sin filas).
-    map.children.forEach(function (child) {
-      var items = Object.prototype.hasOwnProperty.call(payload, child.key)
-        ? payload[child.key]
-        : [];
-      writeChildren_(ss, child, key, items);
-    });
-
-    var summary = auditSummary_(resource, payload, 'Alta', key);
-    auditWrite_(ss, resource, 'create', key, summary);
-    cacheInvalidate_(resource.id);
-    emitEvent_(ss, resource, 'afterCreate', { key: key, payload: payload, summary: summary });
-    // R1.3: la respuesta sale de la fila escrita, no de una relectura.
-    return shapeResponse_(
+    var status = String(record.status);
+    if (status === 'completed') return domainOperationResult_(record);
+    if (status === 'applying') {
+      throw apiError_(409, 'La operación está en curso: reintenta', null, 'OPERATION_IN_PROGRESS');
+    }
+    if (status === 'failed') {
+      throw apiError_(409, 'La operación falló y no puede reintentarse', null, 'OPERATION_FAILED');
+    }
+    if (DOMAIN_OPERATION_STATES_.indexOf(status) === -1) {
+      throw apiError_(500, 'Estado de operación desconocido');
+    }
+    // prepared / recoverable ⇒ reanudar desde el libro.
+    return applyCreateOperation_(
+      ss,
       resource,
-      'create',
-      assembleFull_(ss, resource, map, writtenEntry_(data.headers, row)),
+      map,
+      existing,
+      parseCreatePlan_(existing.row.record.plan_json).payload,
     );
+  }
+
+  var operationId = Utilities.getUuid();
+  domainAppendRow_('_domain_operations', {
+    id: operationId,
+    idempotency_hash: idempotencyHash,
+    request_hash: requestHash,
+    grant_id: '',
+    resource: resource.id,
+    resource_key: '',
+    command: 'create',
+    status: 'prepared',
+    stage: 'prepared',
+    plan_json: JSON.stringify({ payload: payload }),
+    result_json: '',
+    created_at: domainNow_(),
+    updated_at: domainNow_(),
   });
+  return applyCreateOperation_(ss, resource, map, domainOperationEntry_(operationId), payload);
+}
+
+function parseCreatePlan_(planJson) {
+  try {
+    var plan = JSON.parse(String(planJson || ''));
+    if (!plan || typeof plan !== 'object' || typeof plan.payload !== 'object') {
+      throw new Error('invalid');
+    }
+    return plan;
+  } catch (error) {
+    throw apiError_(500, 'El plan guardado del create está dañado');
+  }
+}
+
+// Aplica (o reanuda) el create registrado en el libro, siempre bajo lock.
+function applyCreateOperation_(ss, resource, map, entry, payload) {
+  var key = payload[map.keyField];
+  var keyText = key === undefined || key === null ? '' : String(key);
+  try {
+    domainOperationWrite_(entry, { status: 'applying', stage: 'applying', resource_key: keyText });
+    // Reanudación: si la fila YA está escrita no se vuelve a crear (Sheets no
+    // tiene transacciones; el libro registra la intención ANTES del write).
+    if (keyText !== '') {
+      var data = readSheetData_(ss, map.sheet);
+      var entries = flatEntries_(map, data);
+      var idx = entryIndexOf_(entries, map.keyField, keyText);
+      if (idx !== -1) {
+        var found = assembleFull_(ss, resource, map, entries[idx]);
+        var replay = shapeResponse_(resource, 'create', found);
+        domainOperationWrite_(entry, {
+          status: 'completed',
+          stage: 'completed',
+          result_json: JSON.stringify(replay),
+        });
+        cacheInvalidate_(resource.id);
+        return replay;
+      }
+    }
+    var result = createApply_(ss, resource, map, payload);
+    domainOperationWrite_(entry, {
+      status: 'completed',
+      stage: 'completed',
+      result_json: JSON.stringify(result),
+    });
+    return result;
+  } catch (error) {
+    // Recuperable: el próximo reintento decide (fila ya escrita ⇒ replay;
+    // sin fila ⇒ re-aplica el payload del libro).
+    try {
+      domainOperationWrite_(entry, {
+        status: 'recoverable',
+        stage: String(entry.row.record.stage || 'applying'),
+      });
+    } catch (journalError) {
+      console.error('[create-idempotency] No se pudo marcar recoverable: ' + journalError.message);
+    }
+    throw error;
+  }
 }
 
 // ── Actualizar ─────────────────────────────────────────────────────────────
@@ -621,7 +786,9 @@ function updateCollection_(ss, resource, map, request, key) {
       writeChildren_(ss, child, key, effective[child.key]);
     });
 
-    var summary = auditSummary_(resource, payload, 'Edición', key);
+    // R9.5.1: igual que en alta — un solo ensamblado para summary y respuesta.
+    var record = assembleFull_(ss, resource, map, writtenEntry_(data.headers, written));
+    var summary = auditSummary_(resource, payload, 'Edición', key, record);
     auditWrite_(ss, resource, 'update', key, summary);
     cacheInvalidate_(resource.id);
     emitEvent_(ss, resource, 'afterUpdate', { key: key, payload: payload, summary: summary });
@@ -629,11 +796,7 @@ function updateCollection_(ss, resource, map, request, key) {
     // declarada (R5.5) y el valor realmente CAMBIÓ.
     emitStatusChange_(ss, resource, key, current, payload, summary);
     // R1.3: la respuesta sale de la fila escrita, no de una relectura.
-    return shapeResponse_(
-      resource,
-      'update',
-      assembleFull_(ss, resource, map, writtenEntry_(data.headers, written)),
-    );
+    return shapeResponse_(resource, 'update', record);
   });
 }
 
@@ -691,7 +854,9 @@ function updateSingleton_(ss, resource, map, request) {
       writeChildren_(ss, child, null, effective[child.key]);
     });
 
-    var summary = auditSummary_(resource, payload, 'Edición', resource.id);
+    // R9.5.1: `merged` es el contrato POST-escritura del singleton (el
+    // mismo objeto que writeSingletonBlock_ acaba de persistir).
+    var summary = auditSummary_(resource, payload, 'Edición', resource.id, merged);
     auditWrite_(ss, resource, 'update', resource.id, summary);
     cacheInvalidate_(resource.id);
     emitEvent_(ss, resource, 'afterUpdate', {
@@ -829,6 +994,263 @@ function reorderCollection_(ss, resource, map, request) {
 
 // ── Borrar ─────────────────────────────────────────────────────────────────
 
+function deleteState_(ss, resource, states) {
+  if (states[resource.id]) return states[resource.id];
+  var map = storageMap_(resource);
+  var data = readSheetData_(ss, map.sheet);
+  var state = { resource: resource, map: map, data: data, entries: flatEntries_(map, data) };
+  states[resource.id] = state;
+  return state;
+}
+
+function declaredRelationsTo_(resource, targetId) {
+  var relations = [];
+  var walk = function (fields) {
+    (fields || []).forEach(function (field) {
+      if (
+        field &&
+        field.type === 'relation' &&
+        field.source &&
+        field.source.resource === targetId
+      ) {
+        relations.push(field);
+      }
+      if (field && typeof field === 'object') {
+        walk(field.fields);
+        walk(field.itemFields);
+        walk(field.extraColumns);
+      }
+    });
+  };
+  walk(resource.fields);
+  return relations;
+}
+
+function incomingRelationRows_(ss, resource, item, states) {
+  var matches = [];
+  Object.keys(REGISTRY.resources).forEach(function (childId) {
+    var child = REGISTRY.resources[childId];
+    if (!child || child.kind !== 'collection') return;
+    var declaredRelations = declaredRelationsTo_(child, resource.id);
+    if (declaredRelations.length === 0) return;
+    var state = deleteState_(ss, child, states);
+    var relations = state.map.columns.filter(function (column) {
+      return (
+        column.field.type === 'relation' &&
+        column.field.source &&
+        column.field.source.resource === resource.id &&
+        declaredRelations.some(function (field) {
+          return field.key === column.field.key;
+        })
+      );
+    });
+    if (relations.length === 0) return;
+
+    state.entries.forEach(function (entry) {
+      var fields = relations.filter(function (column) {
+        var valueField = column.field.source.valueField || resource.keyField;
+        var parentValue = item[valueField];
+        return (
+          parentValue !== undefined &&
+          parentValue !== null &&
+          String(parentValue) !== '' &&
+          String(entry.flat[column.flatKey]) === String(parentValue)
+        );
+      });
+      if (fields.length === 0) return;
+      var key = String(entry.flat[state.map.keyField]);
+      var existing = matches.find(function (match) {
+        return match.resource.id === childId && match.key === key;
+      });
+      if (existing) {
+        existing.fields = existing.fields.concat(
+          fields.filter(function (field) {
+            return !existing.fields.some(function (present) {
+              return present.flatKey === field.flatKey;
+            });
+          }),
+        );
+      } else {
+        matches.push({
+          resource: child,
+          map: state.map,
+          item: flatToContract_(state.map, entry.flat),
+          key: key,
+          fields: fields,
+        });
+      }
+    });
+  });
+  return matches;
+}
+
+function planReferentialDelete_(ss, resource, map, item, key, request, states, plan, visiting) {
+  var visitKey = resource.id + '\u0000' + key;
+  if (visiting[visitKey]) {
+    throw apiError_(500, 'Ciclo al cascader la eliminación de ' + resource.id + '/' + key);
+  }
+  visiting[visitKey] = true;
+  var dependencies = incomingRelationRows_(ss, resource, item, states);
+
+  if (resource.onDelete === 'restrict' && dependencies.length > 0) {
+    var counts = {};
+    dependencies.forEach(function (dependency) {
+      counts[dependency.resource.id] = (counts[dependency.resource.id] || 0) + 1;
+    });
+    var parts = Object.keys(counts).map(function (id) {
+      return id + ' (' + counts[id] + ')';
+    });
+    throw apiError_(409, 'No se puede borrar: lo referencian ' + parts.join(', '));
+  }
+
+  if (resource.onDelete === 'nullify') {
+    dependencies.forEach(function (dependency) {
+      if (
+        dependency.fields.some(function (field) {
+          return field.field.required === true;
+        })
+      ) {
+        throw apiError_(
+          500,
+          'onDelete nullify no puede limpiar una relación required en ' + dependency.resource.id,
+        );
+      }
+      validateHooks_(dependency.resource);
+      plan.push({ action: 'nullify', dependency: dependency });
+    });
+  } else if (resource.onDelete === 'cascade') {
+    dependencies.forEach(function (dependency) {
+      assertRowInScope_(
+        dependency.resource,
+        ss,
+        dependency.map,
+        dependency.item,
+        dependency.key,
+        request.user === undefined ? null : request.user,
+      );
+      validateHooks_(dependency.resource);
+      planReferentialDelete_(
+        ss,
+        dependency.resource,
+        dependency.map,
+        dependency.item,
+        dependency.key,
+        request,
+        states,
+        plan,
+        visiting,
+      );
+    });
+  }
+
+  plan.push({
+    action: 'delete',
+    resource: resource,
+    map: map,
+    item: item,
+    key: key,
+  });
+  delete visiting[visitKey];
+}
+
+function applyReferentialDeletePlan_(ss, states, plan) {
+  var deleted = Object.create(null);
+  plan.forEach(function (step) {
+    if (step.action !== 'delete') return;
+    if (!deleted[step.resource.id]) deleted[step.resource.id] = Object.create(null);
+    deleted[step.resource.id][step.key] = true;
+  });
+
+  var updates = [];
+  plan.forEach(function (step) {
+    if (step.action !== 'nullify') return;
+    var dependency = step.dependency;
+    if (deleted[dependency.resource.id] && deleted[dependency.resource.id][dependency.key]) return;
+    var state = states[dependency.resource.id];
+    var rowIndex = state.data.rows.findIndex(function (row) {
+      return (
+        String(headerValue_(state.data.headers, row.values, state.map.keyField)) === dependency.key
+      );
+    });
+    if (rowIndex === -1) throw apiError_(409, 'La relación cambió durante la eliminación');
+    var row = state.data.rows[rowIndex];
+    var payload = {};
+    dependency.fields.forEach(function (field) {
+      var columnIndex = state.data.headers.indexOf(field.flatKey);
+      if (columnIndex === -1) {
+        throw apiError_(500, 'Columna ausente al limpiar la relación: ' + field.flatKey);
+      }
+      row.values[columnIndex] = '';
+      payload[field.field.key] = '';
+    });
+    updates.push({
+      resource: dependency.resource,
+      key: dependency.key,
+      item: dependency.item,
+      payload: payload,
+      // R9.5.1: mismo summary configurable; el label no cambia (payload sólo
+      // trae los campos nullificados ⇒ titleField ausente ⇒ cae a la llave).
+      summary: auditSummary_(
+        dependency.resource,
+        payload,
+        'Relación limpiada',
+        dependency.key,
+        dependency.item,
+      ),
+    });
+  });
+
+  Object.keys(states).forEach(function (id) {
+    var state = states[id];
+    var removed = deleted[id] || {};
+    var touched =
+      Object.keys(removed).length > 0 ||
+      updates.some(function (update) {
+        return update.resource.id === id;
+      });
+    if (!touched) return;
+    var rows = state.data.rows
+      .filter(function (row) {
+        return !removed[String(headerValue_(state.data.headers, row.values, state.map.keyField))];
+      })
+      .map(function (row) {
+        return row.values;
+      });
+    writeRowsBlock_(state.data.sheet, state.data.headers, rows);
+  });
+
+  plan.forEach(function (step) {
+    if (step.action !== 'delete') return;
+    step.map.children.forEach(function (child) {
+      writeChildren_(ss, child, step.key, []);
+    });
+  });
+
+  updates.forEach(function (update) {
+    auditWrite_(ss, update.resource, 'update', update.key, update.summary);
+    cacheInvalidate_(update.resource.id);
+    emitEvent_(ss, update.resource, 'afterUpdate', {
+      key: update.key,
+      payload: update.payload,
+      summary: update.summary,
+    });
+    emitStatusChange_(ss, update.resource, update.key, update.item, update.payload, update.summary);
+  });
+  plan.forEach(function (step) {
+    if (step.action !== 'delete') return;
+    var summary = auditSummary_(step.resource, step.item, 'Baja', step.key);
+    var payload = {};
+    payload[step.map.keyField] = step.key;
+    auditWrite_(ss, step.resource, 'delete', step.key, summary);
+    cacheInvalidate_(step.resource.id);
+    emitEvent_(ss, step.resource, 'afterDelete', {
+      key: step.key,
+      payload: payload,
+      summary: summary,
+    });
+  });
+}
+
 function resourceDelete_(ss, resource, map, request, declared) {
   if (resource.kind === 'singleton') {
     throw apiError_(400, 'Un singleton no se borra');
@@ -868,17 +1290,6 @@ function resourceDelete_(ss, resource, map, request, declared) {
       request.user === undefined ? null : request.user,
     );
 
-    // restrict: nadie puede quedar apuntando a un registro inexistente.
-    if (resource.onDelete === 'restrict') {
-      var counts = dependentCounts_(ss, resource, map, key);
-      var parts = Object.keys(counts).map(function (id) {
-        return id + ' (' + counts[id] + ')';
-      });
-      if (parts.length > 0) {
-        throw apiError_(409, 'No se puede borrar: lo referencian ' + parts.join(', '));
-      }
-    }
-
     // soft: la fila se CONSERVA con `activeField = false` — es «baja lógica»,
     // no desaparición. El front público ya filtra por activeField, así que el
     // registro sale de circulación sin romper el histórico ni las FK.
@@ -895,8 +1306,10 @@ function resourceDelete_(ss, resource, map, request, declared) {
         }),
       );
 
-      var softSummary = 'Baja lógica: ' + key;
+      // R9.5.1: la baja lógica audita con el MISMO summary configurable —
+      // fuente = el registro completo que se acaba de leer del flat.
       var record = flatToContract_(map, flatEntries_(map, data)[idx].flat);
+      var softSummary = auditSummary_(resource, record, 'Baja lógica', key, record);
       auditWrite_(ss, resource, 'delete', key, softSummary);
       cacheInvalidate_(resource.id);
       emitEvent_(ss, resource, 'afterDelete', {
@@ -907,64 +1320,27 @@ function resourceDelete_(ss, resource, map, request, declared) {
       return shapeResponse_(resource, 'remove', { deleted: key, mode: 'soft' });
     }
 
-    // Hijas propias: siempre mueren con el padre (no serían "dependientes",
-    // serían partes suyas — cascade-children de §4).
-    map.children.forEach(function (child) {
-      writeChildren_(ss, child, key, []);
-    });
-
-    var remaining = data.rows
-      .filter(function (row) {
-        return String(headerValue_(data.headers, row.values, map.keyField)) !== key;
-      })
-      .map(function (row) {
-        return row.values;
-      });
-    writeRowsBlock_(data.sheet, data.headers, remaining);
-
-    var summary = 'Baja: ' + key;
-    var gone = {};
-    gone[map.keyField] = key;
-    auditWrite_(ss, resource, 'delete', key, summary);
-    cacheInvalidate_(resource.id);
-    emitEvent_(ss, resource, 'afterDelete', { key: key, payload: gone, summary: summary });
+    var current = flatToContract_(map, entries[idxScope].flat);
+    var states = Object.create(null);
+    states[resource.id] = { resource: resource, map: map, data: data, entries: entries };
+    var plan = [];
+    planReferentialDelete_(
+      ss,
+      resource,
+      map,
+      current,
+      key,
+      request,
+      states,
+      plan,
+      Object.create(null),
+    );
+    applyReferentialDeletePlan_(ss, states, plan);
     // El nombre de la operación es `remove` (KNOWN_OPERATION_KEYS); con
     // 'delete' el lookup de shape miraba una clave que validate-registry
     // jamás aceptaría — un `remove.shape` declarado se ignoraba en silencio.
     return shapeResponse_(resource, 'remove', { deleted: key });
   });
-}
-
-// Registros de OTROS recursos que referencian esta clave (relation FK).
-function dependentCounts_(ss, resource, map, key) {
-  var counts = {};
-  (resource.dependents || []).forEach(function (depId) {
-    var dep = getResourceSchema(depId);
-    if (dep === null) return;
-    var depMap = storageMap_(dep);
-    // `source` declara la fuente de la relación (F8 · R6.5); sin
-    // `valueField` el destino usa su `keyField`, que es esta clave ⇒ apunta.
-    var refs = depMap.columns.filter(function (col) {
-      if (col.field.type !== 'relation' || !col.field.source) return false;
-      var src = col.field.source;
-      if (src.resource !== resource.id) return false;
-      return !src.valueField || src.valueField === map.keyField;
-    });
-    if (refs.length === 0) return;
-
-    var data = readSheetData_(ss, dep.sheet);
-    var seen = {};
-    data.rows.forEach(function (row) {
-      refs.forEach(function (col) {
-        if (String(headerValue_(data.headers, row.values, col.flatKey)) !== key) return;
-        var rowKey = String(headerValue_(data.headers, row.values, depMap.keyField));
-        if (seen[rowKey]) return; // un registro que apunta dos veces cuenta 1
-        seen[rowKey] = true;
-        counts[depId] = (counts[depId] || 0) + 1;
-      });
-    });
-  });
-  return counts;
 }
 
 // ── Helpers de escritura ───────────────────────────────────────────────────
@@ -1153,15 +1529,54 @@ function setHeaderCell_(row, headers, name, value) {
 }
 
 function auditWrite_(ss, resource, action, entityKey, summary) {
-  // Audit desde policies.audit (F6-1); sin la bandera ⇒ sin traza.
+  // Audit desde policies.audit (F6-1): booleano (la forma histórica) u
+  // objeto { fields, retention } (R9.5.1) — ambas son «encendido».
   if (!resource.policies || !resource.policies.audit) return;
   appendAuditRow_(ss, action, resource.id, entityKey, summary);
 }
 
-function auditSummary_(resource, payload, prefix, fallback) {
+// R9.5.1 · auditoría configurable (B14). Con `policies.audit.fields`, el
+// summary agrega ` · campo=valor` por cada campo declarado:
+//
+//   "Alta: Pedido 55HL6P · status=PENDIENTE · pickup_at=2026-10-15 10:00"
+//
+// Fuente de los valores: `optSource` cuando el llamador ya tiene el estado
+// POST-ESCRITURA (el registro ensamblado de create/update, el registro
+// completo de delete), si no el payload de la operación. Así el summary
+// refleja lo que quedó guardado y no sólo lo que el cliente mandó — y sin
+// UNA sola lectura extra: se reutiliza el registro que la respuesta ya
+// iba a construir (O3).
+//
+// Un campo ausente en esa operación no se registra (no se releerá la fila
+// por un summary); `0` y `false` sí se registran: son valores.
+function auditSummary_(resource, payload, prefix, fallback, optSource) {
   var title = resource.titleField ? payload[resource.titleField] : undefined;
   var label = isEmptyValue_(title) ? fallback : String(title);
-  return prefix + ': ' + label;
+  var summary = prefix + ': ' + label;
+  var fields = auditFields_(resource);
+  if (fields.length === 0) return summary;
+  var source = optSource || payload || {};
+  fields.forEach(function (key) {
+    var value = source[key];
+    if (value === undefined || value === null || value === '') return;
+    summary += ' · ' + key + '=' + auditValue_(value);
+  });
+  return summary;
+}
+
+// Campos declarados en `policies.audit.fields` (la validación de arranque ya
+// garantiza que son claves top-level, no secret y que existen).
+function auditFields_(resource) {
+  var audit = resource.policies ? resource.policies.audit : null;
+  if (!audit || typeof audit !== 'object') return [];
+  return Array.isArray(audit.fields) ? audit.fields : [];
+}
+
+// Escalar tal cual; objeto/ array en JSON compacto; todo truncado: la
+// columna `summary` de `_audit_log` es texto corto, no un volcado de fila.
+function auditValue_(value) {
+  var text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return text.length > 120 ? text.slice(0, 119) + '…' : text;
 }
 
 // ── Hooks: el motor EMITE el evento (refactormotor.md B9) ───────────────────

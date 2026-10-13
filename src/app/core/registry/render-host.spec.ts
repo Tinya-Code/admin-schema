@@ -38,7 +38,7 @@ class Host {
   readonly ctx = input.required<RenderContext>();
 }
 
-describe('RenderHost — los 20 tipos', () => {
+describe('RenderHost — los 21 tipos', () => {
   const API = { list: () => of([]) } as unknown as ApiService;
 
   const TIPOS = [
@@ -62,6 +62,7 @@ describe('RenderHost — los 20 tipos', () => {
     'key-value',
     'relation',
     'image',
+    'file',
   ] as const;
 
   /** Campos compuestos y con opciones mínimas para que el schema arranque. */

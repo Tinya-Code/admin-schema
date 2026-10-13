@@ -23,9 +23,11 @@
 //     metadato de relación, no como datos).
 //   - policies.access: { read, write } normalizado (fail-closed 'admin'),
 //     lo mínimo para menú/acciones. cache/audit/lock/limits NO viajan.
+//   - commands: contrato público de input/output/errores. No viajan las reglas
+//     de ejecución, el handler ni la configuración privada de grant/upload.
 // Salida: { resources: { <id>: { id, kind, keyField, titleField, ordering,
 //                                listProjection, operations, views,
-//                                policies, fields } } }
+//                                policies, fields, commands? } } }
 // Sólo recursos con exposeToFront: true.
 
 function handleSchema() {
@@ -41,7 +43,7 @@ function handleSchema() {
 // Recurso → proyección de UI. Lista blanca de claves: lo que no se nombra
 // acá NO viaja (añadir una clave es una decisión, no un accidente).
 function projectResourceSchema_(resource) {
-  return {
+  var projected = {
     id: resource.id,
     kind: resource.kind,
     keyField: resource.keyField,
@@ -53,6 +55,56 @@ function projectResourceSchema_(resource) {
     policies: projectPolicies_(resource),
     fields: projectFields_(resource.fields),
   };
+  var commands = projectCommands_(resource.commands);
+  if (Object.keys(commands).length > 0) projected.commands = commands;
+  return projected;
+}
+
+// El cliente recibe el contrato consumible, nunca la implementación ni las
+// reglas que autorizan/ejecutan el comando. Los perfiles de carga aportan sólo
+// límites públicos; provider, namespace y binding del grant quedan internos.
+function projectCommands_(commands) {
+  var out = {};
+  Object.keys(commands || {}).forEach(function (name) {
+    var command = commands[name];
+    var projected = {
+      access: command.access,
+      input: projectCommandFields_(command.input),
+      output: projectCommandFields_(command.output),
+      idempotency: command.idempotency,
+      grantRequired: typeof command.grant === 'string',
+    };
+    if (command.limits !== undefined) projected.limits = command.limits;
+    if (Array.isArray(command.errors)) {
+      projected.errors = command.errors.map(function (error) {
+        return { status: error.status, code: error.code, message: error.message };
+      });
+    }
+    out[name] = projected;
+  });
+  return out;
+}
+
+function projectCommandFields_(fields) {
+  var out = {};
+  Object.keys(fields || {}).forEach(function (name) {
+    var field = fields[name];
+    var projected = { type: field.type };
+    ['required', 'enum', 'format', 'pattern', 'min', 'max', 'minLength', 'maxLength'].forEach(
+      function (key) {
+        if (field[key] !== undefined) projected[key] = field[key];
+      },
+    );
+    if (field.type === 'upload') {
+      var profile = REGISTRY.uploadProfiles[field.profile];
+      if (profile) {
+        projected.mimeTypes = profile.mimeTypes.slice();
+        projected.maxBytes = profile.maxBytes;
+      }
+    }
+    out[name] = projected;
+  });
+  return out;
 }
 
 // Campos publicables: un campo `secret` (FIELD_TYPES.readable === false,

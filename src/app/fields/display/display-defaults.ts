@@ -15,6 +15,8 @@ const BADGE: DisplayLoader = () =>
   import('./display-badge').then((module) => module.FieldDisplayBadge);
 const IMAGEN: DisplayLoader = () =>
   import('./display-image').then((module) => module.FieldDisplayImage);
+const ARCHIVO: DisplayLoader = () =>
+  import('./display-file').then((module) => module.FieldDisplayFile);
 const LISTA: DisplayLoader = () =>
   import('./display-list').then((module) => module.FieldDisplayList);
 
@@ -60,6 +62,7 @@ const DISPLAY_POR_DEFECTO: Record<FieldType, DisplayLoader> = {
   boolean: BADGE,
   select: BADGE,
   image: IMAGEN,
+  file: ARCHIVO,
   list: LISTA,
 };
 

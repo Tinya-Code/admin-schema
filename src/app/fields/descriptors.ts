@@ -5,6 +5,7 @@ import { descriptor as booleanDescriptor } from './boolean/boolean.descriptor';
 import { descriptor as currencyDescriptor } from './currency/currency.descriptor';
 import { descriptor as dateDescriptor } from './date/date.descriptor';
 import { descriptor as emailDescriptor } from './email/email.descriptor';
+import { descriptor as fileDescriptor } from './file/file.descriptor';
 import { descriptor as groupDescriptor } from './group/group.descriptor';
 import { descriptor as imageDescriptor } from './image/image.descriptor';
 import { descriptor as keyValueDescriptor } from './key-value/key-value.descriptor';
@@ -68,6 +69,7 @@ export const SUPPORTED_FIELD_TYPE_LIST = [
   'key-value',
   'relation',
   'image',
+  'file',
 ] as const satisfies readonly FieldType[];
 
 type FaltaEnLaUi = Exclude<FieldType, (typeof SUPPORTED_FIELD_TYPE_LIST)[number]>;
@@ -91,6 +93,7 @@ export const fieldDescriptors: readonly RenderDescriptor[] = [
   currencyDescriptor,
   dateDescriptor,
   emailDescriptor,
+  fileDescriptor,
   groupDescriptor,
   imageDescriptor,
   keyValueDescriptor,

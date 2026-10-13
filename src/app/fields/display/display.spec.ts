@@ -90,7 +90,7 @@ describe('R4.1 — display por defecto según tipo', () => {
     itemFields: [{ key: 'action', label: 'Acción', type: 'text' }],
   };
 
-  it('los 20 tipos de la unión tienen display en la tabla', () => {
+  it('los 21 tipos de la unión tienen display en la tabla', () => {
     // Tripwire de la tabla: `Record<FieldType, …>` ya no compila si falta
     // uno, pero el acceso en runtime pasa por `displayLoader()` con un
     // `string` (un schema puede escribir cualquier cosa), y ahí sólo este

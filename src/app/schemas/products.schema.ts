@@ -9,6 +9,11 @@ export const productsSchema: ResourceSchema = {
   label: 'Producto',
   labelPlural: 'Productos',
   kind: 'collection',
+  uiViews: {
+    list: { type: 'list' },
+    create: { type: 'form', path: 'new' },
+    edit: { type: 'form', path: ':key/edit' },
+  },
   endpoint: {
     list: '/admin/products',
     get: '/admin/products/{key}',

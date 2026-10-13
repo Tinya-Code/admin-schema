@@ -44,6 +44,8 @@ export const FORMATO_POR_DEFECTO: Record<FieldType, ListColumnFormat> = {
   boolean: 'boolean',
   select: 'badge',
   image: 'thumbnail',
+  // Un archivo no tiene miniatura: en la lista va como URL en crudo (R9.5.3).
+  file: 'text',
 };
 
 /**

@@ -24,6 +24,7 @@ import {
   type ListChildContext,
   type RootTree,
 } from '../../fields/field-node';
+import { FieldFile } from '../../fields/file/file';
 import { FieldImage } from '../../fields/image/image';
 import { FieldMultiselect } from '../../fields/multiselect/multiselect';
 import { esGrupoRadio } from '../../fields/select/radio-mode';
@@ -31,6 +32,7 @@ import { displayLoader } from '../../fields/display/display-defaults';
 import { UnknownRender } from '../../fields/unknown-render/unknown-render';
 import type {
   FieldSchema,
+  FileField,
   GroupField,
   ImageField,
   ListField,
@@ -49,7 +51,7 @@ import {
   type RenderConfig,
   type RenderContext,
   type RenderExtras,
-  type RenderKind,
+  type ComponentRenderKind,
 } from './render-registry';
 
 /**
@@ -88,6 +90,7 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
 @Component({
   selector: 'app-render-host',
   imports: [
+    FieldFile,
     FieldImage,
     FieldMultiselect,
     FormField,
@@ -182,7 +185,7 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
           }
 
           @if (type() === 'multiselect') {
-            <!-- Dos de los veinte no pueden pasar por "NgComponentOutlet": su
+            <!-- Tres de los veintiuno no pueden pasar por "NgComponentOutlet": su
                sincronización con Signal Forms vive en ɵɵcontrol, una
                instrucción que el compilador emite únicamente junto al binding
                formField de la propia plantilla. Sin ese binding escrito en el
@@ -200,6 +203,13 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
               [id]="name()"
               [field]="imageCfg()"
               [formField]="imageNode()"
+              [resource]="ctx().resource"
+            />
+          } @else if (type() === 'file') {
+            <app-field-file
+              [id]="name()"
+              [field]="fileCfg()"
+              [formField]="fileNode()"
               [resource]="ctx().resource"
             />
           } @else {
@@ -249,7 +259,7 @@ export const RENDER_CONTEXT = new InjectionToken<RenderContext>('RENDER_CONTEXT'
 })
 export class RenderHost implements FieldAriaContext, RenderContext {
   /** Categoría de render. Resuelve campos y widgets (R3.6). */
-  readonly kind = input<RenderKind>('field');
+  readonly kind = input<ComponentRenderKind>('field');
   /** Identificador del tipo dentro de su `kind`. */
   readonly type = input.required<string>();
   /**
@@ -508,13 +518,15 @@ export class RenderHost implements FieldAriaContext, RenderContext {
   // ── Envoltorio: label, marcas y estado ───────────────────────────────────
 
   /**
-   * Los dos `FormValueControl` se declaran en la plantilla (D27), así que su
-   * campo necesita el tipo estrecho que exige cada input — el mismo estrechado
-   * que hacía `FieldHost`.
+   * Los tres `FormValueControl` se declaran en la plantilla (D27), así que
+   * su campo necesita el tipo estrecho que exige cada input — el mismo
+   * estrechado que hacía `FieldHost`.
    */
   protected readonly multiselectCfg = computed(() => this.config() as MultiselectField);
 
   protected readonly imageCfg = computed(() => this.config() as ImageField);
+
+  protected readonly fileCfg = computed(() => this.config() as FileField);
 
   private readonly multiselectNode = computed(() =>
     childTree<string[]>(this.ctx().tree, this.config().key),
@@ -523,6 +535,8 @@ export class RenderHost implements FieldAriaContext, RenderContext {
   private readonly imageNode = computed(() =>
     childTree<string>(this.ctx().tree, this.config().key),
   );
+
+  private readonly fileNode = computed(() => childTree<string>(this.ctx().tree, this.config().key));
 
   /**
    * Error visible: primero el del backend (si existe para esta ruta) y

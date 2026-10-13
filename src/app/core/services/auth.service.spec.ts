@@ -120,6 +120,23 @@ describe('AuthService — sesión (R2.7 / R2.9 / R2.12)', () => {
     expect(sessionStorage.getItem(SESSION_USER_KEY)).toBeNull();
   });
 
+  it('logoutAll() revoca en backend y limpia la sesión local al éxito', () => {
+    seed();
+    const auth = injected();
+    let effectiveWithinSeconds = 0;
+    auth.logoutAll().subscribe((result) => {
+      effectiveWithinSeconds = result.effectiveWithinSeconds;
+    });
+
+    const req = http.expectOne('/api');
+    expect((req.request.body as { path: string }).path).toBe('/auth/logout-all');
+    req.flush({ sessionsRevoked: true, effectiveWithinSeconds: 60 });
+
+    expect(effectiveWithinSeconds).toBe(60);
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(sessionStorage.getItem(SESSION_TOKEN_KEY)).toBeNull();
+  });
+
   it('restore() sin token no hace NINGÚN viaje', () => {
     const auth = injected();
     auth.restore().subscribe();

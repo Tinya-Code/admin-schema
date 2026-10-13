@@ -11,11 +11,14 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { fakeApp_, fakeSheet_ } from './_sheets.js';
 import { loadBackend } from './_harness.js';
 
 let evalWhere_;
 let sortItems_;
 let applyDeclaredView_;
+let readRulesCtx_;
+let storageMap_;
 let REGISTRY;
 
 beforeAll(() => {
@@ -23,6 +26,8 @@ beforeAll(() => {
   evalWhere_ = globalThis.evalWhere_;
   sortItems_ = globalThis.sortItems_;
   applyDeclaredView_ = globalThis.applyDeclaredView_;
+  readRulesCtx_ = globalThis.readRulesCtx_;
+  storageMap_ = globalThis.storageMap_;
   REGISTRY = globalThis.REGISTRY;
 });
 
@@ -174,6 +179,74 @@ describe('applyDeclaredView_', () => {
     } finally {
       if (original === undefined) delete REGISTRY.handlers.prueba;
       else REGISTRY.handlers.prueba = original;
+    }
+  });
+});
+
+describe('hasMany inverso', () => {
+  it('expande filas relacionadas agrupadas por el campo padre', () => {
+    const categories = REGISTRY.resources.categories;
+    const oldViews = categories.views;
+    categories.views = {
+      __hasManyTest: { expand: ['products'], select: ['slug', 'products'] },
+    };
+    try {
+      const ss = fakeApp_({
+        products: fakeSheet_([
+          ['slug', 'category_slug', 'name'],
+          ['p1', 'cat-a', 'Producto A'],
+          ['p2', 'cat-a', 'Producto B'],
+          ['p3', 'cat-b', 'Producto C'],
+        ]),
+      });
+      const parents = [{ slug: 'cat-a' }, { slug: 'cat-b' }, { slug: 'cat-c' }];
+      const ctx = readRulesCtx_(
+        ss,
+        categories,
+        storageMap_(categories),
+        parents,
+        { view: '__hasManyTest' },
+        {},
+      );
+      const result = applyDeclaredView_(categories, '__hasManyTest', parents, ctx);
+
+      expect(result.map((category) => category.products.map((product) => product.slug))).toEqual([
+        ['p1', 'p2'],
+        ['p3'],
+        [],
+      ]);
+    } finally {
+      categories.views = oldViews;
+    }
+  });
+
+  it('falla en vez de truncar cuando se excede el límite declarado', () => {
+    const categories = REGISTRY.resources.categories;
+    const oldViews = categories.views;
+    const oldLimit = categories.hasMany.products.limit;
+    categories.views = { __hasManyLimitTest: { expand: ['products'] } };
+    categories.hasMany.products.limit = 1;
+    try {
+      const ss = fakeApp_({
+        products: fakeSheet_([
+          ['slug', 'category_slug', 'name'],
+          ['p1', 'cat-a', 'Producto A'],
+          ['p2', 'cat-a', 'Producto B'],
+        ]),
+      });
+      expect(() =>
+        readRulesCtx_(
+          ss,
+          categories,
+          storageMap_(categories),
+          [{ slug: 'cat-a' }],
+          { view: '__hasManyLimitTest' },
+          {},
+        ),
+      ).toThrow(/supera su límite declarado/);
+    } finally {
+      categories.views = oldViews;
+      categories.hasMany.products.limit = oldLimit;
     }
   });
 });

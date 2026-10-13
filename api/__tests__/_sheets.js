@@ -66,6 +66,17 @@ export function fakeSheet_(grid) {
       state.grid.push(row);
     },
 
+    /**
+     * `deleteRows(row, count)` — la usa la poda del `_audit_log`
+     * (capabilities/handlers/audit-prune, R9.5.1). Igual que la hoja real:
+     * borra `count` filas empezando en `row` (1-based) y el resto sube.
+     */
+    deleteRows(row, count) {
+      const from = Math.max(row - 1, 0);
+      const howMany = Math.min(Math.max(count, 0), state.grid.length - from);
+      state.grid.splice(from, howMany);
+    },
+
     /** Inspección directa desde el test. */
     rows: () => state.grid,
   };

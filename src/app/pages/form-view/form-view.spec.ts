@@ -213,6 +213,46 @@ describe('FormView — resumen de errores', () => {
     expect(fixture.nativeElement.textContent ?? '', 'falta el ⚠ tras enviar').toContain('⚠');
   });
 
+  it('steps sólo avanza con la etapa actual válida y reserva Guardar para la última', async () => {
+    const products = schemas.find((schema) => schema.id === 'products');
+    expect(products).toBeDefined();
+    const originalLayout = products!.layout;
+    products!.layout = { ...originalLayout!, mode: 'steps' };
+    let fixture: ComponentFixture<FormView> | undefined;
+    try {
+      fixture = await createProductsForm({
+        record: {
+          name: 'Producto',
+          slug: 'producto',
+          category_slug: 'cat-1',
+          sku: 'SKU-1',
+          price: 10,
+          availability: 'InStock',
+          featured: false,
+          active: true,
+        },
+      });
+      const form = fixture.componentInstance;
+      expect(form.layoutMode()).toBe('steps');
+      expect(form.canSave()).toBe(false);
+
+      form.nextStep();
+      fixture.detectChanges();
+      expect(form.activeSection()).toBe('contenido');
+
+      form.nextStep();
+      fixture.detectChanges();
+      expect(form.activeSection()).toBe('contenido');
+      expect((fixture.nativeElement as Element).textContent).toContain('Descripción');
+
+      form.activeSection.set('faq');
+      expect(form.canSave()).toBe(true);
+    } finally {
+      fixture?.destroy();
+      products!.layout = originalLayout;
+    }
+  });
+
   it('con un solo error no pinta resumen y lleva el foco al campo', async () => {
     const fixture = await createProductsForm({
       record: {
@@ -723,5 +763,81 @@ describe('FormView — readonlyOn', () => {
     const input = inputOf(fixture, 'fixed');
     expect(input, 'debe existir el campo fixed').not.toBeNull();
     expect(input!.readOnly).toBe(true);
+  });
+});
+
+// ── R9.9 · D4 — target load error recovery ──
+
+describe('FormView — D4: error recovery', () => {
+  async function createConError(rechazo: unknown) {
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'orders', key: 'ORD-1' })) },
+        },
+        // Router con el trozo mínimo que `ViewNavigationService.back()`
+        // recorre: `navigate` (el aserto) + `routerState` (recurso raíz).
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn().mockResolvedValue(true),
+            routerState: {
+              snapshot: { root: { data: { resourceId: 'orders' }, firstChild: null } },
+            },
+          },
+        },
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => throwError(() => rechazo)),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('estado de error ofrece «Volver» junto a «Reintentar» y navega de vuelta', async () => {
+    const fixture = await createConError(new Error('boom'));
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('No se pudo cargar el registro');
+
+    const volver = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('app-empty-state button[app-button]'),
+    ).find((b) => b.textContent?.trim().includes('Volver'));
+    expect(volver, 'debe existir el botón Volver en el estado de error').toBeDefined();
+
+    volver!.click();
+    await fixture.whenStable();
+    // Raíz del recurso declarado en la ruta (D4: way back, no pantalla muerta).
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/', 'orders']);
+  });
+
+  it('el error original de load() queda retenido con identidad intacta', async () => {
+    const fallo = new Error('boom de red');
+    const fixture = await createConError(fallo);
+    expect(fixture.componentInstance.errorDeCarga()).toBe(fallo);
   });
 });

@@ -25,8 +25,16 @@ var ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 // de carga, igual que en filePushOrder).
 // `setupAll` entra en la lista aunque ninguna ruta lo declare hoy: encadena
 // `bootstrapAdmin_` y crea un administrador, así que el guard tiene que
-// existir ANTES de que a alguien se le ocurra declararlo (D24).
-var EDITOR_ONLY_FNS = ['setupAuth_', 'bootstrapAdmin_', 'setupAll'];
+// existir ANTES de que a alguien se le ocurra declararlo (D24). Ídem
+// `setupTriggers_` (R9.5.6): instala triggers de GAS con privilegios
+// plenos — el cron jamás es una puerta a esto.
+var EDITOR_ONLY_FNS = [
+  'setupAuth_',
+  'rotateAuthSecret_',
+  'bootstrapAdmin_',
+  'setupTriggers_',
+  'setupAll',
+];
 
 // Paridad método lógico ↔ operación (F2-4): EXACTAMENTE la semántica que
 // despacha engine/24-crud, hecha explícita acá para que el contrato sea
@@ -49,6 +57,8 @@ function routeTable_() {
   var exact = {}; // ruta completa → entrada (endpoints + singletons)
   var keyed = {}; // base de colección → resource (acepta /<clave> al final)
   var actions = {}; // base de colección → resource CON acciones declaradas
+  var commands = {}; // base de colección → resource CON commands declarados
+  var io = {}; // base de colección → resource CON operations.export/import
   var i;
 
   // 1) endpoints declarados (schema/endpoints/*)
@@ -107,6 +117,22 @@ function routeTable_() {
       ) {
         actions[base] = { resource: resource, policy: actionsPolicy_(resource, entry.policy) };
       }
+      if (
+        resource.commands &&
+        typeof resource.commands === 'object' &&
+        Object.keys(resource.commands).length > 0
+      ) {
+        var commandBase = resource.commandsRoute || base;
+        commands[commandBase] = { resource: resource, policy: entry.policy };
+      }
+      // Import/Export declarativo (R9.5.4 · O2): la ruta sale del recurso,
+      // como en actions/commands. SÓLO si declara operations.export o
+      // operations.import encendido; sin declaración no hay ruta (404).
+      // `export`/`import` son sufijos reservados en estas colecciones.
+      var ops = resource.operations;
+      if (ops && (ops.export || ops.import)) {
+        io[base] = { resource: resource, policy: ioPolicy_(entry.policy) };
+      }
     } else
       exact[base] = {
         kind: 'resource',
@@ -116,8 +142,24 @@ function routeTable_() {
       };
   }
 
-  ROUTE_TABLE_ = { exact: exact, keyed: keyed, actions: actions };
+  ROUTE_TABLE_ = { exact: exact, keyed: keyed, actions: actions, commands: commands, io: io };
   return ROUTE_TABLE_;
+}
+
+// Política de las rutas de import/export (R9.5.4). El router sólo puede
+// exigir UN nivel por ruta: el read del recurso. Pero un export es un
+// VOLCADO masivo, más que un `get` puntual — si el recurso es de lectura
+// pública, el volcado sube a sesión (fail-closed: público lee uno, no el
+// archivo entero). El import es escritura y obedece la política del
+// recurso sin tocar.
+function ioPolicy_(policy) {
+  var read = policy.access && policy.access.read ? policy.access.read : 'admin';
+  if (normalizeAccessLevel_(read) !== 'public') return policy;
+  return {
+    scope: policy.scope,
+    access: { read: 'session', write: policy.access.write },
+    limits: policy.limits,
+  };
 }
 
 // Política de la ruta de acciones (B3 · R5.4). El router sólo puede exigir
@@ -339,6 +381,47 @@ function resolveRoute_(path) {
     };
   }
 
+  // Comandos: /<scope>/<resource>/<key>/commands/<command>. El formato es
+  // deliberadamente independiente de la clave de recurso y no acepta
+  // segmentos adicionales.
+  var commandMatch = /^(.+)\/([^/]+)\/commands\/([A-Za-z0-9_-]+)$/.exec(path);
+  if (commandMatch) {
+    var commandOwner = table.commands[commandMatch[1]];
+    if (commandOwner !== undefined) {
+      var commandKey;
+      try {
+        commandKey = decodeURIComponent(commandMatch[2]);
+      } catch (commandDecodeError) {
+        throw apiError_(400, 'Clave inválida en la ruta');
+      }
+      if (commandKey === '') throw apiError_(400, 'Falta la clave del registro en la ruta');
+      var commandName = commandMatch[3];
+      var commandDecl = Object.prototype.hasOwnProperty.call(
+        commandOwner.resource.commands,
+        commandName,
+      )
+        ? commandOwner.resource.commands[commandName]
+        : null;
+      var commandPolicy = commandDecl
+        ? {
+            scope: 'command:' + commandOwner.resource.id + ':' + commandName,
+            access: normalizeAccess_(commandDecl.access),
+            limits: normalizeLimits_(commandDecl.limits),
+          }
+        : commandOwner.policy;
+      var commandParams = {};
+      commandParams[commandOwner.resource.keyField] = commandKey;
+      return {
+        kind: 'command',
+        resource: commandOwner.resource,
+        command: commandName,
+        commandDecl: commandDecl,
+        params: commandParams,
+        policy: commandPolicy,
+      };
+    }
+  }
+
   // 3) acciones de dominio (B3 · R5.4): <base>/<clave>/actions/<nombre>.
   //    Se resuelve ANTES que la ruta con clave genérica: esa la cortaría en
   //    `/…/actions` y devolvería null.
@@ -355,6 +438,26 @@ function resolveRoute_(path) {
         action: actionMatch[3],
         policy: actionOwner.policy,
       };
+    }
+  }
+
+  // 4) Import/Export (R9.5.4 · O2): <base>/export | <base>/import. Se
+  //    resuelve ANTES que la ruta con clave genérica: esa cortaría
+  //    'export'/'import' como si fuera la clave de un registro. Sólo
+  //    publica la ruta un recurso que declara la operación encendida.
+  var ioMatch = /^(.+)\/(export|import)$/.exec(path);
+  if (ioMatch) {
+    var ioOwner = table.io[ioMatch[1]];
+    if (ioOwner !== undefined) {
+      var ioOp = ioMatch[2] === 'export' ? 'export' : 'import';
+      if (operationEnabled_(declaredOperation_(ioOwner.resource, ioOp))) {
+        return {
+          kind: 'io',
+          resource: ioOwner.resource,
+          io: ioOp,
+          policy: ioOwner.policy,
+        };
+      }
     }
   }
 
@@ -409,6 +512,16 @@ function dispatchRoute_(route, envelope, session) {
     // normalizada. Los handlers que no la usan no ven diferencia.
     limits: route.policy ? route.policy.limits : null,
   };
+  if (route.kind === 'command') {
+    request.command = route.command;
+    var dispatchCommand = globalThis['dispatchDomainCommand_'];
+    if (typeof dispatchCommand !== 'function') {
+      throw apiError_(500, 'El motor de comandos no está disponible');
+    }
+    return respond_(
+      withRenewal_(dispatchCommand(route.resource, route.commandDecl, request), session),
+    );
+  }
   // Acción de dominio declarada (B3 · R5.4): otro motor, otra entrada.
   if (route.action !== undefined && route.action !== null) {
     request.action = route.action;
@@ -417,6 +530,15 @@ function dispatchRoute_(route, envelope, session) {
       throw apiError_(500, 'El motor de acciones no está disponible');
     }
     return respond_(withRenewal_(dispatchAction(route.resource, request), session));
+  }
+
+  // Import/Export declarativo (R9.5.4 · O2): otro motor, otra entrada.
+  if (route.kind === 'io') {
+    var dispatchIo = globalThis[route.io === 'export' ? 'dispatchExport_' : 'dispatchImport_'];
+    if (typeof dispatchIo !== 'function') {
+      throw apiError_(500, 'El motor de import/export no está disponible');
+    }
+    return respond_(withRenewal_(dispatchIo(route.resource, request), session));
   }
 
   if (route.kind === 'handler') {

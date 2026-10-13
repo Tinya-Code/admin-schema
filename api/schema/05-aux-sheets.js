@@ -20,6 +20,65 @@ var AUX_SHEETS = {
     columns: ['timestamp', 'event', 'ref', 'session_id', 'meta'],
     note: 'Eventos de uso del cliente — señal de adopción, NO fuente de verdad de estado (A4.13, Fase 6)',
   },
+  _domain_grants: {
+    columns: [
+      'id',
+      'secret_hash',
+      'purpose',
+      'resource',
+      'resource_key',
+      'command',
+      'status',
+      'expires_at',
+      'max_uses',
+      'uses',
+      'used_operation_ids',
+      'created_at',
+      'updated_at',
+      'issuer_id',
+      'issuer_hash',
+      'operation_id',
+    ],
+    note: 'Grants temporales de alcance limitado — nunca almacenar bearer token',
+  },
+  _domain_uploads: {
+    columns: [
+      'id',
+      'grant_id',
+      'profile',
+      'resource',
+      'resource_key',
+      'provider',
+      'public_id',
+      'secure_url',
+      'format',
+      'bytes',
+      'status',
+      'expires_at',
+      'created_at',
+      'updated_at',
+      'operation_id',
+    ],
+    note: 'Cargas verificadas vinculadas a grant, recurso y registro',
+  },
+  _domain_operations: {
+    columns: [
+      'id',
+      'idempotency_hash',
+      'request_hash',
+      'grant_id',
+      'resource',
+      'resource_key',
+      'command',
+      'status',
+      'stage',
+      'plan_json',
+      'result_json',
+      'created_at',
+      'updated_at',
+    ],
+    note: 'Journal recuperable para ejecuciones idempotentes de commands',
+  },
   _users: {
     columns: [
       'id',
@@ -39,7 +98,17 @@ var AUX_SHEETS = {
   },
 };
 
-var AUX_SHEET_ORDER = ['_enums', '_placeholders', '_audit_log', '_pin', '_events', '_users'];
+var AUX_SHEET_ORDER = [
+  '_enums',
+  '_placeholders',
+  '_audit_log',
+  '_pin',
+  '_events',
+  '_users',
+  '_domain_grants',
+  '_domain_uploads',
+  '_domain_operations',
+];
 
 // Columnas efectivas de una hoja auxiliar (resolución en runtime: evita
 // referencias a otros archivos en tiempo de carga).

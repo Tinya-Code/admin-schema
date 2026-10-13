@@ -187,16 +187,30 @@ list · detail · form · dashboard   (existentes)
 kanban · calendar · tree · timeline · map · wizard   (futuras, sin tocar el shell)
 ```
 
-- `shell.routes.ts` genera rutas desde `schema.views` por `type`, no por
-  suposición.
-- Cada recurso declara qué vistas ofrece: `views: [{ type: 'list' }, { type: 'kanban', groupBy: 'status' }]`.
+- `shell.routes.ts` genera rutas desde `schema.uiViews` por `type`; cada tipo
+  se resuelve mediante un descriptor `kind: 'view'`.
+- `uiViews` es configuración de páginas/rutas del frontend y se mantiene
+  separado de `views`, que conserva los metadatos de consultas del backend.
+- Cada recurso declara sus vistas de UI, por ejemplo:
+  `uiViews: { list: { type: 'list' }, detail: { type: 'detail', path: ':key' } }`.
 
 ### F5 · Layout declarativo
 
-Registro de layouts (`kind: 'layout'`): `grid`, `tabs`, `sections`, `steps`,
-`columns`. Permite que un formulario largo sea tabs o wizard **cambiando una
-línea del schema**, sin tocar componentes. `colSpan` y `section` quedan como
-casos particulares del layout `grid` / `sections`.
+El registro `kind: 'layout'` soporta `grid`, `tabs`, `sections`, `steps` y
+`columns`. El schema elige una presentación existente; agregar un modo nuevo
+requiere registrar el descriptor y añadir su estrategia al host de formularios.
+
+| Modo       | Comportamiento                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `grid`     | Todos los campos en una grilla; respeta `field.width` (1–12).                                               |
+| `sections` | Agrupación colapsable con índice lateral y chips móviles.                                                   |
+| `tabs`     | Una sección visible por vez, con navegación accesible por teclado.                                          |
+| `steps`    | Wizard lineal: avanzar valida la etapa actual; se puede volver y Guardar sólo está habilitado en la última. |
+| `columns`  | Secciones simultáneas distribuidas en 2 columnas por defecto o 3 (`layout.columns: 3`).                     |
+
+`field.section` identifica la sección a la que pertenece un campo; no es un
+layout. `field.width` se conserva como ancho de grilla dentro de los modos
+que dibujan campos en columnas.
 
 ### F6 · Lenguaje de condiciones ampliado
 
@@ -396,9 +410,20 @@ aggregates: {
 
 - `relation` con `expand`/`include` (`?expand=customer`) resuelto por el motor.
 - `onDelete: 'restrict' | 'cascade' | 'nullify'` ya existe en espíritu
-  (`onDelete`, `dependents`): formalizar los tres modos y validarlos en el
-  meta-schema.
+  (`onDelete`, `dependents`): el padre declara la política de sus relaciones
+  entrantes. `restrict` bloquea con 409; `cascade` elimina dependientes como
+  bajas normales (auditoría y hooks); `nullify` limpia sólo relaciones
+  opcionales y también audita/emite hooks de actualización. Configuraciones
+  inválidas —incluidas relaciones requeridas con `nullify` y ciclos de
+  `cascade`— fallan en la validación del registro.
 - Relaciones inversas declarables (`hasMany`) para listar hijos sin hojas hijas.
+  El alias declara el recurso hijo, su campo `relation` hacia el padre y un
+  límite por padre (`1..100`); `views.<name>.expand` carga sólo los alias
+  solicitados y `select` puede conservarlos en la salida. La relación inversa
+  y el límite se validan al cargar el registro. Si un padre excede el límite,
+  la respuesta falla con `413` en lugar de entregar una lista truncada.
+  `shape.include` mantiene su semántica existente para proyecciones/hojas
+  hijas; no se convierte en alias de expansión relacional.
 
 ### B8 · Políticas más finas
 

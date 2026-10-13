@@ -37,12 +37,11 @@ export const roleGuard: CanActivateFn = (route) => {
   // nunca debe dejar una sesión muerta navegando sola.
   if (!auth.isAuthenticated()) return router.createUrlTree([LOGIN_PATH]);
 
-  const id = route.paramMap.get('id');
-  // Ruta sin `:id`, o `:id` que no existe en el registry → que responda el
-  // back (404). Decidir "acceso" sobre un recurso que no conocemos sería
-  // inventar una política que ningún schema declaró.
+  const id = route.data?.['resourceId'] ?? route.paramMap.get('id');
+  // Ruta sin recurso declarado, o id que no existe en el registry → que
+  // responda el back (404). No inventar una política sobre datos ajenos.
   if (id === null) return true;
-  const schema = getSchema(id);
+  const schema = getSchema(String(id));
   if (schema === undefined) return true;
 
   return auth.canAccess(schema.access);

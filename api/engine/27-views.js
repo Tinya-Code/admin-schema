@@ -25,6 +25,8 @@
 // la respuesta pasa a ser el sobre estándar { items, nextCursor, total }.
 // Top-level: sólo declaraciones de funciones (se ejecutan en runtime).
 
+var MAX_HAS_MANY_EXPANSION_ = 100;
+
 // ── Resolución de declaraciones ────────────────────────────────────────────
 
 // Where plano de una vista (hereda `extends`). 500 ante config rota (§16:
@@ -816,6 +818,9 @@ function applyViewSelect_(resource, item, select, name) {
   (resource.listProjection || []).forEach(function (k) {
     known[k] = true;
   });
+  Object.keys(resource.hasMany || {}).forEach(function (k) {
+    known[k] = true;
+  });
   var out = {};
   for (var i = 0; i < select.length; i++) {
     var k = select[i];
@@ -848,6 +853,23 @@ function applyViewExpand_(resource, item, expand, ctx, name) {
   });
   for (var i = 0; i < expand.length; i++) {
     var key = expand[i];
+    var inverse =
+      resource.hasMany && Object.prototype.hasOwnProperty.call(resource.hasMany, key)
+        ? resource.hasMany[key]
+        : null;
+    if (inverse) {
+      var parentField = ctx && ctx.__hasManyFields && ctx.__hasManyFields[key];
+      var parentValue = parentField && item[parentField];
+      if (parentValue === undefined || parentValue === null || String(parentValue) === '') {
+        throw apiError_(500, 'expand: falta clave padre para hasMany ' + key + ' en ' + name);
+      }
+      var index = ctx && ctx.__hasMany && ctx.__hasMany[key];
+      if (!index || typeof index !== 'object') {
+        throw apiError_(500, 'expand: hasMany ' + key + ' sin contexto en ' + name);
+      }
+      out[key] = index[String(parentValue)] || [];
+      continue;
+    }
     var field = byKey[key];
     if (!field || field.type !== 'relation' || !field.source) {
       throw apiError_(500, 'expand: ' + String(key) + ' no es relación en ' + name);
@@ -897,6 +919,7 @@ function readRulesCtx_(ss, resource, map, items, payload, params) {
     // `ref: 'categories'` consume `ctx.categories` — F8 · R6.5.
     ctx[field.source.resource] = facts;
   });
+  readExpandedHasMany_(ss, resource, items, payload, ctx);
   if (payload.key !== undefined && payload.key !== null && payload.key !== '') {
     var wanted = String(payload.key);
     var found = null;
@@ -907,4 +930,90 @@ function readRulesCtx_(ss, resource, map, items, payload, params) {
     ctx.self = found;
   }
   return ctx;
+}
+
+// Carga únicamente las relaciones inversas pedidas por la vista. Cada
+// expansión tiene un límite declarado para mantener acotadas las respuestas
+// y las cuotas de Apps Script; superar el límite falla, nunca trunca en silencio.
+function readExpandedHasMany_(ss, resource, items, payload, ctx) {
+  if (!Array.isArray(items) || items.length === 0 || !payload || typeof payload.view !== 'string') {
+    return;
+  }
+  var views = resource.views;
+  if (!views || !Object.prototype.hasOwnProperty.call(views, payload.view)) return;
+  var view = views[payload.view];
+  if (!view || !Array.isArray(view.expand) || !resource.hasMany) return;
+
+  var requested = {};
+  view.expand.forEach(function (name) {
+    if (typeof name === 'string' && Object.prototype.hasOwnProperty.call(resource.hasMany, name)) {
+      requested[name] = true;
+    }
+  });
+  var names = Object.keys(requested);
+  if (names.length === 0) return;
+
+  ctx.__hasMany = Object.create(null);
+  ctx.__hasManyFields = Object.create(null);
+  names.forEach(function (name) {
+    var declaration = resource.hasMany[name];
+    if (
+      !declaration ||
+      typeof declaration.limit !== 'number' ||
+      !isFinite(declaration.limit) ||
+      declaration.limit < 1 ||
+      declaration.limit > MAX_HAS_MANY_EXPANSION_ ||
+      Math.floor(declaration.limit) !== declaration.limit
+    ) {
+      throw apiError_(500, 'hasMany ' + name + ': limit fuera del rango permitido');
+    }
+    var target = getResourceSchema(declaration.resource);
+    if (target === null) {
+      throw apiError_(500, 'hasMany ' + name + ': recurso inexistente ' + declaration.resource);
+    }
+    var targetMap = storageMap_(target);
+    var column = null;
+    targetMap.columns.some(function (candidate) {
+      if (candidate.field.key === declaration.field && candidate.field.type === 'relation') {
+        column = candidate;
+        return true;
+      }
+      return false;
+    });
+    if (!column || !column.field.source || column.field.source.resource !== resource.id) {
+      throw apiError_(500, 'hasMany ' + name + ': relación inversa mal declarada');
+    }
+
+    var parentField = column.field.source.valueField || resource.keyField;
+    var parentValues = Object.create(null);
+    items.forEach(function (item) {
+      var value = item && item[parentField];
+      if (value === undefined || value === null || String(value) === '') {
+        throw apiError_(500, 'hasMany ' + name + ': falta ' + parentField + ' en la proyección');
+      }
+      parentValues[String(value)] = true;
+    });
+
+    var index = Object.create(null);
+    Object.keys(parentValues).forEach(function (value) {
+      index[value] = [];
+    });
+    var data = readSheetData_(ss, target.sheet);
+    var entries = flatEntries_(targetMap, data);
+    entries.forEach(function (entry) {
+      var parentValue = entry.flat[column.flatKey];
+      if (parentValue === undefined || parentValue === null || String(parentValue) === '') return;
+      var parentKey = String(parentValue);
+      if (!Object.prototype.hasOwnProperty.call(index, parentKey)) return;
+      index[parentKey].push(projectItem_(target, flatToContract_(targetMap, entry.flat)));
+      if (index[parentKey].length > declaration.limit) {
+        throw apiError_(
+          413,
+          'expand: hasMany ' + name + ' supera su límite declarado de ' + declaration.limit,
+        );
+      }
+    });
+    ctx.__hasMany[name] = index;
+    ctx.__hasManyFields[name] = parentField;
+  });
 }

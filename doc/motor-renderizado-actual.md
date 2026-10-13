@@ -284,6 +284,68 @@ vista. Ver T1.1 del plan.
 | `colSpan`                             | `colSpanClass()`                            | `field-host`                          |
 | `section`, `layout.sections`          | agrupación en detalle                       | `detail-view`                         |
 
+### 1.9 Composición de vistas (R9.9)
+
+Una `uiView` puede declarar una vista **compuesta**: un contenedor que
+monta otras hojas desde el schema, sin código nuevo en el motor. El
+registro de render resuelve los hijos por `type`; el compositor no
+conoce el dominio (hay un source-scan de test que lo garantiza).
+
+#### Ruta propia vs. embebida
+
+| Cómo se monta                    | Quién entrega la hoja                                      | `ActivatedRoute` que recibe la hoja                                |
+| -------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Ruta** (`uiView` con `path`)   | `RouterOutlet` + `resolve: {viewContext}` (`shell.routes`) | La ruta real; `data` lleva el payload del canal                    |
+| **Embebida** (hijo de un `tabs`) | `ViewSlot` dentro de `ComposerHost`                        | Sintética (`syntheticRoute`): `data` + `paramMap` vacío, síncronos |
+
+Ambas rutas entregan el mismo payload (`ViewContextData`): `schema`
+(virtual en el lado embebido), `resourceId`, `uiView` (instanceId),
+`viewType`, `depth` y — si hay binding declarado — `select`. La hoja no
+sabe ni necesita saber si fue montada por ruta o embebida.
+
+#### Contrato del `tabs`
+
+- `uiView: { type: 'tabs', path, config: { children, initial? } }`.
+- Cada hijo (`ViewChildNode`) es `ref` a otra `uiView` del mismo schema
+  o un descriptor inline con su propia `config` (**config por
+  instancia**: dos hijos del mismo `type` no comparten configuración).
+- Profundidad máxima 3 niveles y 50 nodos por árbol
+  (`composition-validator`).
+- La validación falla **loud** en dos puntos: al construir las rutas
+  (`resourceRoutes` ⇒ la app no arranca con un schema inválido) y al
+  montar (D2: estado de error con mensaje, sin montar hijos, sin
+  pantalla de reserva).
+- Pestaña inicial: `config.initial`; ausente ⇒ la primera. El tablist
+  es accesible (`role="tablist"`, roving con flechas/Home/End) y los
+  paneles no retenidos se destruyen (`retain` opcional los conserva
+  ocultos).
+
+#### Selección declarada (`select`)
+
+| `select`                     | Efecto en la hoja                                                                                                                                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ausente                      | Comportamiento local **actual** intacto (compatibilidad)                                                                                                                                                             |
+| `{on, mode:'route', target}` | Al emitir el evento, `ViewNavigationService.dispatch` navega: valida destino contra el registry, construye los segmentos (la clave es SIEMPRE un segmento completo) y solo registra origen si la navegación resuelve |
+| `{on, mode:'inline'}`        | Selección local (señal + highlight), sin URL                                                                                                                                                                         |
+| `{on, mode:'none'}`          | No-op explícito                                                                                                                                                                                                      |
+
+Una URL cruda nunca es un destino válido: `target` es
+`{resource, view, params?}` y se resuelve contra las rutas declaradas.
+
+#### Registrar una hoja nueva
+
+1. `register('view', { kind: 'view', type: 'mi-hoja', since: '9.9', load: async () => (await import('./mi-hoja/mi-hoja')).MiHoja })`
+   en `views/descriptors.ts` — una línea, sin tocar el compositor.
+2. La hoja inyecta `ActivatedRoute` y lee el payload del canal (las
+   mismas claves que hoy en ruta real). Si declara eventos de
+   selección, aplica la decision table anterior vía `emit` del payload.
+3. Cualquier schema puede componerla luego con `type: 'mi-hoja'` en un
+   `tabs`, sin más cambios.
+
+Ejemplo vivo: la vista `orders.resumen` (tabs con calendar + kanban +
+list + tabs anidado) en `schemas/orders.schema.ts`, ejercitada por
+`views/composer/view-composition.integration.spec.ts`.
+
 ---
 
 ## 2. Backend

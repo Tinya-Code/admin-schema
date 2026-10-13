@@ -332,6 +332,48 @@ schema).
   (decisión F7-5).
 - El consumo de `?view=` queda para el front público.
 
+#### Vistas de dominio (`uiViews` `calendar`/`kanban`) — R9.8
+
+Además de `list`/`form`/`detail`, un schema local puede declarar vistas
+**opt-in** que cada una genera su propia ruta (R9.8). Configuración
+válida:
+
+```ts
+// schemas/orders.schema.ts (extracto)
+uiViews: {
+  calendar: {
+    type: 'calendar',
+    path: 'calendario', // SIEMPRE path propio: sin él colisiona con la raíz del recurso
+    config: { startField: 'pickup_date', titleField: 'customer_name' },
+  },
+  board: {
+    type: 'kanban',
+    path: 'tablero',
+    config: {
+      groupField: 'status', // select o relation
+      columns: [
+        { value: 'PENDIENTE', label: 'Pendiente' },
+        { value: 'ENTREGADO', label: 'Entregado' },
+      ],
+      titleField: 'customer_name',
+    },
+  },
+}
+```
+
+Reglas (falla ruidoso, nunca pantalla de reserva):
+
+- `calendar.startField`/`titleField` y `kanban.groupField` deben apuntar a
+  campos existentes con tipo compatible (`date`/`datetime`; `select`/
+  `relation`) y `columns[].value` no puede repetirse.
+- **Configuración inválida** ⇒ la vista pinta «Configuración inválida» y
+  **no pide datos** a la fuente.
+- **Solo lectura por diseño** (R9.8.1): sin drag-and-drop ni mutaciones —
+  reutilizan `ApiService.list` y la misma caché `resource|view|params`
+  (TTL 30 s) que el listado; seguir escribiendo es el CRUD clásico.
+- La composición en pestañas (`tabs`, R9.9) y el contrato de selección
+  declarada viven en `doc/motor-renderizado-actual.md` §1.9.
+
 ---
 
 ## 5. Flujo end-to-end (cómo se conectan, paso a paso)
@@ -359,11 +401,12 @@ redirect al detalle.
 
 ## 6. Documentos de referencia
 
-| Doc                   | Qué cubre                                                                      |
-| --------------------- | ------------------------------------------------------------------------------ |
-| `doc/baseapi.md`      | **autoridad**: contrato completo (auth, envelope, rutas, hojas, §17 criterios) |
-| `doc/api.md`          | contrato de datos (hojas y columnas)                                           |
-| `api/MAPA.md`         | estructura de archivos del backend y sus funciones                             |
-| `api/README.md`       | resumen del backend y sus tablas de rutas                                      |
-| `api/PLAN-MEJORAS.md` | mejora F0–F7 + P: qué cambió y por qué (registro de decisiones)                |
-| `api/PLAN.md`         | plan original por fases + estado de las mejoras                                |
+| Doc                               | Qué cubre                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `doc/baseapi.md`                  | **autoridad**: contrato completo (auth, envelope, rutas, hojas, §17 criterios) |
+| `doc/api.md`                      | contrato de datos (hojas y columnas)                                           |
+| `api/MAPA.md`                     | estructura de archivos del backend y sus funciones                             |
+| `api/README.md`                   | resumen del backend y sus tablas de rutas                                      |
+| `api/PLAN-MEJORAS.md`             | mejora F0–F7 + P: qué cambió y por qué (registro de decisiones)                |
+| `api/PLAN.md`                     | plan original por fases + estado de las mejoras                                |
+| `doc/motor-renderizado-actual.md` | motor de render: vocabularios, ramas, vistas R9.8 y composición R9.9 (§1.9)    |

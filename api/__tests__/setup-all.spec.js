@@ -24,6 +24,7 @@ const STEPS = [
   'setupSeed',
   'setupDrift',
   'setupAuth_',
+  'setupTriggers_',
   'bootstrapAdmin_',
 ];
 
@@ -65,7 +66,13 @@ afterEach(() => {
   // Los pasos se stubbean dentro de cada test; devolver los reales no hace
   // falta (son funciones declaradas, se redeclaran en la carga), pero sí el
   // orden de la lista de editor.
-  globalThis.EDITOR_ONLY_FNS = ['setupAuth_', 'bootstrapAdmin_', 'setupAll'];
+  globalThis.EDITOR_ONLY_FNS = [
+    'setupAuth_',
+    'rotateAuthSecret_',
+    'bootstrapAdmin_',
+    'setupTriggers_',
+    'setupAll',
+  ];
 });
 
 // ── 1. checkProperties: crea claves, no las pide ──────────────────────────
@@ -147,7 +154,7 @@ function stubAll(handler) {
 }
 
 describe('setupAll (D24 — un solo punto de entrada)', () => {
-  it('encadena los seis pasos en el orden del setup y devuelve ok', () => {
+  it('encadena los pasos en el orden del setup y devuelve ok', () => {
     const orden = stubAll(() => ({ ok: true }));
 
     const r = globalThis.setupAll();
@@ -159,6 +166,7 @@ describe('setupAll (D24 — un solo punto de entrada)', () => {
       'setupSeed',
       'setupDrift',
       'setupAuth_',
+      'setupTriggers_',
       'bootstrapAdmin_',
     ]);
     expect(r.ok).toBe(true);

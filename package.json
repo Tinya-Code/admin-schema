@@ -11,6 +11,7 @@
     "api:check": "bash scripts/api-check.sh",
     "api:drift": "node scripts/sheet-drift-check.mjs",
     "api:doc": "node scripts/api-doc.mjs",
+    "audit:prune": "node scripts/audit-prune.mjs",
     "smoke:login": "node scripts/smoke-auth.mjs login"
   },
   "private": true,

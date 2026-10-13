@@ -5,6 +5,82 @@ export const ordersSchema: ResourceSchema = {
   label: 'Pedido',
   labelPlural: 'Pedidos',
   kind: 'collection',
+  uiViews: {
+    list: { type: 'list' },
+    create: { type: 'form', path: 'new' },
+    detail: { type: 'detail', path: ':key' },
+    edit: { type: 'form', path: ':key/edit' },
+    // R9.8.5 — vistas de dominio declaradas sobre un recurso real.
+    // Cada una con su propio `path` para no colisionar con la raíz `orders`
+    // (que es la ruta de la vista `list`).
+    calendar: {
+      type: 'calendar',
+      path: 'calendario',
+      config: { startField: 'pickup_date', titleField: 'customer_name' },
+    },
+    board: {
+      type: 'kanban',
+      path: 'tablero',
+      config: {
+        groupField: 'status',
+        columns: [
+          { value: 'PENDIENTE', label: 'Pendiente' },
+          { value: 'ENTREGADO', label: 'Entregado' },
+          { value: 'CANCELADO', label: 'Cancelado' },
+        ],
+        titleField: 'customer_name',
+      },
+    },
+    // R9.9 — composición declarativa de referencia sobre vistas reales
+    // (fixture de integración, task 5.1): tres hojas de tipos distintos +
+    // un tabs anidado (profundidad 2, dentro del límite), con `initial`
+    // explícito y config POR INSTANCIA (cada hijo trae la suya).
+    resumen: {
+      type: 'tabs',
+      path: 'resumen',
+      config: {
+        initial: 'board',
+        children: [
+          {
+            id: 'cal',
+            label: 'Calendario',
+            type: 'calendar',
+            config: { startField: 'pickup_date', titleField: 'customer_name' },
+          },
+          {
+            id: 'board',
+            label: 'Tablero',
+            type: 'kanban',
+            config: {
+              groupField: 'status',
+              columns: [
+                { value: 'PENDIENTE', label: 'Pendiente' },
+                { value: 'ENTREGADO', label: 'Entregado' },
+                { value: 'CANCELADO', label: 'Cancelado' },
+              ],
+              titleField: 'customer_name',
+            },
+          },
+          { id: 'rows', label: 'Pedidos', type: 'list' },
+          {
+            id: 'panels',
+            label: 'Paneles',
+            type: 'tabs',
+            config: {
+              children: [
+                {
+                  id: 'inner-cal',
+                  label: 'Agenda interna',
+                  type: 'calendar',
+                  config: { startField: 'pickup_date', titleField: 'customer_name' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  },
   endpoint: {
     list: '/admin/orders',
     get: '/admin/orders/{key}',

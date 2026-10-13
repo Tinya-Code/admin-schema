@@ -5,6 +5,9 @@ export const dashboardSchema: ResourceSchema = {
   label: 'Panel',
   labelPlural: 'Dashboard',
   kind: 'dashboard',
+  uiViews: {
+    overview: { type: 'dashboard' },
+  },
   endpoint: {
     get: '/admin/dashboard',
   },

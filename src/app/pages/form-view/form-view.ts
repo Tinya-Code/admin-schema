@@ -10,9 +10,11 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { form, submit } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 
-import type { FieldSchema, ResourceSchema } from '../../core/models/schema.model';
+import { ViewNavigationService } from '../../core/view-navigation/view-navigation.service';
+import { firstValueFrom, of } from 'rxjs';
+
+import type { FieldSchema, LayoutMode, ResourceSchema } from '../../core/models/schema.model';
 import { isSupported } from '../../core/registry/render-registry';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -145,6 +147,9 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
             message="Revisa tu conexión e intenta de nuevo."
           >
             <button app-button variant="outline" type="button" (click)="retry()">Reintentar</button>
+            <button app-button variant="outline" type="button" (click)="volverDeError()">
+              Volver
+            </button>
           </app-empty-state>
         }
         @case ('ready') {
@@ -209,7 +214,21 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
                 </div>
               }
 
-              @if (unsectionedFields().length > 0) {
+              @if (layoutMode() === 'grid') {
+                <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-12">
+                  @for (field of renderedFields(); track field.key) {
+                    <div [class]="colSpan(field)">
+                      <app-field-host
+                        [field]="field"
+                        [tree]="tree"
+                        [exists]="exists()"
+                        [serverErrors]="serverErrors().fields"
+                        [resource]="resourceId()"
+                      />
+                    </div>
+                  }
+                </div>
+              } @else if (unsectionedFields().length > 0) {
                 <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-12">
                   @for (field of unsectionedFields(); track field.key) {
                     <div [class]="colSpan(field)">
@@ -261,9 +280,28 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
                 </div>
               }
 
-              @if (layoutMode() === 'tabs') {
+              @if (layoutMode() === 'steps') {
+                <ol aria-label="Progreso del formulario" class="mb-4 flex flex-wrap gap-2">
+                  @for (section of sectionViews(); track section.id; let index = $index) {
+                    <li
+                      class="rounded-full border px-3 py-1 text-sm"
+                      [class.border-primary]="activeSection() === section.id"
+                      [class.font-semibold]="activeSection() === section.id"
+                      [attr.aria-current]="activeSection() === section.id ? 'step' : null"
+                    >
+                      {{ index + 1 }}. {{ section.label }}
+                    </li>
+                  }
+                </ol>
+              }
+
+              @if (layoutMode() === 'tabs' || layoutMode() === 'steps') {
                 @for (section of visibleSections(); track section.id) {
-                  <div role="tabpanel" class="grid grid-cols-1 gap-x-4 sm:grid-cols-12">
+                  <div
+                    role="tabpanel"
+                    [attr.id]="layoutMode() === 'steps' ? 'step-panel' : null"
+                    class="grid grid-cols-1 gap-x-4 sm:grid-cols-12"
+                  >
                     @for (field of section.fields; track field.key) {
                       <div [class]="colSpan(field)">
                         <app-field-host
@@ -277,7 +315,50 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
                     }
                   </div>
                 }
-              } @else {
+                @if (layoutMode() === 'steps' && sectionViews().length > 1) {
+                  <div class="mt-4 flex justify-between gap-3">
+                    <button
+                      app-button
+                      variant="outline"
+                      type="button"
+                      [disabled]="isFirstStep()"
+                      (click)="previousStep()"
+                    >
+                      Anterior
+                    </button>
+                    @if (!isLastStep()) {
+                      <button app-button type="button" (click)="nextStep()">Continuar</button>
+                    }
+                  </div>
+                }
+              } @else if (layoutMode() === 'columns') {
+                <div
+                  [class]="
+                    layoutColumns() === 3
+                      ? 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'
+                      : 'grid grid-cols-1 gap-4 md:grid-cols-2'
+                  "
+                >
+                  @for (section of sectionViews(); track section.id) {
+                    <section class="rounded-xl border border-neutral/20 bg-surface p-4">
+                      <h2 class="mb-3 text-section font-semibold">{{ section.label }}</h2>
+                      <div class="grid grid-cols-1 gap-x-4 sm:grid-cols-12">
+                        @for (field of section.fields; track field.key) {
+                          <div [class]="colSpan(field)">
+                            <app-field-host
+                              [field]="field"
+                              [tree]="tree"
+                              [exists]="exists()"
+                              [serverErrors]="serverErrors().fields"
+                              [resource]="resourceId()"
+                            />
+                          </div>
+                        }
+                      </div>
+                    </section>
+                  }
+                </div>
+              } @else if (layoutMode() === 'sections') {
                 <!-- Índice interno (§5.3): en escritorio, índice sticky a la
                      izquierda; en móvil, chips horizontales. En tabs las
                      pestañas ya hacen de índice, así que esto no se dibuja. -->
@@ -318,7 +399,7 @@ function readTimestamp(record: Record<string, unknown> | null): number | undefin
                     </ul>
                   </nav>
 
-                  <div class="min-w-0 flex-1">
+                  <div class="min-w-0 flex-1" [class.lg:grid]="layoutMode() === 'columns'">
                     <nav
                       aria-label="Secciones"
                       class="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden"
@@ -443,6 +524,7 @@ export class FormView {
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly nav = inject(ViewNavigationService);
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly notifications = inject(NotificationService);
@@ -452,8 +534,12 @@ export class FormView {
   /** Estabilidad de la app: cambio de sección + carga de chunks (ver `goToError`). */
   private readonly appRef = inject(ApplicationRef);
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
+  private readonly routeData = toSignal(this.route.data ?? of({}), { requireSync: true });
 
-  readonly schema = computed(() => getSchema(this.params().get('id') ?? ''));
+  readonly schema = computed(() => {
+    const resourceId = this.routeData()['resourceId'] ?? this.params().get('id');
+    return getSchema(typeof resourceId === 'string' ? resourceId : '');
+  });
   /** Recurso actual (lo consumen `image` para pedir la firma, §11.2). */
   readonly resourceId = computed(() => this.schema()?.id ?? '');
 
@@ -487,12 +573,22 @@ export class FormView {
   });
 
   readonly status = signal<FormStatus>('loading');
+  /**
+   * D4 — el error ORIGINAL de `load()` con identidad intacta (el mensaje
+   * mostrado es display-only). Se limpia cuando un reintento termina bien.
+   */
+  private errorCarga: unknown = undefined;
+
+  errorDeCarga(): unknown {
+    return this.status() === 'error' ? this.errorCarga : undefined;
+  }
   /** Estado «guardando» del botón (además del bloqueo interno de `submit`). */
   readonly saving = signal(false);
   /** Errores del backend: rutas de campo + mensaje general (base.md §10). */
   readonly serverErrors = signal<MappedError>({ fields: {} });
   /** Pestaña activa (solo `layout.mode === 'tabs'`). */
   readonly activeSection = signal<string | null>(null);
+  private readonly attemptedSteps = signal<ReadonlySet<string>>(new Set());
 
   private readonly openSections = signal<Record<string, boolean>>({});
   private readonly formTree = signal<RootTree | null>(null);
@@ -583,9 +679,15 @@ export class FormView {
 
   // ── Layout (base.md §4) ──
 
-  readonly layoutMode = computed<'sections' | 'tabs'>(
-    () => this.schema()?.layout?.mode ?? 'sections',
-  );
+  readonly layoutMode = computed<LayoutMode>(() => {
+    const mode = this.schema()?.layout?.mode ?? 'sections';
+    if (!isSupported('layout', mode)) {
+      throw new Error(`No existe un descriptor para el layout "${mode}".`);
+    }
+    return mode;
+  });
+
+  readonly layoutColumns = computed(() => this.schema()?.layout?.columns ?? 2);
 
   /** Campos que la UI sabe dibujar (los de Fase 11 se omiten, no se borran del payload). */
   readonly renderedFields = computed(() =>
@@ -600,9 +702,17 @@ export class FormView {
    * de un ítem. Los errores múltiples los produce la validación del cliente,
    * que `submit()` deja marcados como tocados de una.
    */
-  readonly summaryErrors = computed<ErrorEntry[]>(() =>
-    this.submitted() ? this.collectErrors() : [],
-  );
+  readonly summaryErrors = computed<ErrorEntry[]>(() => {
+    if (!this.submitted()) {
+      return [];
+    }
+    const errors = this.collectErrors();
+    if (this.layoutMode() !== 'steps') {
+      return errors;
+    }
+    const attempted = this.attemptedSteps();
+    return errors.filter((entry) => !entry.section || attempted.has(entry.section));
+  });
 
   /** Secciones con al menos un campo dibujable. */
   readonly sectionViews = computed<SectionView[]>(() => {
@@ -611,7 +721,7 @@ export class FormView {
       return [];
     }
     const rendered = this.renderedFields();
-    return layout.sections
+    return (layout.sections ?? [])
       .map((section) => ({
         id: section.id,
         label: section.label,
@@ -631,7 +741,7 @@ export class FormView {
   /** En pestañas solo se dibuja la activa; en secciones, todas (colapsables). */
   readonly visibleSections = computed<SectionView[]>(() => {
     const sections = this.sectionViews();
-    if (this.layoutMode() !== 'tabs') {
+    if (this.layoutMode() !== 'tabs' && this.layoutMode() !== 'steps') {
       return sections;
     }
     const active = sections.find((section) => section.id === this.activeSection()) ?? sections[0];
@@ -649,6 +759,7 @@ export class FormView {
   readonly canSave = computed(() => {
     const schema = this.schema();
     if (!schema) return false;
+    if (this.layoutMode() === 'steps' && !this.isLastStep()) return false;
     const operation = this.mode() === 'create' ? 'create' : 'update';
     return this.auth.canDoOperation(schema, operation);
   });
@@ -666,6 +777,7 @@ export class FormView {
     this.serverErrors.set({ fields: {} });
     this.openSections.set({});
     this.activeSection.set(null);
+    this.attemptedSteps.set(new Set());
     this.submitted.set(false);
 
     if (!schema) {
@@ -714,14 +826,16 @@ export class FormView {
       }
       this.applyRecord(tree, schema, record ?? {});
       this.loadedRecord = record ?? {};
+      this.errorCarga = undefined;
       this.status.set('ready');
       // Recién termina la carga: es el único momento en que tiene sentido
       // comparar el borrador con el servidor.
       this.offerDraft(record ?? null);
-    } catch {
+    } catch (error) {
       if (epoch !== this.loadEpoch) {
         return;
       }
+      this.errorCarga = error;
       this.status.set('error');
     }
   }
@@ -844,6 +958,7 @@ export class FormView {
     this.applyRecord(tree, schema, this.loadedRecord ?? seedModel(schema));
     this.serverErrors.set({ fields: {} });
     this.submitted.set(false);
+    this.attemptedSteps.set(new Set());
     this.draftOffer.set(null);
     this.clearDraft();
     this.notifications.info('Se restauraron los valores originales.');
@@ -851,6 +966,15 @@ export class FormView {
 
   retry(): void {
     void this.load();
+  }
+
+  /**
+   * D4 — «way back» desde el estado de error: en la ruta directa
+   * (`/:id/new`, `/:id/:key/edit`) no hay output que escape, así que el
+   * servicio declarado navega al origen registrado o a la raíz del recurso.
+   */
+  protected volverDeError(): void {
+    void this.nav.back();
   }
 
   // ── Guardado ──
@@ -1009,6 +1133,15 @@ export class FormView {
     if (withProblem && this.layoutMode() === 'tabs') {
       this.activeSection.set(withProblem.id);
     }
+    if (this.layoutMode() === 'steps') {
+      const invalidSteps = sections
+        .filter((section) => this.sectionHasProblem(section))
+        .map((section) => section.id);
+      this.attemptedSteps.update((attempted) => new Set([...attempted, ...invalidSteps]));
+      if (withProblem) {
+        this.activeSection.set(withProblem.id);
+      }
+    }
     // Una vez abiertas/activadas las secciones con errores, el navegador
     // debe IR al primer campo con problema (no quedarse arriba del form).
     // `setTimeout`: los mensajes se pintan en la pasada de change detection
@@ -1150,6 +1283,75 @@ export class FormView {
     return section.id === this.activeSection() ? TAB_ACTIVE : TAB_INACTIVE;
   }
 
+  isFirstStep(): boolean {
+    const sections = this.sectionViews();
+    return sections.findIndex((section) => section.id === this.activeSection()) <= 0;
+  }
+
+  isLastStep(): boolean {
+    const sections = this.sectionViews();
+    const index = sections.findIndex((section) => section.id === this.activeSection());
+    return sections.length === 0 || index >= sections.length - 1;
+  }
+
+  previousStep(): void {
+    const sections = this.sectionViews();
+    const current = sections.findIndex((section) => section.id === this.activeSection());
+    if (current > 0) {
+      this.activeSection.set(sections[current - 1].id);
+      this.scrollToStep();
+    }
+  }
+
+  nextStep(): void {
+    const sections = this.sectionViews();
+    const current = sections.findIndex((section) => section.id === this.activeSection());
+    if (current < 0 || current >= sections.length - 1) {
+      return;
+    }
+    if (current === 0 && this.unsectionedHasLocalErrors()) {
+      this.revealUnsectionedErrors();
+      return;
+    }
+    const section = sections[current];
+    if (this.sectionHasLocalErrors(section.id)) {
+      this.attemptedSteps.update((attempted) => new Set([...attempted, section.id]));
+      this.revealSectionErrors(section.id);
+      return;
+    }
+    this.activeSection.set(sections[current + 1].id);
+    this.scrollToStep();
+  }
+
+  private unsectionedHasLocalErrors(): boolean {
+    const tree = this.formTree();
+    return (
+      tree !== null &&
+      this.unsectionedFields().some((field) => childTree<unknown>(tree, field.key)().invalid())
+    );
+  }
+
+  private revealUnsectionedErrors(): void {
+    const tree = this.formTree();
+    if (!tree) {
+      return;
+    }
+    this.submitted.set(true);
+    for (const field of this.unsectionedFields()) {
+      childTree<unknown>(tree, field.key)().markAsTouched();
+    }
+    setTimeout(() => this.scrollToFirstError());
+  }
+
+  private scrollToStep(): void {
+    setTimeout(() =>
+      document.getElementById('step-panel')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      }),
+    );
+  }
+
   selectSection(id: string): void {
     const current = this.activeSection();
     // §4.9 / plan 5.7, decisión A: sólo se tranc después del primer envío.
@@ -1188,6 +1390,7 @@ export class FormView {
       return;
     }
     this.submitted.set(true);
+    this.attemptedSteps.update((attempted) => new Set([...attempted, sectionId]));
     for (const field of section.fields) {
       childTree<unknown>(tree, field.key)().markAsTouched();
     }
@@ -1250,6 +1453,9 @@ export class FormView {
   sectionProgress(section: SectionView): 'problem' | 'complete' | 'pending' {
     if (!this.sectionHasProblem(section)) {
       return 'complete';
+    }
+    if (this.layoutMode() === 'steps' && !this.attemptedSteps().has(section.id)) {
+      return 'pending';
     }
     return this.submitted() ? 'problem' : 'pending';
   }
@@ -1347,7 +1553,7 @@ export class FormView {
   async goToError(entry: ErrorEntry, event: Event): Promise<void> {
     event.preventDefault();
     if (entry.section) {
-      if (this.layoutMode() === 'tabs') {
+      if (this.layoutMode() === 'tabs' || this.layoutMode() === 'steps') {
         this.activeSection.set(entry.section);
       } else {
         this.openSections.update((open) => ({ ...open, [entry.section as string]: true }));

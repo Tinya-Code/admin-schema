@@ -9,7 +9,7 @@ import {
   type RenderDescriptor,
 } from './render-registry';
 
-/** Los 20 tipos de campo que la UI sabe dibujar (R3.3). */
+/** Los 21 tipos de campo que la UI sabe dibujar (R3.3). */
 const CAMPOS = [
   'text',
   'textarea',
@@ -31,6 +31,7 @@ const CAMPOS = [
   'key-value',
   'relation',
   'image',
+  'file',
 ] as const;
 
 /** Componente que sólo puede salir si el registro no resuelve. */
@@ -62,16 +63,16 @@ describe('render-registry', () => {
     expect(isSupported('widget', 'text')).toBe(false);
   });
 
-  it('los 20 tipos de campo están en el catálogo', () => {
+  it('los 21 tipos de campo están en el catálogo', () => {
     for (const type of CAMPOS) {
       expect(isSupported('field', type), `falta el descriptor de "${type}"`).toBe(true);
     }
   });
 
-  // Son 20 imports dinámicos de componentes reales: con el suite completo
+  // Son 21 imports dinámicos de componentes reales: con el suite completo
   // compitiendo por el hilo, el default de 10 s se queda corto y el gate se
   // pone rojo por reloj, no por código.
-  it('los 20 tipos de campo resuelven su componente real', async () => {
+  it('los 21 tipos de campo resuelven su componente real', async () => {
     for (const type of CAMPOS) {
       const component = await resolve('field', type, SinRenderizador);
       expect(component, `"${type}" resolvió el fallback`).not.toBe(SinRenderizador);

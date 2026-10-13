@@ -14,7 +14,7 @@ import { API_URL } from '../tokens';
  *
  *  - **Señales** `user` / `token` / `isAuthenticated` / `role`: el único
  *    estado que el resto de la app lee (guards, menú, interceptor).
- *  - **`login()` / `logout()` / `restore()`**: los tres endpoints de sesión.
+ *  - **`login()` / `logout()` / `logoutAll()` / `restore()`**: operaciones de sesión.
  *    El `AuthService` NO inyecta `ApiService` — sólo `HttpClient` — porque
  *    `ApiService` inyecta a éste para leer el token, y un ciclo de DI en
  *    Angular es un error en tiempo de arranque, no un warning.
@@ -135,6 +135,19 @@ export class AuthService {
         error: () => this.clear(),
       }),
       map(() => undefined),
+    );
+  }
+
+  /** Revoca las sesiones del usuario en todos sus dispositivos. */
+  logoutAll(): Observable<{ effectiveWithinSeconds: number }> {
+    return this.post<{ sessionsRevoked: boolean; effectiveWithinSeconds: number }>(
+      '/auth/logout-all',
+    ).pipe(
+      tap(() => {
+        this.clear();
+        this.goLogin();
+      }),
+      map((res) => ({ effectiveWithinSeconds: res.effectiveWithinSeconds })),
     );
   }
 

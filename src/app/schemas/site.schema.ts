@@ -9,6 +9,9 @@ export const siteSchema: ResourceSchema = {
   label: 'Sitio',
   labelPlural: 'Sitio',
   kind: 'singleton',
+  uiViews: {
+    settings: { type: 'form' },
+  },
   endpoint: {
     get: '/admin/site',
     update: '/admin/site',

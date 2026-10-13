@@ -3,7 +3,7 @@
 // Verifica:
 //   1. Declaración del endpoint pinVerify con access: 'public' y method: 'POST'.
 //   2. Handler registrado en REGISTRY.handlers.handlePinVerify.
-//   3. PIN correcto → 200 { ok: true, ref }.
+//   3. PIN correcto → grant de un solo uso + expiración declarada.
 //   4. PIN incorrecto → 401 (y registra fila __failed__ en _pin).
 //   5. Intentos agotados (≥ PIN_MAX_ATTEMPTS_ filas __failed__ DENTRO de la
 //      ventana de 60 s) → 429 · los caídos fuera de la ventana no bloquean.
@@ -22,13 +22,14 @@
 // hoja existe): el handler de R8.9 resuelve el pedido real, no puede
 // quedarse sólo con _pin.
 
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { loadBackend } from './_harness.js';
 
 let REGISTRY;
 let originalOpenSpreadsheet;
 let originalReadSheetData;
+let issueGrant;
 
 // PIN de prueba y su SHA-256 pre-calculado.
 // SHA-256('1234') = 03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4
@@ -124,11 +125,17 @@ beforeAll(() => {
   REGISTRY = globalThis.REGISTRY;
   originalOpenSpreadsheet = globalThis.openSpreadsheet_;
   originalReadSheetData = globalThis.readSheetData_;
+  issueGrant = vi.fn(() => ({
+    grant: 'opaque-test-grant',
+    expires_at: '2026-10-11T12:15:00.000Z',
+  }));
+  globalThis.issueDomainGrantLocked_ = issueGrant;
 });
 
 afterEach(() => {
   globalThis.openSpreadsheet_ = originalOpenSpreadsheet;
   globalThis.readSheetData_ = originalReadSheetData;
+  issueGrant.mockClear();
 });
 
 describe('Fase 5 — Verificación de PIN (POST /p/pin/:ref)', () => {
@@ -146,7 +153,7 @@ describe('Fase 5 — Verificación de PIN (POST /p/pin/:ref)', () => {
     expect(typeof REGISTRY.handlers.handlePinVerify).toBe('function');
   });
 
-  it('PIN correcto → { ok: true, ref }', () => {
+  it('PIN correcto → grant temporal + expiración, sin registrar fallos', () => {
     const appended = stubSheets({
       pinRows: [makeActiveRow('ORD-001')],
       orders: [makeOrderRow('ORD-001')],
@@ -167,6 +174,14 @@ describe('Fase 5 — Verificación de PIN (POST /p/pin/:ref)', () => {
 
     expect(result.ok).toBe(true);
     expect(result.ref).toBe('ORD-001');
+    expect(result.grant).toBe('opaque-test-grant');
+    expect(result.expires_at).toBe('2026-10-11T12:15:00.000Z');
+    expect(issueGrant).toHaveBeenCalledWith(
+      'pickupGrant',
+      'ORD-001',
+      expect.stringMatching(/^ORD-001:/),
+      TEST_PIN_HASH,
+    );
     // No debe haber registrado ningún intento fallido.
     expect(appended).toHaveLength(0);
   });
@@ -191,7 +206,12 @@ describe('Fase 5 — Verificación de PIN (POST /p/pin/:ref)', () => {
       globalThis.Props.hashText = origHash;
     }
 
-    expect(result).toEqual({ ok: true, ref: 'ORD-DATE' });
+    expect(result).toEqual({
+      ok: true,
+      ref: 'ORD-DATE',
+      grant: 'opaque-test-grant',
+      expires_at: '2026-10-11T12:15:00.000Z',
+    });
   });
 
   it('PIN incorrecto → 401 y registra fila __failed__', () => {

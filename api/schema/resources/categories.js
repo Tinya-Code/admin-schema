@@ -14,6 +14,9 @@ REGISTRY.resources.categories = {
   activeField: 'active', // FALSE ⇒ fuera del público (R1)
   onDelete: 'restrict', // con productos → 409 con motivo (§6)
   dependents: ['products'],
+  hasMany: {
+    products: { resource: 'products', field: 'category_slug', limit: 100 },
+  },
   listProjection: ['slug', 'image_url', 'name', 'active', 'position'],
   imageFolder: 'categories', // carpeta Cloudinary del recurso (§11)
   // B3 · R5.3: lo que no está acá está APAGADO y responde 405. `reorder`

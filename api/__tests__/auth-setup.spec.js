@@ -57,6 +57,7 @@ function patchEnv(overrides = {}) {
   store = { AUTH_SECRET: 'secreto-de-prueba', KDF_ITERATIONS: '1000', ...overrides.props };
   globalThis.Props.get = (name) => (name in store ? store[name] : null);
   globalThis.Props.setAll = (values) => Object.assign(store, values);
+  globalThis.Props.generateToken = () => 'nuevo-secreto-largo-123456';
   globalThis.Props.hashText = fakeSha;
   globalThis.Utilities = { getUuid: nextUuid };
   globalThis.Session = { getActiveUser: () => ({ getEmail: () => 'dueno@example.com' }) };
@@ -76,6 +77,7 @@ beforeEach(() => {
   orig = {
     get: globalThis.Props.get,
     setAll: globalThis.Props.setAll,
+    generateToken: globalThis.Props.generateToken,
     hashText: globalThis.Props.hashText,
     Utilities: globalThis.Utilities,
     Session: globalThis.Session,
@@ -221,8 +223,9 @@ describe('setupAuth_ (R2.2)', () => {
   it('genera AUTH_SECRET y KDF_ITERATIONS si faltan', () => {
     const res = globalThis.setupAuth_();
     expect(res.ok).toBe(true);
-    expect(res.creado).toEqual(['AUTH_SECRET', 'KDF_ITERATIONS']);
+    expect(res.creado).toEqual(['AUTH_SECRET', 'DOMAIN_GRANT_SECRET', 'KDF_ITERATIONS']);
     expect(store.AUTH_SECRET).toBeTruthy();
+    expect(store.DOMAIN_GRANT_SECRET).toBeTruthy();
     expect(store.KDF_ITERATIONS).toBeTruthy();
     expect(Number(store.KDF_ITERATIONS)).toBeGreaterThanOrEqual(
       globalThis.CONFIG.KDF_ITERATIONS_MIN,
@@ -247,6 +250,27 @@ describe('setupAuth_ (R2.2)', () => {
   it('jamás devuelve ni loguea el AUTH_SECRET', () => {
     const res = globalThis.setupAuth_();
     expect(JSON.stringify(res)).not.toContain(store.AUTH_SECRET);
+  });
+
+  it('rotateAuthSecret_ reemplaza el secreto sin devolverlo', () => {
+    globalThis.setupAuth_();
+    const previous = store.AUTH_SECRET;
+    globalThis.Props.generateToken = () => 'rotado-secreto-distinto-123456';
+    const result = globalThis.rotateAuthSecret_();
+    expect(store.AUTH_SECRET).not.toBe(previous);
+    expect(result).toEqual({ ok: true, sessionsInvalidated: true });
+    expect(JSON.stringify(result)).not.toContain(store.AUTH_SECRET);
+  });
+
+  it('rotateAuthSecret_ falla explícitamente si no hay secreto configurado', () => {
+    delete store.AUTH_SECRET;
+    expect(() => globalThis.rotateAuthSecret_()).toThrow(/AUTH_SECRET/);
+  });
+
+  it('rotateAuthSecret_ falla si el generador devuelve el secreto actual', () => {
+    globalThis.setupAuth_();
+    globalThis.Props.generateToken = () => store.AUTH_SECRET;
+    expect(() => globalThis.rotateAuthSecret_()).toThrow(/AUTH_SECRET válido/);
   });
 });
 
@@ -477,8 +501,14 @@ describe('bootstrapAdmin_ (R2.2)', () => {
 // ── 5. «Nunca por endpoint» ───────────────────────────────────────────────
 
 describe('EDITOR_ONLY_FNS (R2.2 — nunca por endpoint)', () => {
-  it('la lista contiene las funciones de editor (incluye setupAll — D24)', () => {
-    expect(globalThis.EDITOR_ONLY_FNS).toEqual(['setupAuth_', 'bootstrapAdmin_', 'setupAll']);
+  it('la lista contiene las funciones de editor (incluye setupAll — D24 y setupTriggers_ — R9.5.6)', () => {
+    expect(globalThis.EDITOR_ONLY_FNS).toEqual([
+      'setupAuth_',
+      'rotateAuthSecret_',
+      'bootstrapAdmin_',
+      'setupTriggers_',
+      'setupAll',
+    ]);
   });
 
   it('el router las bloquea ANTES de invocarlas (403, y el handler no corre)', () => {

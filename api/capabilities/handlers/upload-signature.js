@@ -24,7 +24,33 @@ function handleUploadSignature(payload, request) {
     throw apiError_(400, 'Recurso desconocido: ' + truncate_(resourceId));
   }
   if (!resource.imageFolder) {
-    throw apiError_(400, 'El recurso "' + resource.id + '" no admite imágenes');
+    throw apiError_(400, 'El recurso "' + resource.id + '" no admite archivos');
+  }
+
+  // ── 1b) Campo opcional (R9.5.3): si declara `formats`, ESA lista es la
+  //  que se firma — el cliente no elige nada (§11.3). Un campo que no
+  //  existe o que no es de archivo es error visible, no un fallback mudo.
+  var allowedFormats = CONFIG.UPLOAD_ALLOWED_FORMATS;
+  var fieldId = payload && payload.field;
+  if (fieldId !== undefined && fieldId !== null && fieldId !== '') {
+    if (typeof fieldId !== 'string') {
+      throw apiError_(400, 'field debe ser el id de un campo del recurso');
+    }
+    var field = fileFieldOf_(resource, fieldId.trim());
+    if (field === null) {
+      throw apiError_(400, 'El recurso "' + resource.id + '" no tiene el campo "' + fieldId + '"');
+    }
+    if (field.type !== 'file' && field.type !== 'image') {
+      throw apiError_(400, 'El campo "' + fieldId + '" no admite archivos');
+    }
+    if (typeof field.formats === 'string' && field.formats.trim() !== '') {
+      allowedFormats = field.formats
+        .split(',')
+        .map(function (part) {
+          return part.trim().toLowerCase();
+        })
+        .join(',');
+    }
   }
 
   // ── 2) Parámetros firmados: los fija SIEMPRE el backend ──
@@ -35,7 +61,6 @@ function handleUploadSignature(payload, request) {
   var apiSecret = Props.require('CLOUDINARY_API_SECRET'); // jamás sale de acá
   var baseFolder = String(Props.require('CLOUDINARY_BASE_FOLDER')).replace(/^\/+|\/+$/g, '');
   var folder = baseFolder + '/' + resource.imageFolder;
-  var allowedFormats = CONFIG.UPLOAD_ALLOWED_FORMATS;
   var timestamp = Math.floor(Date.now() / 1000);
 
   // ── 3) Firma ──
@@ -54,6 +79,106 @@ function handleUploadSignature(payload, request) {
     allowed_formats: allowedFormats,
     upload_url: 'https://api.cloudinary.com/v1_1/' + cloudName + '/image/upload',
   };
+}
+
+// Campo de archivo (`file`/`image`) de un recurso, plano o anidado en un
+// group/list. Devuelve `null` si no existe (el caller decide el error).
+function fileFieldOf_(resource, fieldId) {
+  var found = null;
+  var walk = function (fields) {
+    (fields || []).forEach(function (field) {
+      if (found !== null || !field || typeof field !== 'object') return;
+      if (field.key === fieldId) {
+        found = field;
+        return;
+      }
+      walk(field.fields);
+      walk(field.itemFields);
+    });
+  };
+  walk(resource.fields);
+  return found;
+}
+
+function handleDomainUploadSignature(payload, request) {
+  var profileId = request && request.params ? request.params.profile : null;
+  var token = payload && payload.grant;
+  if (typeof profileId !== 'string' || profileId === '') {
+    throw apiError_(400, 'Falta el perfil de carga en la ruta');
+  }
+  if (typeof token !== 'string' || token === '') {
+    throw apiError_(401, 'Falta la autorización para la carga', null, 'GRANT_REQUIRED');
+  }
+  var profile = REGISTRY.uploadProfiles[profileId];
+  if (!profile)
+    throw apiError_(404, 'Perfil de carga no encontrado', null, 'UPLOAD_PROFILE_NOT_FOUND');
+
+  return withLock_('domain-upload:' + profileId, function () {
+    var grant = domainGrantRecordForTokenLocked_(token);
+    var grantProfile = REGISTRY.grantProfiles[profile.grant];
+    var resource = getResourceSchema(profile.resource);
+    if (
+      !grantProfile ||
+      !resource ||
+      grant.record.resource !== resource.id ||
+      grantProfile.resource !== resource.id ||
+      grant.record.command !== grantProfile.command
+    ) {
+      throw apiError_(
+        403,
+        'La autorización no corresponde a este perfil',
+        null,
+        'GRANT_SCOPE_MISMATCH',
+      );
+    }
+    domainGrantForTokenLocked_(
+      token,
+      profile.grant,
+      resource,
+      String(grant.record.resource_key),
+      grantProfile.command,
+      null,
+      false,
+    );
+    var adapter = REGISTRY.capabilities.adapters[profile.provider];
+    if (!adapter || typeof adapter.signUpload !== 'function') {
+      throw apiError_(
+        503,
+        'El proveedor de carga no está disponible',
+        null,
+        'UPLOAD_PROVIDER_UNAVAILABLE',
+      );
+    }
+    var id = Utilities.getUuid();
+    var expiresAt = Math.min(
+      Date.now() + profile.ttlSeconds * 1000,
+      domainDateMs_(grant.record.expires_at),
+    );
+    if (!isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw apiError_(410, 'La autorización expiró', null, 'GRANT_EXPIRED');
+    }
+    var signed = adapter.signUpload(profile, { id: id, grant: grant.record });
+    signed.allowed_formats = signed.allowed_formats.join(',');
+    domainAppendRow_('_domain_uploads', {
+      id: id,
+      grant_id: grant.id,
+      profile: profileId,
+      resource: resource.id,
+      resource_key: String(grant.record.resource_key),
+      provider: profile.provider,
+      public_id: signed.public_id,
+      secure_url: '',
+      format: '',
+      bytes: '',
+      status: 'issued',
+      expires_at: new Date(expiresAt).toISOString(),
+      created_at: domainNow_(),
+      updated_at: domainNow_(),
+      operation_id: '',
+    });
+    signed.expires_at = new Date(expiresAt).toISOString();
+    return signed;
+  });
 }
 
 // Firma Cloudinary: parámetros ordenados ALFABÉTICAMENTE, `k=v` unidos con
@@ -86,4 +211,11 @@ registerCapability('handlers', {
   since: '1.0',
   argsSchema: null,
   run: handleUploadSignature,
+});
+
+registerCapability('handlers', {
+  id: 'handleDomainUploadSignature',
+  since: '1.0',
+  argsSchema: null,
+  run: handleDomainUploadSignature,
 });

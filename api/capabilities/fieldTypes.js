@@ -3,7 +3,7 @@
 // engine/20-storage-map.
 //
 // Mismo vocabulario en los dos lados (baseapi §12): el front añade lo visual,
-// acá vive lo estructural. 20 tipos = la unión FieldSchema del front.
+// acá vive lo estructural. 21 tipos = la unión FieldSchema del front.
 // Top-level: sólo declaraciones (cero referencias a otros archivos al cargar).
 
 var FIELD_TYPES_DECL_ = {
@@ -37,6 +37,11 @@ var FIELD_TYPES_DECL_ = {
   image: { storage: 'column', sheetFormat: 'text', validate: 'cloudinary-origin' },
   //   ^ sólo https + prefijo de CLOUDINARY_CLOUD_NAME (baseapi §11.4);
   //     la clave SIEMPRE es image_url (api.md §1)
+  file: { storage: 'column', sheetFormat: 'text', validate: 'cloudinary-origin' },
+  //   ^ R9.5.3: como `image`, pero para CUALQUIER archivo (pdf, xlsx…).
+  //     El valor sigue siendo la URL pública de Cloudinary y `formats`
+  //     declarado por campo acota lo que el backend firma (upload-signature);
+  //     sin `formats` firma la lista global. `imageFolder` sigue valiendo.
 
   // ── Compuestos ─────────────────────────────────────────────────────────
   // group: colección → columnas con prefijo (address_street);

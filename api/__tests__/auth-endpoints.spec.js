@@ -76,11 +76,43 @@ function patchEnv() {
   globalThis.readSheetData_ = () => ({
     headers: HEADERS,
     rows: users.map((v, i) => ({ at: i + 2, values: v })),
+    sheet: {},
   });
+  globalThis.writeRowsBlock_ = (_sheet, _headers, rows) => {
+    users = rows;
+  };
+  globalThis.authAudit_ = () => true;
 }
 
 beforeAll(() => {
   loadBackend();
+});
+
+it('logout-all incrementa token_version y declara el límite de caché', () => {
+  const handler = globalThis.REGISTRY.handlers.handleAuthLogoutAll;
+  const result = handler({}, { user: { id: 'u_1', email: 'ana@x.com', active: true } });
+
+  expect(result).toEqual({
+    sessionsRevoked: true,
+    effectiveWithinSeconds: globalThis.SESSION_SNAPSHOT_TTL_S,
+  });
+  expect(users[0][HEADERS.indexOf('token_version')]).toBe(2);
+});
+
+it('logout-all rechaza sesión sin identidad activa', () => {
+  const handler = globalThis.REGISTRY.handlers.handleAuthLogoutAll;
+  const error = throws(() => handler({}, { user: { id: 'u_1', active: false } }));
+  expect(error.apiCode).toBe('AUTH_REQUIRED');
+  expect(users[0][HEADERS.indexOf('token_version')]).toBe(1);
+});
+
+it('logout-all falla si token_version está vacío en la hoja', () => {
+  users[0][HEADERS.indexOf('token_version')] = '';
+  const handler = globalThis.REGISTRY.handlers.handleAuthLogoutAll;
+  const error = throws(() =>
+    handler({}, { user: { id: 'u_1', email: 'ana@x.com', active: true } }),
+  );
+  expect(error.apiStatus).toBe(500);
 });
 
 beforeEach(() => {
@@ -91,6 +123,9 @@ beforeEach(() => {
     Utilities: globalThis.Utilities,
     openSpreadsheet_: globalThis.openSpreadsheet_,
     readSheetData_: globalThis.readSheetData_,
+    writeRowsBlock_: globalThis.writeRowsBlock_,
+    withLock_: globalThis.withLock_,
+    authAudit_: globalThis.authAudit_,
     CacheService: globalThis.CacheService,
   };
   patchEnv(); // ANTES de userRow_: necesita Props.hashText ya parcheado
@@ -147,15 +182,33 @@ describe('Declaración de los endpoints de auth (R2.5)', () => {
     expect(out.handler).toBe('handleAuthLogout');
   });
 
+  it('authLogoutAll declara la invalidación persistente de sesiones', () => {
+    const endpoint = globalThis.REGISTRY.endpoints.authLogoutAll;
+    expect(endpoint.route).toBe('/auth/logout-all');
+    expect(endpoint.method).toBe('POST');
+    expect(endpoint.access).toBe('session');
+    expect(endpoint.handler).toBe('handleAuthLogoutAll');
+    expect(endpoint.output).toEqual({
+      sessionsRevoked: { type: 'boolean', required: true },
+      effectiveWithinSeconds: { type: 'number', required: true },
+    });
+  });
+
   it('los tres handlers están registrados en REGISTRY.handlers', () => {
     expect(typeof globalThis.REGISTRY.handlers.handleAuthLogin).toBe('function');
     expect(typeof globalThis.REGISTRY.handlers.handleAuthMe).toBe('function');
     expect(typeof globalThis.REGISTRY.handlers.handleAuthLogout).toBe('function');
+    expect(typeof globalThis.REGISTRY.handlers.handleAuthLogoutAll).toBe('function');
   });
 
   it('ningún handler de auth es sólo ejecutable desde el editor', () => {
     // Si lo fuera, `validate-registry.js` rechazaría el arranque completo.
-    for (const name of ['handleAuthLogin', 'handleAuthMe', 'handleAuthLogout']) {
+    for (const name of [
+      'handleAuthLogin',
+      'handleAuthMe',
+      'handleAuthLogout',
+      'handleAuthLogoutAll',
+    ]) {
       expect(globalThis.EDITOR_ONLY_FNS).not.toContain(name);
     }
   });

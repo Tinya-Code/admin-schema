@@ -1,8 +1,9 @@
-import { Component, computed, inject, model } from '@angular/core';
+import { Component, computed, inject, model, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import { allSchemas } from '../../schemas/registry';
 import { AuthService } from '../../core/services/auth.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { ThemeToggle } from '../theme-toggle/theme-toggle';
 import type { ResourceSchema } from '../../core/models/schema.model';
 
@@ -53,6 +54,18 @@ interface MenuEntry {
           }
         </ul>
       </nav>
+      @if (isAuthenticated()) {
+        <div class="border-t border-neutral/20 p-3">
+          <button
+            type="button"
+            class="w-full rounded-lg px-3 py-2 text-left text-sm text-neutral hover:bg-neutral/10 disabled:opacity-50"
+            [disabled]="closingAllSessions()"
+            (click)="closeAllSessions()"
+          >
+            {{ closingAllSessions() ? 'Cerrando sesiones…' : 'Cerrar todas las sesiones' }}
+          </button>
+        </div>
+      }
     </aside>
   `,
 })
@@ -63,6 +76,9 @@ export class Sidebar {
   readonly open = model(false);
 
   private readonly auth = inject(AuthService);
+  private readonly notifications = inject(NotificationService);
+  readonly isAuthenticated = this.auth.isAuthenticated;
+  readonly closingAllSessions = signal(false);
 
   /**
    * R2.10 — el menú se corta dos veces: `isVisible` (permisos declarados
@@ -77,6 +93,29 @@ export class Sidebar {
         label: schema.labelPlural,
       })),
   );
+
+  async closeAllSessions(): Promise<void> {
+    const accepted = await this.notifications.confirm({
+      title: 'Cerrar todas las sesiones',
+      message: 'Se cerrarán las sesiones abiertas en todos tus dispositivos. ¿Continuar?',
+      confirmLabel: 'Cerrar sesiones',
+    });
+    if (!accepted) return;
+
+    this.closingAllSessions.set(true);
+    this.auth.logoutAll().subscribe({
+      next: ({ effectiveWithinSeconds }) => {
+        this.notifications.success(
+          `Sesiones revocadas. El cambio se aplica en un máximo de ${effectiveWithinSeconds} segundos.`,
+        );
+      },
+      error: () => {
+        this.closingAllSessions.set(false);
+        this.notifications.error('No se pudieron cerrar todas las sesiones. Inténtalo de nuevo.');
+      },
+      complete: () => this.closingAllSessions.set(false),
+    });
+  }
 }
 
 function isVisible(schema: ResourceSchema): boolean {

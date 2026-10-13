@@ -52,6 +52,14 @@ var PROP_MANIFEST = [
     note: 'Secreto HMAC de los tokens de sesión (lo genera setupAuth_ — R2.2)',
   },
   {
+    name: 'DOMAIN_GRANT_SECRET',
+    required: true,
+    secret: true,
+    source: 'generated',
+    generator: null,
+    note: 'Secreto HMAC de grants y fingerprints idempotentes (lo genera setupAuth_)',
+  },
+  {
     name: 'CLOUDINARY_CLOUD_NAME',
     required: true,
     secret: false,
@@ -109,6 +117,19 @@ var PROP_MANIFEST = [
     source: 'generated',
     generator: null,
     note: 'Coste del KDF de contraseñas — lo MIDE y guarda setupAuth_ (R2.1b)',
+  },
+  // ── Jobs programados (R9.5.6) ────────────────────────────────────────────
+  // Mapa trigger de GAS ↔ schedule declarado (JSON: triggerUid →
+  // { resource, id }). La escribe y la reconcilia `setupTriggers_`; el
+  // motor la lee en cada disparo (RUN_SCHEDULE_JOB_) para saber QUÉ job
+  // corresponde al trigger que acaba de firear.
+  {
+    name: 'SCHEDULE_TRIGGERS',
+    required: true,
+    secret: false,
+    source: 'generated',
+    generator: null,
+    note: 'Mapa trigger ↔ schedule de GAS (lo crea setupTriggers_ — R9.5.6)',
   },
   // ── Administrador inicial (D24) ────────────────────────────────────────
   // El operador sólo CAMBIA el valor: `checkProperties()` crea la clave vacía

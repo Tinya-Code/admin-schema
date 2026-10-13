@@ -3,7 +3,7 @@
 // Lo que éste archivo cubre y ninguna otra parte cubre:
 //
 //  1. **El doc sale del registro**: `renderDoc(REGISTRY.endpoints)` contiene
-//     los 10 endpoints con su ruta, método, acceso, límites, `since`, `input`
+//     los 13 endpoints con su ruta, método, acceso, límites, `since`, `input`
 //     y `output`. Si mañana se declara un endpoint nuevo, éste test lo exige
 //     en el documento (y `api:check` exige que esté regenerado).
 //  2. **El contrato para el front**: envelope, 422 con `errors[]` y el código
@@ -30,18 +30,18 @@ const flat = (md) =>
     .join('\n');
 
 describe('R5.2 — doc de endpoints generada del registro', () => {
-  it('el doc generado contiene los 10 endpoints, ordenados por ruta', async () => {
+  it('el doc generado contiene los 13 endpoints, ordenados por ruta', async () => {
     const doc = flat(await renderDoc(REGISTRY.endpoints));
     const rutas = Object.values(REGISTRY.endpoints)
       .map((e) => e.route)
       .sort();
 
-    expect(rutas).toHaveLength(10);
+    expect(rutas).toHaveLength(13);
     for (const ruta of rutas) expect(doc).toContain(`|\`${ruta}\`|`);
 
     // Orden estable: el resumen es alfabético por ruta (no por orden de carga).
     const orden = rutas.map((r) => doc.indexOf('|`' + r + '`|')).filter((i) => i >= 0);
-    expect(orden).toHaveLength(10);
+    expect(orden).toHaveLength(13);
     expect([...orden].sort((a, b) => a - b)).toEqual(orden);
   });
 
@@ -80,10 +80,19 @@ describe('R5.2 — doc de endpoints generada del registro', () => {
     expect(doc).toContain('Se valida **antes** del handler: el handler no corre.');
     expect(doc).toContain('Salida fuera de contrato en <ruta>');
     expect(doc).toContain('**410**');
+    expect(doc).toContain('**413**');
     expect(doc).toContain('**503**');
     expect(doc).toContain('Apps Script devuelve éxito y errores de aplicación con HTTP 200');
     expect(doc).toContain('`VALIDATION_*`');
     expect(doc).toContain('No editar a mano');
+  });
+
+  it('documenta las relaciones inversas y su límite por padre', async () => {
+    const doc = await renderDoc(REGISTRY.endpoints, REGISTRY.resources);
+
+    expect(doc).toContain('Relaciones inversas (`hasMany`)');
+    expect(doc).toContain('`products` → `products.category_slug` (máximo 100 por padre)');
+    expect(doc).toContain('La expansión que exceda el límite responde **413**');
   });
 
   it('documenta los errores de PIN declarados y el HTTP 200 de Apps Script', async () => {
@@ -250,7 +259,7 @@ describe('plan-doc-recursos — sección CRUD por recurso', () => {
     const publicAudience = orders.split('**Proyección pública**')[1].split('**Política**')[0];
 
     expect(orders).toContain('**Audiencia pública** — operaciones CRUD: `get`');
-    expect(publicAudience).toContain('`history`');
+    expect(publicAudience).not.toContain('`history`');
     expect(publicAudience).not.toContain('`pin`');
     expect(orders).toContain(
       '|POST|`/admin/orders/{ref}/actions/regenerate-pin`|`handlePinRegenerate`|write del recurso (`admin`)|',
@@ -262,6 +271,101 @@ describe('plan-doc-recursos — sección CRUD por recurso', () => {
     const doc = flat(await renderDoc(REGISTRY.endpoints, REGISTRY.resources));
     expect(doc).toContain('|`params.ref`|`text`|sí|—|');
     expect(doc).toContain('|`pin`|`secret`|sí|—|');
+  });
+
+  it('proyecta sólo el contrato consumible de commands, sin reglas ni secretos', () => {
+    const resource = REGISTRY.resources.orders;
+    const originalCommands = resource.commands;
+    const originalUploadProfiles = REGISTRY.uploadProfiles;
+    try {
+      REGISTRY.uploadProfiles = {
+        pickupPhoto: {
+          provider: 'cloudinary',
+          resource: 'orders',
+          grant: 'internalGrantId',
+          mimeTypes: ['image/jpeg', 'image/png'],
+          maxBytes: 10 * 1024 * 1024,
+          ttlSeconds: 300,
+          namespace: 'internal-folder-name',
+        },
+      };
+      resource.commands = {
+        registerPickupPerson: {
+          input: {
+            pin: { type: 'secret', required: true },
+            photo: { type: 'upload', profile: 'pickupPhoto', required: true },
+          },
+          output: { grantToken: { type: 'text', required: true } },
+          access: 'public',
+          grant: 'internalGrantId',
+          limits: '5/min',
+          idempotency: 'required',
+          errors: [{ status: 409, code: 'ALREADY_DONE', message: 'Already completed.' }],
+          preconditions: [{ field: 'auth_state', op: 'eq', value: 'NINGUNO' }],
+          changes: { auth_state: { value: 'ACTIVA' } },
+          events: [{ appendTo: 'history', values: { action: { value: 'AUTORIZADO' } } }],
+          handler: 'internalHandlerName',
+        },
+      };
+
+      const projected = globalThis.projectResourceSchema_(resource).commands;
+      expect(projected.registerPickupPerson).toEqual({
+        access: 'public',
+        input: {
+          pin: { type: 'secret', required: true },
+          photo: {
+            type: 'upload',
+            required: true,
+            mimeTypes: ['image/jpeg', 'image/png'],
+            maxBytes: 10 * 1024 * 1024,
+          },
+        },
+        output: { grantToken: { type: 'text', required: true } },
+        idempotency: 'required',
+        grantRequired: true,
+        limits: '5/min',
+        errors: [{ status: 409, code: 'ALREADY_DONE', message: 'Already completed.' }],
+      });
+      expect(JSON.stringify(projected)).not.toContain('internalGrantId');
+      expect(JSON.stringify(projected)).not.toContain('internal-folder-name');
+      expect(JSON.stringify(projected)).not.toContain('internalHandlerName');
+      expect(JSON.stringify(projected)).not.toContain('preconditions');
+      expect(JSON.stringify(projected)).not.toContain('changes');
+      expect(JSON.stringify(projected)).not.toContain('events');
+    } finally {
+      resource.commands = originalCommands;
+      REGISTRY.uploadProfiles = originalUploadProfiles;
+    }
+  });
+
+  it('documenta la ruta declarada y el contrato del command sin exponer reglas internas', async () => {
+    const resource = REGISTRY.resources.orders;
+    const originalCommands = resource.commands;
+    try {
+      resource.commands = {
+        registerPickupPerson: {
+          input: { authorized_name: { type: 'text', required: true, maxLength: 80 } },
+          output: { ok: { type: 'boolean', required: true } },
+          access: 'public',
+          grant: 'internalGrantId',
+          idempotency: 'required',
+          errors: [{ status: 409, code: 'ALREADY_DONE', message: 'Already completed.' }],
+          changes: { auth_state: { value: 'ACTIVA' } },
+        },
+      };
+      const doc = flat(await renderDoc(REGISTRY.endpoints, REGISTRY.resources));
+      const orders = doc.slice(doc.indexOf('### `orders`'), doc.indexOf('### `pickpass`'));
+      const commandDoc = orders.split('**Contratos de commands**')[1].split('**Campos del CRUD')[0];
+      expect(orders).toContain('**Contratos de commands**');
+      expect(orders).toContain('#### `registerPickupPerson`');
+      expect(commandDoc).toContain('Ruta: POST `/p/orders/{ref}/commands/registerPickupPerson`');
+      expect(orders).toContain('grant requerido: sí');
+      expect(orders).toContain('Errores: 409 `ALREADY_DONE`: Already completed.');
+      expect(commandDoc).not.toContain('internalGrantId');
+      expect(commandDoc).not.toContain('auth_state');
+    } finally {
+      resource.commands = originalCommands;
+    }
   });
 
   it('sin resources el doc sigue siendo sólo endpoints (compat)', async () => {

@@ -89,7 +89,7 @@ describe('Campo imagen', () => {
 
     dispatchDrop(zone!, imageFile());
 
-    expect(uploadSpy).toHaveBeenCalledWith(imageFile(), 'products');
+    expect(uploadSpy).toHaveBeenCalledWith(imageFile(), 'products', 'image_url');
     expect(fixture.componentInstance.value()).toBe(NEW_URL);
     expect(notifyStub.success).toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe('Campo imagen', () => {
 
     dispatchDrop(preview!, imageFile());
 
-    expect(uploadSpy).toHaveBeenCalledWith(imageFile(), 'products');
+    expect(uploadSpy).toHaveBeenCalledWith(imageFile(), 'products', 'image_url');
     expect(fixture.componentInstance.value()).toBe(NEW_URL);
   });
 

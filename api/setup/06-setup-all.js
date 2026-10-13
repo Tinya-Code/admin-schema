@@ -17,8 +17,9 @@
 // porque `dispatchRoute_` resuelve handlers por nombre y `setupAll` crea un
 // administrador.
 //
-// Idempotente: los seis pasos lo son (los seis sólo agregan), así que se puede
-// volver a correr sin miedo a duplicar nada.
+// Idempotente: todos los pasos lo son, así que se puede volver a correr sin
+// miedo a duplicar nada (`setupTriggers_` además reconcilia y BORRA los
+// triggers de schedules que ya no se declaran).
 //
 // Política de fallo: si un paso LANZA, se detiene ahí y devuelve
 // `detenidoEn` + los pasos ya corridos. Que `checkProperties` reporte
@@ -67,6 +68,11 @@ function setupAll(opts) {
     return setupDrift(); // dryRun por defecto false ⇒ aplica
   });
   correr('setupAuth_', setupAuth_);
+
+  // R9.5.6 · jobs programados: instala los triggers declarados en
+  // `resource.schedules`. SÓLO el editor puede crear triggers (O3), por
+  // eso vive acá y no en el runtime.
+  correr('setupTriggers_', setupTriggers_);
 
   // 409 no es un fallo: significa que el admin ya estaba dado de alta.
   correr('bootstrapAdmin_', function () {
@@ -144,6 +150,18 @@ function detallePaso_(paso, r) {
       );
     case 'setupAuth_':
       return r.creado && r.creado.length ? 'generadas: ' + r.creado.join(', ') : 'ya existían';
+    case 'setupTriggers_': {
+      var creados = r.creados || [];
+      var existentes = r.existentes || [];
+      var borrados = r.borrados || [];
+      return (
+        creados.length +
+        ' creados · ' +
+        existentes.length +
+        ' ya estaban' +
+        (borrados.length ? ' · ' + borrados.length + ' borrados' : '')
+      );
+    }
     case 'bootstrapAdmin_':
       if (r.actualizada === true) return 'admin ' + r.email + ' (contraseña ACTUALIZADA — D25)';
       return (

@@ -50,7 +50,7 @@ REGISTRY.endpoints.authLogin = {
   since: '1.0',
 };
 
-// /auth/me y /auth/logout exigen sesión (§4.3). Sin `limits`: §4.3 no les
+// Los endpoints de sesión exigen sesión (§4.3). Sin `limits`: §4.3 no les
 // declara ninguno, y añadir uno sería inventar una regla que nadie pidió.
 REGISTRY.endpoints.authMe = {
   route: '/auth/me',
@@ -67,6 +67,21 @@ REGISTRY.endpoints.authLogout = {
   access: 'session',
   handler: 'handleAuthLogout',
   output: { loggedOut: { type: 'boolean', required: true } },
+  since: '1.0',
+};
+
+// Persistente y aplicable a todas las pestañas/dispositivos del usuario.
+// `token_version` es autoritativo; snapshots existentes pueden tardar hasta
+// 60 s en expirar (auth.md §6).
+REGISTRY.endpoints.authLogoutAll = {
+  route: '/auth/logout-all',
+  method: 'POST',
+  access: 'session',
+  handler: 'handleAuthLogoutAll',
+  output: {
+    sessionsRevoked: { type: 'boolean', required: true },
+    effectiveWithinSeconds: { type: 'number', required: true },
+  },
   since: '1.0',
 };
 

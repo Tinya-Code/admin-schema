@@ -206,35 +206,39 @@ export class FieldImage implements FormValueControl<string> {
     this.touch.emit();
 
     this.uploadSub?.unsubscribe();
-    this.uploadSub = this.upload.uploadWithProgress(file, this.resource()).subscribe({
-      next: (event) => {
-        if (event.type === HttpEventType.UploadProgress) {
-          if (event.total) {
-            this.progress.set(Math.round((event.loaded / event.total) * 100));
-          }
-          return;
-        }
-        if (event.type === HttpEventType.Response) {
-          const url = event.body ?? '';
-          this.uploading.set(false);
-          if (url === '') {
-            this.error.set('No se pudo subir la imagen.');
+    // El nombre del campo viaja siempre: si declara `formats`, el backend
+    // firma ESA lista; sin formatos firma la lista global (R9.5.3).
+    this.uploadSub = this.upload
+      .uploadWithProgress(file, this.resource(), this.field().key)
+      .subscribe({
+        next: (event) => {
+          if (event.type === HttpEventType.UploadProgress) {
+            if (event.total) {
+              this.progress.set(Math.round((event.loaded / event.total) * 100));
+            }
             return;
           }
-          this.value.set(url);
-          this.notifications.success('Imagen subida.');
-        }
-      },
-      error: (err: unknown) => {
-        this.uploading.set(false);
-        // El backend explica el motivo (firma inválida, 429 rate-limit…).
-        this.error.set(
-          err instanceof ApiError
-            ? err.message
-            : 'No se pudo subir la imagen. Revisa la conexión e inténtalo de nuevo.',
-        );
-      },
-    });
+          if (event.type === HttpEventType.Response) {
+            const url = event.body ?? '';
+            this.uploading.set(false);
+            if (url === '') {
+              this.error.set('No se pudo subir la imagen.');
+              return;
+            }
+            this.value.set(url);
+            this.notifications.success('Imagen subida.');
+          }
+        },
+        error: (err: unknown) => {
+          this.uploading.set(false);
+          // El backend explica el motivo (firma inválida, 429 rate-limit…).
+          this.error.set(
+            err instanceof ApiError
+              ? err.message
+              : 'No se pudo subir la imagen. Revisa la conexión e inténtalo de nuevo.',
+          );
+        },
+      });
     this.destroyRef.onDestroy(() => this.uploadSub?.unsubscribe());
   }
 

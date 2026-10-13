@@ -10,6 +10,8 @@
 //                verificación (§3.4, R2.6 → `request.user`).
 //   authLogout — sesión. Cierra la sesión en el cliente; la revocación del
 //                `sid` llega en R2.16 (best-effort, D10-7).
+//   authLogoutAll — sesión. Invalida todas las sesiones al incrementar
+//                   token_version en _users.
 //
 // `authMe` y `authLogout` NO verifican nada por su cuenta: esa verificación
 // es la cadena de §3.4, que vive en UN solo sitio (R2.6) y pone
@@ -134,6 +136,62 @@ function authLogout(payload, request) {
   return { loggedOut: true };
 }
 
+// POST /auth/logout-all — cierre persistente de todas las sesiones del usuario.
+// La caché de snapshots puede conservar el token_version anterior hasta 60 s;
+// por eso la respuesta expone ese límite en lugar de prometer inmediatez.
+function authLogoutAll(payload, request) {
+  var user = request && request.user;
+  var userId = user && user.active === true ? String(user.id || '') : '';
+  if (userId === '') {
+    throw apiError_(401, 'No autorizado', null, 'AUTH_REQUIRED');
+  }
+
+  return withLock_('_users', function () {
+    var data = readSheetData_(openSpreadsheet_(), '_users');
+    var idColumn = data.headers.indexOf('id');
+    var versionColumn = data.headers.indexOf('token_version');
+    if (idColumn === -1 || versionColumn === -1) {
+      throw apiError_(500, 'La hoja _users no tiene id y token_version');
+    }
+
+    var row = null;
+    for (var i = 0; i < data.rows.length; i++) {
+      if (String(data.rows[i].values[idColumn]) === userId) {
+        row = data.rows[i];
+        break;
+      }
+    }
+    if (row === null) {
+      throw apiError_(401, 'No autorizado', null, 'AUTH_REQUIRED');
+    }
+
+    var rawVersion = row.values[versionColumn];
+    if (rawVersion === null || rawVersion === undefined || String(rawVersion).trim() === '') {
+      throw apiError_(500, 'token_version inválido para el usuario');
+    }
+    var version = Number(rawVersion);
+    if (
+      !isFinite(version) ||
+      version < 0 ||
+      Math.floor(version) !== version ||
+      version >= 9007199254740991
+    ) {
+      throw apiError_(500, 'token_version inválido para el usuario');
+    }
+    row.values[versionColumn] = version + 1;
+    writeRowsBlock_(
+      data.sheet,
+      data.headers,
+      data.rows.map(function (entry) {
+        return entry.values;
+      }),
+    );
+
+    authAudit_('logout_all', userId, String(user.email || ''), 'todas las sesiones revocadas');
+    return { sessionsRevoked: true, effectiveWithinSeconds: SESSION_SNAPSHOT_TTL_S };
+  });
+}
+
 // Auto-registro, igual que el resto de handlers del repo: el router los
 // resuelve por `REGISTRY.handlers[name]` (con fallback a `globalThis[name]`).
 registerCapability('handlers', {
@@ -148,4 +206,10 @@ registerCapability('handlers', {
   since: '1.0',
   argsSchema: null,
   run: authLogout,
+});
+registerCapability('handlers', {
+  id: 'handleAuthLogoutAll',
+  since: '1.0',
+  argsSchema: null,
+  run: authLogoutAll,
 });

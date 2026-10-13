@@ -9,6 +9,11 @@ export const categoriesSchema: ResourceSchema = {
   label: 'Categoría',
   labelPlural: 'Categorías',
   kind: 'collection',
+  uiViews: {
+    list: { type: 'list' },
+    create: { type: 'form', path: 'new' },
+    edit: { type: 'form', path: ':key/edit' },
+  },
   endpoint: {
     list: '/admin/categories',
     get: '/admin/categories/{key}',

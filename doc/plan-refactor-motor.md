@@ -2742,7 +2742,7 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
   - **D13:** `bar-chart`/`chart-line` existen y ningún schema los declara →
     ¿se usan o se retiran?
   - ✅ Rutas verificadas contra `shell.routes.ts`. `source: { kind:
-    'payload' }` OK. **D13 = mantener `bar-chart`/`chart-line`** (widgets
+'payload' }` OK. **D13 = mantener `bar-chart`/`chart-line`** (widgets
     registrados, uso futuro legítimo).
 
 ### 8.2 Back
@@ -2821,61 +2821,1028 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
 
 **Precondición:** fases anteriores. **Bajo riesgo — ya hay base.**
 
-- [ ] **R9.1** — Vistas como tipos registrables (F4)
-  - `kind: 'view'`: `list · detail · form · dashboard` (existentes) +
-    `kanban · calendar · tree · timeline · map · wizard` (futuras).
-  - `shell.routes.ts` genera rutas desde `schema.views` por `type`.
-- [ ] **R9.2** — Layout declarativo (F5)
-  - `kind: 'layout'`: `grid`, `tabs`, `sections`, `steps`, `columns`.
-  - `colSpan` y `section` quedan como casos particulares.
-- [ ] **R9.3** — Adaptadores de storage (B5)
+- [x] **R9.1** — Vistas como tipos registrables (F4)
+  - [x] `kind: 'view'` registra `list · detail · form · dashboard`; un tipo
+        futuro se añade con descriptor propio, sin editar el shell.
+  - [x] `shell.routes.ts` genera rutas lazy y protegidas desde `schema.uiViews`.
+  - [x] `uiViews` se separa de `views`, que conserva los metadatos de
+        consultas del backend; el registro valida que todos los tipos tengan
+        descriptor.
+- [x] **R9.2** — Layout declarativo (F5)
+  - [x] `kind: 'layout'` registra `grid`, `tabs`, `sections`, `steps` y
+        `columns`; el contrato rechaza por test cualquier modo sin descriptor.
+  - [x] `grid` presenta todos los campos en una grilla; `sections` conserva
+        el índice y los paneles colapsables; `tabs` conserva navegación por
+        pestañas; `columns` distribuye las secciones en 2 o 3 columnas.
+  - [x] `steps` usa etapas lineales: continuar valida la etapa actual,
+        anterior siempre está disponible y Guardar sólo se habilita en la última.
+  - [x] `field.width` (1–12) y `field.section` siguen siendo metadatos
+        transversales de distribución/agrupación, no tipos de layout.
+  - [x] Las etapas se documentan y se prueban contra errores y elegibilidad
+        de Guardar; el contrato de layouts queda cubierto en
+        `core/registry/contract.spec.ts`.
+- [ ] **R9.3** — Adaptadores de storage (B5) — ⛔ **CANCELADA (decisión 2026-10-13)**: fuera de alcance de la ejecución de Fase 9.
   - Interfaz `adapter` sobre `21-repo`: `readAll`, `append`, `update`,
     `remove`, `query`, `ensureSchema`.
   - Hoy `sheets`; mañana `sql`, `firestore`, `memory` (tests).
   - `adapter` es clave del recurso (default global).
-- [ ] **R9.4** — Relaciones e integridad (B7)
-  - `relation` con `expand`/`include` · `onDelete`
-    `restrict|cascade|nullify` formalizado · `hasMany` inversas.
-- [ ] **R9.5** — Otras capacidades (B14) ⚠️ **O5**
+- [x] **R9.4** — Relaciones e integridad (B7)
+  - [x] `views.expand` resuelve relaciones y alias `hasMany`; `select` conserva
+        las expansiones pedidas y el límite por padre falla con 413, sin truncar.
+  - [x] `hasMany` declara recurso/campo inverso/límite acotado; el validador
+        rechaza referencias rotas, alias duplicados y proyecciones sin clave padre.
+  - [x] `restrict` bloquea con 409; `cascade` borra dependientes como bajas
+        normales con auditoría/hooks; `nullify` limpia relaciones opcionales con
+        auditoría/hooks de actualización.
+  - [x] El registro rechaza nullify sobre relaciones required y ciclos de
+        cascade; `dependents` y políticas que dejan referencias huérfanas fallan.
+  - `shape.include` conserva su semántica existente de proyección/hojas hijas;
+    `views.expand` es la API relacional explícita.
+- [x] **R9.5** — Otras capacidades (B14) ⚠️ **O5** ✅ **cerrada 2026-10-12**
   - Importar/Exportar · búsqueda · tipo `file` · **jobs** · **webhooks** ·
     **notificaciones** · auditoría configurable · idempotencia.
   - ⚠️ Sólo dentro de los triggers y cuotas de Apps Script.
-- [ ] **R9.6** — Extras de auth (§7.6)
-  - Segundo proveedor · «cerrar todas las sesiones» · rotación de `AUTH_SECRET`
-    · audiencia `customer` (si D10-6 aplica).
-- [ ] **R9.7** — i18n, estados y filtros declarativos (F10)
+  - **Inventario de arranque (2026-10-12)** — cada fila de
+    `refactormotor.md §B14` con su evidencia **antes** de tocar código:
+
+    | #   | Capacidad                         | Estado         | Evidencia (archivo:línea)                                                                                                                                                                              |
+    | --- | --------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+    | 1   | Importar/Exportar CSV/JSON        | 🔴 nada        | `grep -rni "csv" api/engine api/capabilities` → 0                                                                                                                                                      |
+    | 2   | Búsqueda                          | 🟡 sólo front  | `search: string[]` en `orders.schema.ts:23`; filtrado **en cliente** (`list-view.ts:522`); el back no la conoce (0 en `api/schema/`)                                                                   |
+    | 3   | tipo `file`                       | 🔴 nada        | sólo `image` (`capabilities/fieldTypes.js:37`) · `UPLOAD_ALLOWED_FORMATS: 'jpg,jpeg,png,webp'` (`00-config.js:14`) — la firma de Cloudinary **rechaza** formatos que no estén ahí                      |
+    | 4   | Jobs (`schedules`)                | 🔴 nada        | `grep -rni "cron\|ScriptApp\|schedules" api/` → 0 (sólo el KDF «con cronómetro»)                                                                                                                       |
+    | 5   | Webhooks                          | 🔴 nada        | `grep -rni "webhook" api/ src/` → 0                                                                                                                                                                    |
+    | 6   | Notificaciones                    | 🔴 nada        | back: 0; front: sólo el toast `NotificationService` (otra cosa)                                                                                                                                        |
+    | 7   | Auditoría configurable            | 🟡 flag        | `policies.audit: true` (`orders.js:219`) · fila fija `[timestamp, actor, action, entity, entity_key, summary]` (`50-audit.js:13`) · sin `fields` ni `retention`                                        |
+    | 8   | Rate-limit y cache en el contrato | ✅ hecho       | `limits` declarado en los endpoints (`schema/endpoints/*.js`) · `KNOWN_ENDPOINT_KEYS` incluye `limits` y `cache` (`validate-registry.js:61`) · `policies.cache: { ttl }` por recurso (`orders.js:218`) |
+    | 9   | Idempotencia                      | 🟡 commands sí | `commands.idempotency: 'required'` (`orders.js:204`) + `32-domain-ledger.js:598` (F3 de `plan-flujos-dominio.md`) — **`operations.create` no**                                                         |
+
+  - **Fila 8 sin trabajo que agregar**: ya vive en el contrato declarativo
+    (B2). **Fila 2 decisión:** `search` es una decisión de UI de la mitad
+    front (O1) y el listado se carga entero (sin paginación), así que el
+    filtro en cliente es correcto **hoy**; sólo pasaría a back si el listado
+    paginara — queda registrado en R9.5.5.
+  - **Orden de ejecución** (parcial → infraestructura → O5), de modo que
+    cada fila parcial se cierre antes de abrir una nueva:
+
+  - [x] **R9.5.1 — Auditoría configurable** — `policies.audit: true` **o**
+        `{ fields: [...], retention: <días> }`
+    - `fields`: campos del recurso que se agregan al `summary` del
+      `_audit_log` (hoy sólo `«Alta: <titleField>»`).
+    - `retention`: días de retención declarados. **O3**: se hacen efectivos
+      **fuera del request** — endpoint admin `POST /admin/audit-prune`
+      (mismo patrón que `sheet-drift`, R1.2) + `scripts/audit-prune.mjs`
+      (`npm run audit:prune`), jamás podando en cada escritura.
+    - Validación al cargar (`validate-registry`): claves desconocidas dentro
+      de `audit`, `fields` ⊆ campos del recurso, `retention` entero ≥ 1.
+    - **Hecho cuando:** `true` sigue comportándose igual (aditivo), un
+      recurso con `fields` audita esos valores, un `audit` mal declarado
+      **rompe en arranque**, y la poda es invocable desde Node.
+  - [x] **R9.5.2 — Idempotencia en `create`** — `idempotencyKey` en el
+        `create` del CRUD, **reutilizando** el mecanismo de
+        `32-domain-ledger` ya probado para commands (no una segunda
+        implementación: un solo registro ⇒ consistencia).
+    - **Hecho cuando:** repetir la misma clave devuelve la respuesta
+      original sin crear fila doble, una clave reusada con otro payload ⇒
+      409, y sin clave no cambia nada (aditivo).
+  - [x] **R9.5.3 — tipo `file`** — `field-file/` + descriptor + **1 línea**
+        en `capabilities/fieldTypes.js`; la firma de upload acepta formatos
+        por recurso (`imageFolder` sigue valiendo: solo aditivo).
+    - **Hecho cuando:** declarar `type: 'file'` en un schema sube el
+      archivo y guarda la URL; sin declaración nueva no cambia `image`.
+  - [x] **R9.5.4 — Importar/Exportar CSV/JSON** —
+        `operations.export/import: { fields, format }`, rutas lógicas
+        (`/admin/<recurso>/export`), el import corre el **mismo** pipeline
+        de `create` (validators, computed, audit, hooks) y responde por fila.
+    - **Hecho cuando:** exportar un listado devuelve CSV/JSON de los campos
+      declarados; importar filas válidas crea registros y reporta las
+      inválidas **sin** dejar la hoja a medias.
+  - [x] **R9.5.5 — Búsqueda: decisión y contrato** — documentar por qué hoy
+        es front-owned (O1) y qué cambiaría si hay paginación.
+    - **Decisión (2026-10-12): la búsqueda se queda FRONT-OWNED.** El
+      listado se carga **entero** (sin paginar): el front tiene todas las
+      filas en memoria, así que filtrar en cliente es exacto, instantáneo
+      (sin round-trip) y gratis en cuota GAS. Un `search` server-side hoy
+      sólo agregaría requests y una **segunda** implementación de la misma
+      regla (`includes` case-insensitive, `list-view.ts:517`) sin fuente
+      única. O1 intacto: `search: string[]` (`orders.schema.ts:22`,
+      `schema.model.ts:632`) es una decisión de UI de la mitad front y el
+      schema back no la conoce (0 menciones en `api/schema/`) — no hay
+      nada que sincronizar porque el back no promete nada.
+    - **Disparador de migración (punto de no retorno):** el momento en que
+      `list-view` pida `page` al back (R6.4 ya lo soporta:
+      `shape.envelope: 'list'` ⇒ `{ items, nextCursor, total }`, con
+      `page{size,offset}`/`cursor` validado en `27-views`; el front hoy
+      desenvuelve el sobre pero **no** pagina, `api.service.ts:123`).
+      Con páginas, el filtrado en cliente se vuelve mentira: sólo vería la
+      página actual y «buscar 'x' no aparece» sería falso si 'x' vive en
+      la página 3. AHÍ la búsqueda migra al back **dentro del pipeline que
+      ya existe** (`listWithRules_`: `where ⇒ sort ⇒ page`), como un OR
+      `contains` ANTES del `page`.
+    - **Contrato propuesto al migrar (no implementa nada hoy):**
+      `resource.views.<v>.search: ['campo', …]` (declaración back,
+      fail-loud si el campo no existe) y el front sólo manda el texto
+      (`payload.search`), validado por longitud/escaping. Costos aceptados
+      al migrar: debounce en el front (cada tecla = request),
+      `contains` sobre N filas corre por request en GAS (O3 no aplica:
+      es lectura del request) y los `filters` por campo migran con la
+      misma lógica y en el mismo momento.
+    - **Hecho cuando:** la decisión, su disparador y su contrato queden
+      escritos con evidencia; sin código nuevo (O1 intacto).
+  - [x] **R9.5.6 — Jobs programados** ⚠️ **O5** — `schedules: [{ cron,
+handler, args }]` **+** instalación de los triggers desde setup
+        (los triggers de Apps Script sólo se crean desde el editor: la
+        declaración no puede crearlos sola ⇒ fail-loud si faltan).
+    - **Hecho cuando:** declarar un job lo registra, setup lo instala a
+      mano y un job sin trigger instalado **falla ruidoso**, no en silencio.
+    - **Hecho (2026-10-12):** `engine/34-schedules.js` (patrón declarar →
+      registro → motor): `parseScheduleCron_` acepta sólo
+      `everyMinutes(n) | everyHours(n) | atHour(h) | atHour(h) onWeekDay(d)`
+      — cualquier otra cosa es **rojo de arranque** en `validate-registry`
+      (nuevo `validateSchedules_` + unicidad global de `id` como en
+      `commandsRoute`). Resolución del trigger → job: TODOS los triggers
+      apuntan a la única global `RUN_SCHEDULE_JOB_` (GAS no permite
+      handlers con nombre dinámico) y el `e.triggerUid` del trigger
+      instalable se traduce a `{ resource, id }` vía la Script Property
+      `SCHEDULE_TRIGGERS` (mapa escrito por `setupTriggers_` en
+      `setup/07-setup-triggers`, encadenado en `setupAll`); el handler se
+      resuelve como en actions (`REGISTRY.handlers || globalThis`) y corre
+      `handler(args, ctx)`. Cualquier eslabón roto (sin uid, uid sin
+      registro, schedule borrado, handler ausente, prop corrupta) es 500
+      **ruidoso**; `setupTriggers_` reconcilia idempotente (crea faltantes,
+      borra huérfanos) y está en `EDITOR_ONLY_FNS` — el dispatch jamás toca
+      `ScriptApp` (O3, cubierto por test).
+  - [x] **R9.5.7 — Webhooks salientes** ⚠️ **O5** —
+        `webhooks: [{ on, url, sign }]`; `UrlFetchApp` dentro de la cuota
+        (20 000/día), firma HMAC del cuerpo, fallo del webhook **nunca**
+        deshace la escritura: se audita y se reporta (compensación, O4 —
+        no rollback).
+    - `engine/35-webhooks.js` se auto-suscribe a las fases post del bus
+      (`onEvent_`), así que un recurso **sólo** con webhooks (sin `hooks`)
+      entrega: `emitEvent_` sólo hace early-return si no hay hooks NI
+      suscriptores. Firma con `AUTH_SECRET` reusado (§0.5, sin segundo
+      secreto), header `X-Webhook-Signature`; alias legacy (`delete`,
+      `reorder`) resueltos. Fallo → log, jamás propaga (O4).
+    - **Hecho cuando:** declarar un webhook lo dispara tras el evento, la
+      firma verifica, y un webhook caído nunca rompe la escritura.
+  - [x] **R9.5.8 — Notificaciones** ⚠️ **O5** — `notify: { on, channel,
+template }`; sólo canales con cuota conocida (`MailApp` 100/día en
+        plano gratuito) y **sin** secretos en la plantilla (§0.5).
+    - **Hecho (2026-10-12):** `engine/36-notifications.js` (patrón declarar
+      → registro → motor): UN `MailApp.sendEmail` por entrada por fase post,
+      auto-suscrito al bus con `onEvent_` — un recurso **sólo** con notify
+      (sin `hooks`) envía. **Desviación documentada:** la spec escribe UN
+      objeto `notify: { … }`; se implementa como **arreglo** `notify: [{ … }]`
+      (igual que `webhooks`) para poder avisar en varios eventos, con la
+      misma validación por entrada. La entrada sumó `to` (email literal o
+      placeholder `{campo}` resuelto contra el payload — si queda sin
+      resolver NO se gasta cuota) y `subject` opcional (default
+      `resource.id · fase`); `template`/`subject` reemplazan `{campo}` con
+      el payload, **sin** mecanismo que lea campos secretos (§0.5).
+      `validateNotifications_` es **rojo de arranque** (fase PRE, clave de
+      más, canal ≠ `email` — `whatsapp` queda como trabajo futuro: sin
+      cuota conocida —, `template`/`to` vacíos y par `{ on, to }`
+      duplicado). Cuota: 100/día, sin reintentos; fallo → log, jamás
+      propaga (O4).
+    - **Hecho cuando:** declarar una notificación la dispara tras el evento
+      con destinatario y cuerpo resueltos, y un envío caído nunca rompe la
+      escritura.
+  - [x] **R9.5.9 — Cierre de R9.5** — 5 gates + `api:doc` + §7/§4 del plan.
+    - **Hecho (2026-10-12):** 5 gates verdes (front **455** · api **943** ·
+      `api:check` VERDE · build ✔ · prettier **19**, deuda preexistente de
+      la que ninguna son las capacidades nuevas). `api:doc` regenerado
+      (`doc/api-endpoints.md`, +216 líneas: incluye `POST /admin/audit-prune`
+      y el CRUD de la Fase 9). §4: añadidas **D64–D67** (búsqueda front-owned
+      con su disparador de migración, jobs con `e.triggerUid`→job, webhooks
+      con `AUTH_SECRET` reusado, notify como arreglo con `to`/`subject`).
+- [x] **R9.6** — Extras de auth (§7.6)
+  - [x] `POST /auth/logout-all` incrementa `token_version`; el contrato
+        comunica el TTL máximo de 60 s de los snapshots.
+  - [x] `rotateAuthSecret_()` rota el secreto desde el editor, sin exponerlo,
+        e invalida todas las sesiones.
+  - [x] Segundo proveedor y audiencia `customer` quedan fuera: `auth.md` §9
+        eligió contraseña y denegó cuentas de cliente; no reabrir esas decisiones
+        en una fase de expansión.
+- [ ] **R9.7** — i18n, estados y filtros declarativos (F10) — ⏸️ **pospuesta (decisión 2026-10-13)**
   - `label`/`help` con clave de traducción · `emptyState`/`errorState` ·
     `filters` usando el registro con `surface: 'filter'`.
+- [ ] **R9.8** — Vistas de dominio declarables: calendario y Kanban (F11)
+  - **Objetivo:** extender el motor para que los schemas puedan declarar
+    distintas visualizaciones reutilizables sobre recursos y consultas
+    existentes. Empezar por `calendar` y `kanban`; permitir añadir otro tipo
+    de vista mediante registro y descriptor, sin codificar reglas de un
+    negocio concreto en el shell o en los componentes genéricos.
+  - **Límite de alcance:** esta tarea agrega superficies de visualización y
+    su contrato de interacción. No inventa recursos de pedidos, eventos o
+    campañas ni reemplaza el CRUD, `views`, `uiViews`, permisos o endpoints
+    existentes. Sólo agregar un schema real de producción si hay un caso de
+    uso confirmado; si no, demostrar el contrato con fixtures de prueba.
+  - [x] **R9.8.1 — Descubrir y cerrar el contrato** ✅ **cerrada 2026-10-12**
+    - [x] Revisar `uiViews`, `views`, `ResourcePage`, `render-registry` y las
+          fuentes/cachés actuales. **Hechos verificados:**
+      - `uiViews` (`schema.model.ts:733`) = `Record<string, { type: string; path?: string }>`
+        — **hoy sólo tipo+path**; `type` se resuelve contra el registro `kind:'view'`, `path`
+        es relativa al recurso. Las rutas del shell salen de `uiViews` (`shell.routes.ts:20`).
+      - `views` (backend, `:723`) = metadatos de consulta `{ where, sort, limit, extends,
+custom, aggregate, expand, select, page }` — el front NO las evalúa; `27-views.js` sí.
+      - `DataSource` (`:227`) = `{ resource, view?, params?, labelField?, valueField? }`;
+        `DataSourceService.rows(source, ctx?, fresh?)` es el fetcher único con caché
+        `resource|view|params` (TTL 30 s, dedup en vuelo, `invalidate`).
+      - El backend **sí puede filtrar por rango**: `evalLeaf_` resuelve ops de `REGISTRY.ops`,
+        y `operators.js` registra `gte`/`lte`/`gt`/`lt` (ordenados) además de
+        `eq/neq/in/nin/contains/starts/regex/empty/exists/in-active`. Una condición
+        `where: [{ field, op: 'gte', param: 'desde' }, { field, op: 'lte', param: 'hasta' }]`
+        filtra en el back; los `param` llegan del front por `DataSource.params`.
+      - **Hecho duro de tipos:** los tipos temporales son `date` (`YYYY-MM-DD`, `FieldBase<string>`)
+        y `time` (`FieldBase<string>`). **NO existe `datetime`** en el catálogo (`FieldSchema`,
+        union en `:465`). El contrato no puede pedir un campo con hora+fecha nativo.
+      - El motor de `where` (back) opera sobre el valor crudo del campo; `opsNumber_`
+        ordena numérico si ambos lados lo son, si no lexicográfico. Un `date` ISO
+        `YYYY-MM-DD` compara bien lexicográficamente (orden = orden cronológico).
+    - [x] Definir el contrato de configuración discriminado por tipo (`calendar`/`kanban`),
+          con tipos TypeScript y validación runtime; sin `config: any` ni nombres de campo
+          implícitos. **Contrato cerrado (R9.8.2 lo tipa en `UiViewDescriptor`):**
+
+      **`UiViewDescriptor` deja de ser plano y pasa a discriminar por `type`.** Hoy es
+      `{ type: string; path?: string }`. Se extiende a unión discriminada por `type`,
+      conservando `type` y `path` en TODOS los miembros (el shell los lee siempre):
+
+      ```ts
+      // schema.model.ts — la forma NUEVA (tipos; sin any)
+      type UiViewDescriptor =
+        | UiViewBase // { type: 'list'|'detail'|'form'|'dashboard'; path? }
+        | UiViewCalendar // { type: 'calendar'; path?; config: CalendarViewConfig }
+        | UiViewKanban; // { type: 'kanban';  path?; config: KanbanViewConfig  }
+      // UiViewBase conserva el comportamiento actual (sólo type+path, config ausente).
+      ```
+
+      **`CalendarViewConfig`** (referencia a campos EXPLÍCITA, nunca implícita):
+
+      ```ts
+      interface CalendarViewConfig {
+        startField: string; // campo `date` (o `datetime` futuro): inicio del evento — OBLIGATORIO
+        endField?: string; // campo `date`/`time`: fin; ausente ⇒ evento de 1 día sobre startField
+        titleField: string; // campo `text`/`relation`: rótulo del evento — OBLIGATORIO
+        colorField?: string; // campo `select`/`text`: color/estado (token de la paleta o valor crudo)
+        defaultView?: 'month' | 'week' | 'day' | 'agenda'; // default: 'month'
+        source?: DataSource; // si ausente ⇒ la propia instancia del recurso (su listado)
+      }
+      ```
+
+      **`KanbanViewConfig`:**
+
+      ```ts
+      interface KanbanViewConfig {
+        groupField: string; // campo `select`/`relation`: columna por valor — OBLIGATORIO
+        columns: KanbanColumn[]; // orden estable de columnas; valores NO declarados ⇒ columna extra
+        titleField?: string; // rótulo de la tarjeta; ausente ⇒ keyField
+        subtitleField?: string; // segundo renglón (opcional)
+        source?: DataSource; // igual que calendar
+      }
+      interface KanbanColumn {
+        value: string;
+        label: string;
+      }
+      ```
+
+      **Validación runtime** (en el validador de schemas del front y en `contract-check`):
+      cada referencia de campo (`startField`, `endField`, `titleField`, `colorField`,
+      `groupField`, `subtitleField`) DEBE existir en `fields` y su `type` debe ser
+      compatible con el rol (`startField`/`endField` ∈ {`date`,`time`} con `start`=`date`;
+      `titleField`/`subtitleField` ∈ {`text`,`readonly-text`,`relation`,`slug`};
+      `groupField`/`colorField` ∈ {`select`,`text`,`relation`}). Una referencia inexistente
+      o de tipo incompatible es **error de configuración** (fail-loud, §16), nunca un
+      `any` ni un campo que se "adivina".
+
+    - [x] Precisar si la vista sólo lee o permite crear/editar; operación que persiste y
+          cómo aplican permisos. **Decisión:**
+      - **Calendar y Kanban son de LECTURA por defecto.** No crean ni mutan nada por su
+        cuenta. Esto respeta «no agregar escritura si el schema no la habilita».
+      - **Escritura opcional, explícita y reutilizando el flujo existente:** si el recurso
+        habilita `create`/`update` (permisos), la vista puede abrir el **editor genérico del
+        recurso** (el mismo `FormView`/ruta de form) o el **detalle**. NUNCA persiste por una
+        ruta paralela: la escritura pasa por `ApiService.update/create/remove` con el
+        `endpoint` del recurso, igual que `ListView` (`removeRow` → `api.remove`).
+      - **Kanban:** el «mover tarjeta» (cambiar `groupField`) es una **mutación**; se habilita
+        SÓLO con permiso `update` y persiste vía `api.update(endpoint, key, { ...row, [groupField]: nuevo })`,
+        con rollback (restaurar la tarjeta + notificación) si la petición falla (O4: sin rollback
+        transaccional, compensación en UI).
+      - **Permisos:** se usa el MISMO gate `auth.canDoOperation(schema, 'create'|'update'|'remove')`
+        que `ListView` (`resource-page.ts:171`, `list-view.ts:571-573`). Autoridad final = back
+        (A4): el cliente es interfaz, no autoridad; el back rechaza por scope/policies igual
+        que hoy (`filterRowsByScope_`, `27-views.js`).
+    - [x] Fijar zona horaria, idioma, inicio de semana, rangos y fechas incompletas. **Decisión
+          (evitar la TZ local del navegador):**
+      - **Los `date` viajan como `YYYY-MM-DD` (ISO sin hora, sin offset)** y se tratan como
+        **fechas de CALENDARIO (día civil), no como instantes UTC**. No se les aplica timezone
+        del navegador: `2026-10-12` es «el 12 de octubre» en cualquier TZ. Esto es coherente con
+        el tipo `date` del catálogo (sin hora) y evita el corrimiento de día.
+      - Para **rango de consulta** (`DataSource.params`), el front calcula `desde`/`hasta` como
+        `YYYY-MM-DD` del rango visible y los manda como params; el back filtra con `gte`/`lte`
+        lexicográfico (orden correcto en ISO). Sin depender de la TZ local.
+      - **Inicio de semana:** config por defecto `lunes`, ajustable por config de la vista
+        (`weekStart?: 'mon'|'sun'`); no se lee del locale del navegador.
+      - **Idioma/formato de presentación:** el front ya formatea con `Intl` según el locale de
+        la app (no del dato); la vista sólo decide layout. El dato crudo nunca se formatea en
+        el back.
+      - **Fecha incompleta / `time` sin `date`:** un evento exige `startField` con valor de
+        fecha válido (`YYYY-MM-DD`). Un valor vacío/inválido ⇒ el registro **NO se renderiza
+        como evento** y aparece en una zona de «registros sin fecha válida» visible (no se
+        oculta en silencio). Un `endField` anterior a `startField` ⇒ error visible («intervalo
+        inválido»), el evento no se pinta y, si hubiera edición, no se guarda (R9.8.3).
+      - **Día completo vs intervalo:** sin `endField` ⇒ evento de 1 día sobre `startField`. Con
+        `endField` de tipo `date` ⇒ intervalo inclusive que puede cruzar días (se pinta en
+        cada día que toca). Sin mezclar `time` en el primer corte (los eventos intradía con
+        hora son un refinamiento futuro, no parte del contrato inicial).
+    - [x] Fijar contratos de estados vacíos/carga/error/filtros/selección, reusando lo
+          existente. **Decisión:** reusar los MISMOS mecanismos que `ListView`:
+      - **Carga:** `status` (`loading`), disparado por `DataSourceService.rows` (o `ApiService.list`).
+      - **Vacío:** componente `EmptyState` ya usado por `ResourcePage` («Sin registros»).
+      - **Error:** `ErrorMapperService` (mapeo de `ApiError` a mensaje) + estado de error
+        visible; **nunca** truncar ni ocultar la falla.
+      - **Filtros:** la vista NO inventa motor de filtros propio; los filtros son el `where`
+        de `views` (back) + `params` del `DataSource`. Un calendario acota por rango (params
+        `desde`/`hasta`); un Kanban agrupa por `groupField`. El usuario NO filtra libremente
+        dentro de la vista en este corte (el listado ya lo hace; ampliar sería duplicar).
+      - **Selección:** `calendar` → clic en evento ⇒ abrir detalle/editor (ruta `/:id/:key` o
+        form); `kanban` ⇒ clic en tarjeta ⇒ detalle. La selección es el registro, y navega
+        por el mismo mecanismo que `ResourcePage.switchToDetail` (`/:id/:key`).
+    - **Hecho cuando:** los dos contratos tienen ejemplos mínimos, límites explícitos y no
+      requieren endpoint especial por componente. ✅ Ambos contratos cerrados arriba: leen
+      por `DataSource`/`ApiService` (reusa caché), el back filtra por `param`+`gte`/`lte` sin
+      endpoint nuevo, la escritura reusa el editor/API existente, y las fechas se tratan como
+      día civil ISO sin TZ del navegador.
+  - [x] **R9.8.2 — Registrar tipos de vista sin acoplar el shell** ✅ **cerrada 2026-10-12**
+    - [x] `calendar` y `kanban` añadidos a `uiViews` y a `kind: 'view'`, manteniendo
+          `list`/`detail`/`form`/`dashboard`. `UiViewDescriptor` pasa de plano a **unión
+          discriminada** (`UiViewBase | UiViewCalendar | UiViewKanban`) con `CalendarViewConfig`
+          y `KanbanViewConfig` tipados (sin `any`, sin nombres de campo implícitos: cada
+          referencia de campo es un `string` validado contra el schema).
+    - [x] Descriptores lazy nuevos en `viewDescriptors` (`kind:'view'`, `since:'9.8'`,
+          `load()` perezoso) hacia `CalendarView`/`KanbanView` (placeholders en esta tarea).
+          El shell resuelve por registro (`get('view', type)`): **cero `if`/`switch` por tipo
+          en `shell.routes.ts`** — verificado, el shell no lee `.config`, sólo `type`+`path`,
+          por eso el miembro base conserva `type: string` sin acoplar.
+    - [x] Config tipada dedicada por vista + **validación runtime** en `contract.spec.ts`:
+          recorre todo `uiView` de cada schema y marca como error de configuración (§16) una
+          referencia de campo inexistente, un tipo incompatible (`startField` ≠ `date`,
+          `endField` ∉ {`date`,`time`}, `groupField` ∉ {`select`,`relation`}), una columna
+          Kanban con `value` duplicado, o un tipo base arrastrando `config`. Un guardián de
+          **fixture sintética** ejercita el validador para que no quede en verde muerto hoy
+          que ningún schema declara estas vistas.
+    - **Hecho cuando:** un tipo nuevo se registra mediante descriptor, componente y contrato;
+      las rutas actuales conservan URL y comportamiento. ✅ Los 6 tipos (`calendar`, `dashboard`,
+      `detail`, `form`, `kanban`, `list`) tienen descriptor; `npm test` 457/457, `npm run build`
+      y `npx prettier --check` verdes; el contract spec da 16/16.
+    - [ ] Añadir `calendar` y `kanban` a los tipos de `uiViews` y al
+          `kind: 'view'`, manteniendo `list`, `detail`, `form` y `dashboard`.
+    - [ ] Declarar descriptores lazy que carguen sus componentes y declaren
+          la superficie soportada; `ResourcePage`/rutas deben resolverlos por el
+          registro, sin `if`/`switch` por tipo en el shell.
+    - [ ] Dar a cada vista un config tipado dedicado; rechazar en el
+          contract-check claves desconocidas, referencias a campos inexistentes,
+          tipos de campo incompatibles y descriptores ausentes.
+    - [ ] Mantener los defaults retrocompatibles de schemas actuales y
+          separar configuración visual (`uiViews`) de consultas y capacidades
+          de datos del backend (`views`).
+    - **Hecho cuando:** un tipo nuevo se registra mediante su descriptor,
+      componente y contrato; las rutas actuales conservan URL y comportamiento.
+  - [x] **R9.8.3 — Implementar vista genérica de calendario** ✅ **cerrada 2026-10-13**
+    - [x] `CalendarView` lazy en `src/app/views/calendar-view/` (modelo puro en
+          `calendar-model.ts` + componente). No toca `ResourcePage` ni el CRUD.
+    - [x] `startField`/`endField`/`titleField`/`colorField`/`source` declarables y validados
+          (R9.8.2); `endField` date ⇒ intervalo multi-día pintado en cada día que toca;
+          `endField` time ⇒ sin span de días.
+    - [x] Vistas mes/semana/día/agenda con prev/Hoy/next y selector de modo (accesible,
+          lunes-primero); agenda es el fallback accesible en pantallas chicas.
+    - [x] Día completo, intervalos que cruzan días, eventos sin fin, límites de rango y orden
+          estables; fechas civiles ISO sin shift de zona horaria local.
+    - [x] Carga por fuente declarada con optimización opt-in: si `source.view` está declarado
+          (señal de que el `where` del back filtra por `param: desde/hasta`), el rango visible
+          viaja como `ctx`; sin `view`, el listado entero se cachea y se posiciona en cliente.
+          Ambos caminos comparten el mismo componente.
+    - [x] Editar/crear NO habilitados (solo lectura por decisión de R9.8.1); selección de
+          registro pendiente de R9.9.5. Fallback accesible agenda/lista sin depender de color.
+    - [x] **Bug de integración corregido durante el cierre:** el componente usaba
+          `input.required<ResourceSchema>()`, pero el shell lo monta con `loadComponent` y
+          SIN bindings de input (sólo pasa `resourceId`/`uiView`/`viewType` en route data) —
+          en producción el schema nunca llegaba y la vista caería siempre a «Configuración
+          inválida», aunque los tests (que inyectaban el input a mano) pasaban en verde.
+          Ahora resuelve el schema desde route data (`schema` explícito o `resourceId` +
+          `getSchema`), igual que `FormView`. Spec: 28/28 (2 tests nuevos que cubren «sin
+          schema» ⇒ estado inválido sin fetch, y la ruta `resourceId`).
+    - **Hecho cuando:** fixture con eventos renderiza, cambia rangos y muestra carga/vacío/
+      error; intervalos inválidos producen error visible y no se guardan. ✅ Build verde,
+      spec calendario 28/28, suite completa 485/485, prettier limpio.
+  - [x] **R9.8.4 — Implementar vista genérica Kanban** ✅ **cerrada 2026-10-13**
+    - [x] `KanbanView` lazy en `src/app/views/kanban-view/` (modelo puro en
+          `kanban-model.ts` + componente). Independiente de `ResourcePage` y sin
+          nombres/campos de dominio. NO repite el bug del input de R9.8.3: resuelve el
+          schema desde route data (`resourceId` + `getSchema`), 0 `input.required`.
+    - [x] `groupField`, `columns` (orden), `titleField`/`subtitleField` declarables y
+          validados (R9.8.2). Agrupación por `groupField` respetando el orden declarado.
+    - [x] Valores vacíos/desconocidos: vacío ⇒ bucket «unknown» etiquetado; valor no
+          declarado ⇒ columna propia VISIBLE al final de las declaradas (nunca se ocultan
+          en silencio). Columnas declaradas siempre renderizan (con placeholder vacío).
+    - [x] Carga por `DataSourceService.rows(source)` con `source = config.source ?? {resource: schema.id}`.
+          Read-only total: sin drag, sin botones de mover, sin mutación (decisión R9.8.1).
+    - [x] Tarjeta sin título: fallback `config.titleField → schema.titleField → keyField → «Sin título»`.
+    - [x] Accesible: cada columna `section` con `aria-label`, conteo en texto (no color solo).
+    - **Hecho cuando:** fixture con varios estados produce columnas estables, conteo y estados
+      vacíos; valores no declarados se ven y no desaparecen. ✅ Build verde, spec kanban 22/22,
+      suite completa 507/507, prettier limpio.
+  - [x] **R9.8.5 — Integrar schemas y navegación** ✅ **cerrada 2026-10-13**
+    - [x] `orders.schema.ts` declara `calendar` (path `calendario`, `startField: pickup_date`,
+          `titleField: customer_name`) y `board`/kanban (path `tablero`, `groupField: status`,
+          columnas PENDIENTE/ENTREGADO/CANCELADO, `titleField: customer_name`). Sin modificar
+          `ResourceSchema`: sólo `uiViews`, usando el contrato discriminado de R9.8.2.
+    - [x] Contract-check (`core/registry/contract.spec.ts`) valida las referencias contra tipos
+          reales: `pickup_date` es `date` (compatible con `startField`), `status` es `select`
+          (compatible con `groupField`). 16/16 verdes.
+    - [x] Gotcha de rutas resuelto: una `uiView` sin `.path` colisiona en la raíz del recurso
+          (p. ej. `orders`) y el `shellRoutes.spec` ("una ruta protegida por cada uiView")
+          falla al encontrar la vista `list` primero. Cada vista de dominio lleva `path`
+          explícito (`calendario`, `tablero`) — no colisionan y cada una genera su ruta.
+    - [x] Cambiar de vista no contamina cachés: `DataSourceService` cachea por
+          `resource|view|params` (TTL 30s); calendar/kanban usan claves distintas a `list`.
+    - **Hecho cuando:** al menos un schema real declara cada vista y el contract-check pasa.
+      ✅ Build verde, contract spec 16/16, suite completa 507/507, prettier limpio.
+  - [ ] **R9.8.6 — Accesibilidad, responsive y localización** — ⏸️ **pospuesta (decisión 2026-10-13)**
+    - [ ] Usar etiquetas, encabezados, roles y foco adecuados; anunciar
+          cambios de rango, filtros y fallos sin mover el foco inesperadamente.
+    - [ ] Hacer utilizables ambas vistas con teclado y lector de pantalla;
+          no depender sólo del color, posición o gesto de arrastre.
+    - [ ] Adaptar calendario y Kanban a móvil y zoom; definir alternativa
+          compacta/agenda cuando la cuadrícula o columnas no quepan.
+    - [ ] Conectar etiquetas y textos a la estrategia i18n declarada por R9.7
+          cuando esa fase esté completa; mientras tanto, mantener textos
+          centralizados y no fijar copias en múltiples componentes.
+  - [x] **R9.8.7 — Tests, contrato y documentación**
+    - [x] Tests unitarios para descriptores, carga lazy, tipos/configuración,
+          validación runtime y preservación de vistas existentes.
+          `contract.spec.ts` (descriptores + `problemasDeUiViews` con fixture
+          sintética), `composition-validator.spec` (23/23), golden de rutas en
+          `shell.routes.spec`, carga lazy del descriptor vía
+          `view-composition.integration.spec`.
+    - [x] Tests de componente para calendario: fechas límite, zona horaria,
+          rangos, intervalos inválidos, evento de día completo, navegación y
+          estados loading/empty/error. `calendar-view.spec` 31/31 (parse UTC,
+          días inexistentes, `shiftMonths` acotado, multi-día acotado al
+          rango, fin<inicio/ilegible, prev/next/today, skeleton/error/empty).
+    - [x] Tests de componente para Kanban: agrupación, orden, valor desconocido,
+          columna vacía, teclado y (si se habilita) éxito/fallo de persistencia.
+          `kanban-view.spec` 28/28 — **teclado nuevo**: tarjeta con
+          `tabindex`/`role=button` + Enter/Space cuando hay `select`
+          declarado (sin binding no es focusable); persistencia N/A por
+          R9.8.1 (read-only por diseño).
+    - [x] Tests de integración del contrato schema → ruta → descriptor →
+          componente → fuente de datos; ningún componente puede requerir un
+          endpoint no declarado. `view-composition.integration.spec` (6/6):
+          fixture real `orders.resumen` → ruta → descriptor lazy → hoja →
+          fuente, y toda ruta `/admin/…` pedida pertenece a `orders.endpoint`.
+    - [x] Actualizar guía de schemas/API y ejemplos con configuración válida,
+          configuración inválida y semántica de solo lectura/escritura.
+          `doc/guia.md` §4 «Vistas de dominio» + fila de docs en §6.
+    - [x] Ejecutar tests frontend focalizados y suite completa, `api:check`
+          si el contrato compartido cambia, build y Prettier.
+    - **Criterio de cierre:** ambas vistas son opt-in, configurables desde
+      schemas, reutilizan fuentes y mutaciones existentes, son accesibles y
+      responsive, y añadir otro tipo de vista no requiere modificar el shell
+      ni vistas ya existentes.
+- [ ] **R9.9** — Composición y navegación entre vistas declarativas (F12)
+  - **Objetivo:** permitir que un schema describa experiencias compuestas
+    con vistas existentes y futuras, sin que el motor conozca el dominio.
+    Ejemplos válidos: abrir el detalle de un registro desde una lista;
+    seleccionar una tarjeta/evento y mostrar otra vista; organizar calendario,
+    Kanban, lista o detalle en pestañas; y permitir que una pestaña contenga
+    otra composición si el contrato lo permite.
+  - **Distinción importante:** no es un único «anidamiento de rutas». Se
+    separan dos mecanismos complementarios:
+    | Mecanismo            | Uso                                                                                 | Ejemplo                              |
+    | -------------------- | ----------------------------------------------------------------------------------- | ------------------------------------ |
+    | Navegación/ruta      | Cambia la ubicación navegable y conserva URL, guardas e historial.                  | Lista → detalle de `:key`.           |
+    | Composición embebida | Muestra una vista hija dentro de la página actual; no crea una ruta por cada panel. | Tabs con calendario, Kanban y lista. |
+    - Un click en un registro no debe crear rutas arbitrarias: resuelve un
+      destino declarado (normalmente detail/edit) y pasa únicamente
+      identificadores/contexto serializable.
+    - Las pestañas son un contenedor de vistas, no una variante de layout de
+      formulario (`layout.mode: 'tabs'` de R9.2).
+  - **Principios y límites:**
+    - La estructura se declara en configuración UI (`uiViews` o contrato
+      compositivo equivalente), no dentro de `views` del backend ni mediante
+      endpoints hardcodeados.
+    - Contenedores y vistas hoja usan el registro `kind: 'view'`; cada tipo
+      hijo aporta su descriptor. El compositor no contiene `switch` por
+      `calendar`, `kanban`, `list` u otros tipos.
+    - Configuración tipada por tipo, referencias explícitas a la fuente,
+      recurso/consulta y clave; prohibidos nombres de campo implícitos,
+      componentes seleccionados por strings sin descriptor y `any`.
+    - Separar identidad de instancia (`id`), tipo (`type`), configuración,
+      fuente/datos, navegación y estado local. Dos instancias del mismo tipo
+      pueden coexistir con configs diferentes.
+    - No convertir cada combinación en un componente nuevo. El caso base se
+      resuelve con un compositor genérico y vistas registradas; un wrapper
+      especializado sólo se admite si expresa composición reutilizable y no
+      lógica de un recurso concreto.
+    - Las composiciones son de lectura por defecto. Las acciones de editar,
+      crear o mover datos declaran explícitamente su operación y siguen
+      permisos, guards y servicios/API existentes.
+    - Fallar de forma visible y descriptiva ante tipos desconocidos,
+      referencias rotas, ciclos, profundidad excesiva o datos incompatibles;
+      nunca ocultar una rama inválida ni sustituirla silenciosamente.
+  - [x] **R9.9.1 — Auditar capacidades actuales y fijar el modelo** ✅ **cerrada 2026-10-12**
+    - **Superficie 1 — `uiViews` (`ResourceSchema.uiViews` · `schema.model.ts:676`, `:733-738`).**
+      Es `Record<string, UiViewDescriptor>` y cada descriptor es `{ type: string; path?: string }`
+      — **nada más**. `type` se resuelve contra el registro `kind: 'view'`; `path` es relativa
+      al recurso (vacío = raíz). Las **rutas del shell salen de `uiViews`**, no de
+      `ResourceSchema.views` (`shell.routes.ts:20-60`): por cada `uiView` se resuelve el
+      descriptor `kind:'view'` y se arma una `Route` con `loadComponent: descriptor.load`,
+      guard `roleGuard` y `data: { resourceId, uiView, viewType }`. **Fail-loud**: recurso sin
+      `uiViews` o `type` sin descriptor tira `throw` en el arranque de rutas.
+    - **Superficie 2 — `views` (backend).** Son `Record<string, ViewDescriptor>` (`:674`,
+      `:723-730`): `{ where?, sort?, limit?, extends?, custom? }` — **metadatos de consulta
+      del backend** (F7-1), el front NO las evalúa. Viven separadas de `uiViews` a propósito
+      (`shell.routes.ts:62-65` lo dice explícito). `views.expand` (relaciones, R9.4) es la API
+      relacional explícita y viaja por el mismo canal.
+    - **Superficie 3 — `ResourcePage` (`pages/resource-page/resource-page.ts`).** Despacha por
+      `schema.kind` con un `@switch` **hardcodeado** (`collection→ListView`, `dashboard→
+Dashboard`, `singleton→FormView`) y, dentro de `collection`, alterna `list`/`detail` por
+      señal `currentView` + `selectedRecord`, sincronizadas con la URL (`/:id/:key`). **No usa
+      el registro `kind:'view'`** para despachar — es el punto ciego que R9.8/R9.9 deben
+      cerrar (hoy el registro sólo lo consume el router, no esta página).
+    - **Superficie 4 — `render-registry` (`core/registry/render-registry.ts`).** Ya existe
+      `RenderKind = 'field'|'column-format'|'widget'|'action'|'view'|'layout'` (`:42`). El
+      catálogo se llena a scope de módulo con un manifiesto manual (`:261-273`) que hoy aporta
+      `fieldDescriptors | widgetDescriptors | columnFormatDescriptors | viewDescriptors |
+layoutDescriptors`. `viewDescriptors` (`views/descriptors.ts`) registra **4** tipos
+      `kind:'view'`: `list`, `detail`, `form`, `dashboard` (desde `since:'9.1'`), todos
+      resolviendo a componentes de página (`ResourcePage`/`FormView`). **`calendar` y `kanban`
+      no existen** (grep → 0). Un descriptor = `{ kind, type, since, load, surfaces?, defaults?,
+seed?, inputs? }`; el registro es la fuente única en runtime y un `(kind,type)` desconocido
+      resuelve a `fallback` (nunca pantalla rota).
+    - **Superficie 5 — fuentes/cachés (`core/services/data-source.service.ts`).** **`DataSource`
+      (`schema.model.ts:227-238`) = `{ resource, view?, params?, labelField?, valueField? }`**
+      es **el contrato de datos** que cualquier vista puede usar: `DataSourceService.rows(source,
+ctx?, fresh?)` es el **fetcher único** con caché por clave `resource|view|params`
+      (`dataSourceKey`, TTL 30 s, dedup en vuelo, `invalidate(resourceId?)`). Resuelve
+      `{campo}` en `params` contra `ctx` (vacío ⇒ **omite** el parámetro, fail-closed). Hoy lo
+      consumen relations, selects y widgets del dashboard (`WidgetSource = DataSource | {kind:'payload'}`).
+      **Conclusión:** una vista `calendar`/`kanban` recibe sus filas por `DataSource` +
+      `DataSourceService`, exactamente como un widget — sin endpoint ni caché propios.
+    - **Modelo fijado para R9.8/R9.9:** (1) `calendar`/`kanban` se registran como
+      `kind:'view'` **nuevos** en `viewDescriptors`, con su propio componente y `load()` perezoso
+      — cero `switch` en `ResourcePage` ni en el shell. (2) Su config discriminada por `type`
+      se declara en `uiViews[name] = { type, path, …config }` (hoy `UiViewDescriptor` sólo tiene
+      `{type,path}`: **R9.8.2 la extiende** tipando por `type`, sin `any`). (3) Sus filas salen
+      de un `DataSource` declarado en la config, vía `DataSourceService` (reusa caché/dedup). (4)
+      Navegación (`lista→detalle`) y composición embebida (tabs) son dos mecanismos separados
+      (R9.9): la primera cambia la URL (`/:id/:key`, ya existente), la segunda embebe una vista
+      hija sin ruta. (5) El despacho por `schema.kind` de `ResourcePage` **no se toca** en R9.8
+      (límite de alcance explícito): `calendar`/`kanban` son páginas propias vía `uiViews`, no
+      una rama del `@switch` de `ResourcePage`.
+    - [ ] Trazar el flujo actual de `uiViews` → `shell.routes` →
+          `ResourcePage` → list/detail/form y los enlaces desde filas/acciones.
+    - [ ] Identificar qué significa «mostrar más información» hoy: detail
+          existente, ruta hija con parámetro, drawer/modal o panel embebido; no
+          duplicar esos mecanismos sin una brecha demostrada.
+    - [ ] Elegir un modelo declarativo recursivo/discriminado para nodos de
+          composición y nodos hoja; documentar alternativas de ruta frente a
+          composición inline y cuándo corresponde cada una.
+    - [ ] Definir el contexto heredable y el explícito: recurso, fuente,
+          query/params, registro seleccionado, permisos, filtros/rango y clave.
+          Las referencias se validan y los valores que se propagan son
+          serializables; no pasar objetos runtime arbitrarios por el router.
+    - [ ] Cerrar cómo las vistas hijas consumen datos/caché y cómo se evita
+          que una hija sustituya accidentalmente la fuente o el estado de su
+          padre. Reusar la infraestructura existente; tratar R9.3 como
+          dependencia sólo si el diseño necesita el adaptador de storage.
+    - **Hecho cuando:** el modelo cubre los ejemplos de lista→detalle,
+      tabs→múltiples tipos y selección→vista hija sin añadir campos
+      específicos de calendario, Kanban o pedidos al compositor.
+  - [x] **R9.9.2 — Definir contratos declarativos y validar schemas** ✅ **cerrada 2026-10-13** — change `view-composition`, slice 1: contratos tipados (`TabsConfig`/`ViewChildNode`/`SelectionBinding`/`NavigationTarget`) + `composition-validator` (ids/refs/ciclos, `MAX_DEPTH=3`, `MAX_NODES=50`, error legible) y compatibilidad golden.
+    - [x] Tipar el contrato del contenedor (pestañas/paneles) con lista
+          ordenada de hijos, `id` estable, título/etiqueta, tipo registrado,
+          config propia, visibilidad declarativa y selección inicial opcional.
+    - [x] Tipar destinos de navegación con recurso/vista declarados, patrón
+          de ruta conocido, parámetros permitidos y clave de registro; no aceptar
+          URLs arbitrarias de usuario ni concatenar segmentos sin codificación.
+    - [x] Declarar el evento que activa cada transición (abrir, seleccionar,
+          acción nombrada) en lugar de asumir que cualquier click navega.
+    - [x] Validar ids duplicados, destinos/tipos inexistentes, parámetros
+          requeridos, fuentes no compatibles, ciclos y referencias circulares.
+    - [x] Definir un límite configurable/conservador de profundidad o número
+          de nodos para evitar recursión infinita y árboles de UI accidentales;
+          al límite, emitir error de schema legible.
+    - [x] Mantener compatibilidad de los schemas actuales: la ausencia de
+          composición conserva list/detail/form/dashboard y sus rutas existentes.
+    - **Hecho cuando:** schemas válidos e inválidos producen diagnóstico
+      preciso durante contract-check/test, antes de llegar a runtime.
+  - [x] **R9.9.3 — Construir el compositor de vistas registrable** ✅ **cerrada 2026-10-13** — change `view-composition`, slice 3: descriptor `tabs` lazy + `ComposerHost`/`ViewSlot`/`ViewContext` separado de `RenderContext`, instanceId por instancia, retención `retain`/destrucción, registro sin tocar shell (source-scan).
+    - [x] Añadir un descriptor de contenedor (por ejemplo `tabs` o
+          `view-container`) sin confundirlo con el layout de formularios y sin
+          duplicar el control visual específico de `calendar`/`kanban`.
+    - [x] Crear un host recursivo que resuelva cada hijo por
+          `(kind: 'view', type)`, con carga lazy, estado de carga, error explícito
+          y destrucción limpia al desmontar/cambiar de instancia.
+    - [x] Separar `ViewContext` tipado de `RenderContext` de campos; transmitir
+          sólo datos, servicios y navegación que una vista hija necesite.
+    - [x] Dar a cada instancia una identidad estable y aislar su selección,
+          filtros, rango de fechas y estado de carga para que tabs hermanas no se
+          contaminen.
+    - [x] Definir política de ciclo de vida al cambiar de pestaña:
+          conservar estado sólo si está declarado, si no destruir y liberar
+          suscripciones/caché local.
+    - [x] Permitir registrar contenedores futuros con el mismo contrato, sin
+          editar el shell ni vistas hoja.
+    - **Hecho cuando:** un fixture compone al menos tres descriptores hoja
+      distintos y el compositor no los importa ni reconoce por nombre.
+  - [x] **R9.9.4 — Resolver selección y drill-down desde vistas hoja** ✅ **cerrada 2026-10-13** — change `view-composition`, slice 4: `SelectionEvent` tipado (recurso+clave+acción), decision table `route`/`inline`/`none` por schema, clave estable con `buildSegments` codificado + guards (`roleGuard`), `back()` por política declarada y D4 (error con forma de volver).
+    - [x] Unificar la salida de selección en un evento tipado (por ejemplo,
+          recurso + clave + acción), evitando que cada vista implemente su
+          navegación particular.
+    - [x] Configurar por schema si la selección abre una ruta existente,
+          activa una vista hija inline, actualiza un panel de detalle o no hace
+          nada; no fijar un destino por defecto oculto.
+    - [x] Usar la clave estable del backend y el route builder/router;
+          conservar guards y autorización. Nunca enviar al router el objeto
+          completo del registro como identidad.
+    - [x] Al volver, preservar estado sólo según política declarada:
+          pestaña seleccionada, filtros, búsqueda, rango/página y scroll cuando
+          sea viable, sin filtrar datos sensibles a URL/history.
+    - [x] Errores de carga del destino mantienen una forma de volver y
+          comunican el fallo; no dejan una página vacía ni un destino parcial.
+    - **Hecho cuando:** click desde list/calendar/Kanban puede usar el mismo
+      contrato de selección y navegar al detail declarado o mostrarlo inline.
+  - [x] **R9.9.5 — Añadir pestañas declarativas como composición** ✅ **cerrada 2026-10-13** — change `view-composition`, slices 3+5: tabs heterogéneos (calendar/kanban/list/tabs anidado), pestaña activa **local** (decisión documentada, sin reflejo en URL), tablist accesible con roving y anidación dentro de `MAX_DEPTH`.
+    - [x] Declarar tabs con `id`, label, descriptor hijo, config, visibilidad
+          y selección inicial; admitir contenido heterogéneo (lista, calendar,
+          Kanban, detail u otro descriptor), no sólo formularios.
+    - [x] Resolver tabs desde el registro y soportar tabs con una vista hija;
+          no modificar el host de cada vista para integrarlo.
+    - [x] Decidir por contrato si la pestaña activa se refleja en URL
+          (`queryParam`/segmento) o permanece local; garantizar enlaces directos
+          y back/forward cuando la selección sea navegable.
+    - [x] Implementar accesibilidad de tablist/tab/tabpanel, navegación por
+          teclado, foco y contenido diferido; ocultar/desactivar tabs según
+          condiciones validadas sin perder la vista elegida de forma silenciosa.
+    - [x] Verificar composición anidada (tabs dentro de tabs) con el límite
+          de profundidad, y permitir deshabilitarla en schema si aumenta
+          complejidad sin aportar valor.
+    - **Hecho cuando:** un schema de fixture declara tabs calendario/Kanban/
+      lista, cada panel monta el descriptor correcto y la navegación por
+      teclado/URL coincide con la decisión documentada.
+  - [x] **R9.9.6 — Acciones, seguridad y estados** ✅ **cerrada 2026-10-13** — change `view-composition`, slice 4: guards en `dispatch`, codificación de clave, estados por nodo con error retenido + reintento, `loadEpoch` anti-carreras, caché por `resource|view|params`, y detail→form enlazado (sin duplicar CRUD).
+    - [x] Propagar permisos desde el recurso/sesión y comprobarlos en cada
+          acción de escritura; ocultar controles no reemplaza autorización
+          backend.
+    - [x] No interpolar datos no confiables en paths, selectores ni templates
+          HTML; aplicar encoding en parámetros de ruta y serialización URL.
+    - [x] Gestionar independientemente por nodo `loading`, `empty`, `error`,
+          `unauthorized` y `not-found`; permitir reintento cuando proceda y
+          conservar errores originales en logs/diagnósticos según convención.
+    - [x] Evitar suscripciones duplicadas al montar/desmontar, lecturas N+1
+          por panel, carreras entre selección rápida y respuesta tardía, y
+          cachés compartidas entre recursos/configs incompatibles.
+    - [x] No duplicar el mismo formulario CRUD dentro de cada vista: enlazar
+          al formulario existente o abrirlo mediante el mecanismo reusable ya
+          soportado, respetando guard de cambios sin guardar.
+  - [x] **R9.9.7 — Pruebas, documentación y migración** ✅ **cerrada 2026-10-13** — change `view-composition`, slices 1-5: specs de validador (23), host/hojas, integración (fixture `orders.resumen`, endpoints declarados, seguridad: destino/URL/acción inválidos fallan sin navegar), docs `motor-renderizado-actual.md` §1.9, no-regresión golden + R9.8 y 5 gates.
+    - [x] Tests del validador para estructura, referencias, profundidad,
+          ciclos, ids, parámetros y compatibilidad de schemas previos.
+    - [x] Tests del host/compositor para descriptor lazy, configuración por
+          instancia, orden/selección de tabs, destrucción, error y recuperación.
+    - [x] Tests de integración schema→ruta/composición→evento de selección→
+          destino detail; incluir regresar y preservar estado declarado.
+    - [x] Tests de seguridad funcional: tipo desconocido, URL arbitraria,
+          clave ausente, recurso no autorizado y acción de mutación no declarada
+          deben fallar sin navegar o persistir.
+    - [x] Documentar la diferencia entre rutas y vistas embebidas, contrato
+          de tabs, ejemplos genéricos y cómo registrar un descriptor hijo nuevo.
+    - [x] Probar no-regresión para rutas actuales y las configuraciones de
+          R9.8 (calendar/Kanban); ejecutar suites focalizadas, suite completa,
+          build, contract-check y formato.
+    - **Criterio de cierre:** una definición de schema puede componer vistas
+      heterogéneas y declarar su navegación/drill-down; añadir una vista hoja
+      nueva no exige modificar el compositor, el shell o las vistas
+      existentes, y los schemas inválidos se rechazan antes del render.
 
 ---
 
-## Fase 10 — Cierre
+## Fase 10 — Capacidades para CRM y gestión de contenido
 
-- [ ] **R10.1** — Destino de `confirm-dialog` — **D15** _(absorbe T1.4/T7.1)_
+**Objetivo:** que el motor permita construir desde schemas una aplicación
+administrativa útil para CRM y contenido, con flujos intuitivos y piezas
+reutilizables. CRM/contenido son el caso de validación, no una excusa para
+codificar `contacts`, `leads`, `campaigns` o estados de negocio dentro del
+motor. Los schemas de ejemplo ensamblan capacidades genéricas ya registradas.
+
+**Precondiciones:** reutilizar los contratos existentes de recursos,
+relaciones, acciones, permisos, fuentes, vistas, layouts y errores. R9.8 y
+R9.9 aportan las vistas de calendario/Kanban y composición/drill-down; no se
+duplican en esta fase. R9.3 sigue siendo una decisión separada: no presuponer
+un storage distinto de Sheets ni anunciar escalabilidad que el backend actual
+no ofrece.
+
+**Regla de diseño:** antes de agregar una capacidad, comprobar si puede
+expresarse con un descriptor, un tipo de campo, una acción, un workflow o una
+vista genérica. Si requiere lógica `if (resource.id === 'contacts')` en el
+motor, el diseño no está completo.
+
+- [ ] **R10.1 — Definir el alcance de producto y la arquitectura**
+  - [ ] Auditar las capacidades reales presentes al iniciar esta fase:
+        schemas, tipos de campo, relaciones, permisos, búsqueda, auditoría,
+        uploads, acciones, vistas, layouts y límites de Apps Script/Sheets.
+  - [ ] Redactar dos schemas de referencia de prueba: un CRM pequeño y un
+        catálogo/gestor editorial. Usarlos como consumidores del motor, no como
+        modelos obligatorios para todos los proyectos.
+  - [ ] Separar requisitos transversales del producto de ejemplo:
+        identidad/relaciones, actividad, tareas, flujos de estado, contenido,
+        medios, búsqueda, navegación y presentación.
+  - [ ] Por cada requisito, indicar mecanismo existente o capacidad nueva,
+        contrato declarativo, validación, permisos, dueño de datos, límite
+        operativo y evidencia de aceptación.
+  - [ ] Clasificar capacidades en núcleo genérico, extensiones registrables y
+        configuración del schema; no copiar reglas CRM/CMS a `engine/`, shell o
+        componentes compartidos.
+  - [ ] Acordar una primera entrega pequeña que pueda completarse end-to-end;
+        dejar integraciones externas, automatización no fiable y capacidades sin
+        caso de uso verificable fuera del alcance inicial.
+  - **Hecho cuando:** cada componente propuesto tiene consumidor de ejemplo,
+    contrato verificable y no contradice decisiones previas del plan.
+
+- [ ] **R10.2 — Primitivas genéricas para relaciones de CRM**
+  - [ ] Verificar si las relaciones actuales representan asociaciones
+        muchos-a-muchos, múltiples roles y registros vinculados; diseñar sólo la
+        extensión necesaria y compatible con R9.4.
+  - [ ] Declarar relaciones mediante schema con recurso/campos, cardinalidad,
+        alias, etiqueta de presentación y política de borrado explícitos.
+  - [ ] Permitir que un registro se vincule a uno o varios recursos sin que
+        el motor asuma las entidades `contacto`, `empresa`, `lead` o `oportunidad`.
+  - [ ] Definir referencias, límites de expansión, paginación y prevención de
+        lecturas N+1; los resultados grandes deben fallar o paginar según contrato,
+        nunca truncarse silenciosamente.
+  - [ ] Exponer paneles de relaciones como configuración de vista: campos
+        visibles, título, acción de abrir/crear y permisos; no duplicar el editor
+        CRUD existente.
+  - [ ] Añadir pruebas de relaciones recíprocas, huérfanas, cardinalidad,
+        autorización, borrado y compatibilidad con las relaciones actuales.
+  - **Hecho cuando:** un schema de prueba puede modelar entidades relacionadas
+    y mostrarlas sin ramas específicas por id de recurso.
+
+- [ ] **R10.3 — Actividad, comentarios y timeline reutilizables**
+  - [ ] Determinar qué existe ya en auditoría/eventos y distinguir
+        historial técnico (quién cambió qué) de actividad visible para usuarios
+        (nota, llamada, reunión, seguimiento); no mezclar ambos contratos.
+  - [ ] Diseñar un contrato de actividad genérico asociado a uno o más
+        registros, con autor, fecha, tipo registrado y payload tipado/validado.
+  - [ ] Definir si las actividades son append-only, qué roles pueden leerlas,
+        crearlas o corregirlas y cómo se auditan cambios y borrados.
+  - [ ] Crear descriptor/componente de timeline capaz de representar
+        actividades por fecha y tipo mediante renderers registrados, con fallback
+        de texto para tipos desconocidos.
+  - [ ] Declarar en schema dónde aparece la actividad, su fuente, filtros,
+        orden, paginación y operaciones disponibles; no montar un endpoint por
+        recurso.
+  - [ ] Asegurar límites por consulta, sanitización de texto enriquecido y
+        protección de datos personales en logs y vistas.
+  - [ ] Cubrir vacíos, errores, permisos, orden temporal, zonas horarias y
+        paginación con tests.
+  - **Hecho cuando:** el mismo componente muestra eventos de auditoría
+    permitidos y actividades declaradas sin confundir sus niveles de confianza.
+
+- [ ] **R10.4 — Tareas, responsables y recordatorios declarativos**
+  - [ ] Validar si tareas/recordatorios se expresan con recursos y acciones
+        existentes; introducir capacidades genéricas sólo para brechas medidas.
+  - [ ] Definir el contrato configurable de asignación, vencimiento, estado,
+        prioridad, entidad vinculada y reglas de transición; ningún nombre de
+        campo se fija en el componente.
+  - [ ] Reusar permisos, validadores, `visibleWhen`, transiciones y auditoría;
+        impedir que ocultar un botón sustituya autorización backend.
+  - [ ] Integrar listas «asignadas a mí», vencidas y próximas mediante fuentes
+        declarativas y filtros reutilizables, con límites y paginación.
+  - [ ] Si se proponen notificaciones o ejecución programada, documentar
+        primero límites/garantías de Apps Script (triggers, cuotas, reintentos,
+        duplicados); hacer el envío idempotente o dejarlo explícitamente fuera.
+  - [ ] No prometer entrega en tiempo real, scheduler durable o SLA que la
+        plataforma no pueda garantizar.
+  - [ ] Probar cambios concurrentes relevantes, vencimiento, permisos,
+        transición inválida, tareas sin responsable y fallos de notificación.
+  - **Hecho cuando:** una instancia del motor puede declarar una tarea con
+    sus campos y reglas; otra configuración puede usar otros nombres/estados.
+
+- [ ] **R10.5 — Modelado y ciclo editorial de contenido**
+  - [ ] Diseñar schemas de contenido compuestos por campos existentes y
+        tipos registrados; separar modelo de contenido del layout/editor visual.
+  - [ ] Definir estados editoriales configurables, transiciones permitidas,
+        roles/autores, requisitos para publicar y auditoría; no fijar
+        `draft/published` como máquina universal si el schema declara otra.
+  - [ ] Especificar borrador frente a versión publicada para que cambios no
+        visibles al público no sobrescriban accidentalmente la versión vigente.
+  - [ ] Evaluar versionado/revisión con snapshots recuperables, quién puede
+        restaurar y límites de retención/costo; no confundirlo con el borrador
+        local del formulario.
+  - [ ] Declarar slug/identificador público, unicidad, SEO metadata, fechas,
+        autoría y campos de publicación según el tipo de contenido; validar
+        referencias y políticas en backend.
+  - [ ] Definir vista previa segura para contenido no publicado, sin exponer
+        borradores por endpoints públicos ni reutilizar tokens administrativos
+        como enlaces públicos.
+  - [ ] Evaluar publicación programada sólo con garantías compatibles con
+        Apps Script; si no hay trigger durable/observabilidad suficiente, ofrecer
+        estado «programado» sin prometer puntualidad y documentar la limitación.
+  - [ ] Crear fixture de contenido genérico (artículo/página como ejemplos,
+        no tipos hardcodeados) y verificar crear, editar, revisar, publicar,
+        restaurar y retirar según transiciones declaradas.
+  - **Hecho cuando:** un schema configura un flujo editorial sin ramas
+    `if contentType` en backend, editor o router, y el contenido no publicado
+    permanece privado.
+
+- [ ] **R10.6 — Bloques de contenido y composición editable**
+  - [ ] Comprobar si `group`, `list` y los descriptores existentes permiten
+        modelar bloques heterogéneos; definir una unión discriminada sólo si falta.
+  - [ ] Registrar tipos de bloque (`text`, `image`, `embed` u otros aprobados)
+        con configuración validada, componente lazy, defaults y fallback visible.
+  - [ ] Declarar el catálogo permitido, orden, cardinalidad, campos requeridos
+        y límites de tamaño/profundidad por schema; bloquear payloads arbitrarios.
+  - [ ] Crear editor de bloques reutilizable con añadir, quitar, reordenar,
+        duplicar si procede, validación contextual y accesibilidad por teclado.
+  - [ ] Mantener sanitización y política explícita para HTML/embeds; no
+        renderizar HTML no confiable ni permitir URLs/protocolos inseguros.
+  - [ ] Separar editor de la representación pública: los mismos datos pueden
+        tener renderers de edición y display, registrados y verificables.
+  - [ ] Testear bloques desconocidos, datos legados, anidamiento excesivo,
+        reordenamiento, carga de medios y lectura pública segura.
+  - **Hecho cuando:** añadir un bloque nuevo requiere su descriptor y tests,
+    no cambios al editor genérico ni una condición por tipo en cada host.
+
+- [ ] **R10.7 — Biblioteca de medios y gestión de assets**
+  - [ ] Inventariar el flujo de upload existente y reutilizar su contrato,
+        firma, verificación de proveedor, permisos y límites.
+  - [ ] Declarar metadatos de asset (URL segura, proveedor/id, MIME, tamaño,
+        dimensiones si se conocen, texto alternativo, autor/fecha) sin persistir
+        secretos del proveedor en schemas o cliente.
+  - [ ] Proveer selector/biblioteca reutilizable con búsqueda, filtros,
+        paginación, vista previa, selección múltiple sólo cuando el campo lo
+        permita y alt text accesible.
+  - [ ] Validar ownership/alcance de recurso, MIME real permitido, tamaño,
+        URL y firma en backend; no confiar en extensiones ni metadata del cliente.
+  - [ ] Definir eliminación/reemplazo con referencias entrantes: impedir
+        huérfanos o aplicar una política declarada; nunca borrar el asset remoto
+        antes de conocer el resultado de la operación local.
+  - [ ] Mantener compatible el campo `image` y sus schemas actuales; la
+        biblioteca lo amplía, no lo reemplaza por una API distinta.
+  - [ ] Testear permisos, carga fallida, asset inválido, referencia utilizada,
+        texto alternativo y límites de almacenamiento/proveedor.
+  - **Hecho cuando:** campos y bloques pueden seleccionar assets desde una
+    biblioteca común, sin bypass de la validación de upload existente.
+
+- [ ] **R10.8 — Workspace y navegación orientados a tareas**
+  - [ ] Diseñar una shell configurable por áreas de trabajo (p. ej. relaciones,
+        tareas, contenido) a partir de recursos/vistas declarados; mantener
+        sidebar/rutas actuales como default retrocompatible.
+  - [ ] Añadir breadcrumbs/títulos/acciones contextuales y retorno al origen
+        preservando filtros/página cuando la URL pueda representarlos de forma
+        segura.
+  - [ ] Proveer página inicial configurable con widgets/vistas registradas,
+        actividad reciente y tareas/indicadores sólo si tienen fuente declarada;
+        no incrustar consultas ad hoc en el dashboard.
+  - [ ] Reusar R9.8/R9.9 para calendar, Kanban, tabs y drill-down. Verificar
+        que un usuario puede elegir entre representaciones sin duplicar recursos,
+        endpoints o estados de negocio.
+  - [ ] Añadir acciones rápidas contextuales (crear, asignar, publicar,
+        abrir) desde registro de acciones; confirmar acciones destructivas con
+        el componente común que decida R11.1.
+  - [ ] Evaluar búsqueda global como capacidad declarativa con alcance,
+        campos indexables, permisos por recurso y resultados tipados; no revelar
+        registros que el usuario no pueda leer. Si requiere backend nuevo,
+        respetar límites y criterios de R9.5.
+  - [ ] Mantener estados de navegación, filtros, pestañas y foco al volver;
+        definir cómo funcionan enlaces directos y back/forward.
+  - **Hecho cuando:** un fixture de producto arma una navegación coherente
+    desde schemas y una persona puede llegar a registros, actividad y contenido
+    sin rutas específicas codificadas en la shell.
+
+- [ ] **R10.9 — Listas guardadas, filtros y tableros personales**
+  - [ ] Extender filtros/búsqueda/sort existentes con definiciones de vistas
+        guardadas validadas: columnas, filtros, orden, agrupación y modo de vista.
+  - [ ] Definir alcance de una vista guardada (usuario/equipo/global), dueño,
+        permisos de edición, valores por defecto y migración cuando el schema
+        cambie.
+  - [ ] Evitar almacenar consultas ejecutables, operadores desconocidos o
+        filtros que permitan saltar autorización; validar y limitar complejidad.
+  - [ ] Permitir conmutar entre tabla, Kanban, calendario y otras vistas
+        registradas sólo cuando sus configs/fuentes sean compatibles.
+  - [ ] Si persistencia por usuario no está soportada, ofrecer preferencias
+        locales claramente diferenciadas y no presentarlas como compartidas.
+  - [ ] Probar vistas rotas tras cambios de schema, criterios vacíos,
+        visibilidad por rol, paginación y enlaces compartibles sin filtrar
+        información sensible.
+  - **Hecho cuando:** usuarios pueden volver a una presentación guardada sin
+    clonar una vista o duplicar configuración en el schema.
+
+- [ ] **R10.10 — Datos, reporting y métricas configurables**
+  - [ ] Inventariar `views`, `aggregates`, límites de lectura y widgets
+        existentes; no duplicar capacidades ya declaradas.
+  - [ ] Exponer métricas, conteos, agrupaciones y series como definiciones
+        tipadas con filtros autorizados, topes de filas y errores fail-loud.
+  - [ ] Permitir dashboard configurable por usuario/schema con tarjetas,
+        gráficos y listas registradas; cada widget declara su fuente y estado
+        empty/loading/error.
+  - [ ] Verificar consistencia entre filtros de vista y métricas; no llamar
+        desde cliente funciones arbitrarias ni aceptar fórmulas ejecutables.
+  - [ ] Documentar precisión/frescura de datos, caché, límites de Sheets y
+        cuándo una cifra es agregada, filtrada o parcial.
+  - [ ] Tests para límites superados, permisos, agregados vacíos, filtro
+        inválido y fallo de una fuente sin colapsar widgets independientes.
+  - **Hecho cuando:** una página de inicio puede ensamblar métricas y vistas
+    sólo mediante definiciones declarativas auditables.
+
+- [ ] **R10.11 — Usabilidad, accesibilidad y diseño adaptable**
+  - [ ] Definir principios y componentes comunes: jerarquía visual, espaciado,
+        formularios, tablas, paneles, modales/drawers, confirmaciones y feedback.
+  - [ ] Mantener navegación por teclado, foco visible, labels/errores
+        accesibles, semántica ARIA correcta y no depender de color/drag.
+  - [ ] Diseñar estados consistentes de carga, vacío, error, sin permiso,
+        éxito y confirmación; mensajes accionables sin esconder error técnico.
+  - [ ] Asegurar uso en móvil/tablet/escritorio, zoom, textos largos y
+        localización según R9.7; evitar que los tableros requieran hover.
+  - [ ] Proveer onboarding progresivo/empty states configurables que indiquen
+        la siguiente acción sin sembrar datos de negocio automáticamente.
+  - [ ] Hacer pruebas de accesibilidad de componentes, recorrido con teclado,
+        viewports representativos y flujos principales de referencia.
+  - **Hecho cuando:** componentes compartidos son utilizables sin conocer
+    detalles del dominio y presentan estados coherentes en todas las vistas.
+
+- [ ] **R10.12 — Armar una aplicación de referencia sólo desde schemas**
+  - [ ] Crear un conjunto de schemas de demostración separado de recursos
+        operativos; usar nombres de dominio sólo como fixture y no como ramas del
+        motor.
+  - [ ] Demostrar un flujo CRM genérico: alta, relación, actividad, tarea,
+        búsqueda/listado, detalle y cambio de estado permitido.
+  - [ ] Demostrar un flujo editorial genérico: modelar contenido, editar
+        bloques, adjuntar media, revisar, previsualizar y publicar con permisos.
+  - [ ] Componer dashboards y vistas alternativas con recursos, widgets,
+        calendar/Kanban y drill-down declarados en R9.8/R9.9.
+  - [ ] Comprobar que un segundo schema con etiquetas, campos, roles y estados
+        distintos usa los mismos componentes y no necesita lógica específica.
+  - [ ] Añadir tests de contrato que prohíban checks por id de recurso en
+        motor/hosts y que garanticen exhaustividad de descriptores, campos,
+        acciones, bloques, widgets y vistas.
+  - [ ] Documentar la ruta de creación de módulo: definir schema, elegir
+        capacidades, configurar navegación/permisos y validar con el contrato.
+  - **Criterio de cierre:** ambos flujos se completan de punta a punta con
+    seguridad y estados visibles; un dominio distinto se configura sin
+    editar componentes genéricos.
+
+- [ ] **R10.13 — Compatibilidad, rendimiento y gates de la fase**
+  - [ ] Mantener rutas, payloads, permisos y apariencia esencial de schemas
+        existentes salvo migración declarada y cubierta por tests.
+  - [ ] Medir lecturas por flujo, cardinalidad de relaciones, tamaño de
+        payload, tiempo de render y peticiones concurrentes; fijar budgets antes
+        de optimizar.
+  - [ ] Probar datos grandes dentro de límites realistas de Sheets/Apps
+        Script, límites alcanzados, carreras de guardado, rate limit y reintentos.
+  - [ ] Validar que cachés se invalidan en mutaciones y se aíslan por usuario,
+        permisos, recurso y filtros cuando aplique.
+  - [ ] Ejecutar tests frontend/backend focalizados y completos, build,
+        `api:check`, drift/sheet-check, contract tests y Prettier; registrar
+        baseline y excepciones preexistentes.
+  - [ ] Actualizar documentación de schemas, componentes registrados,
+        permisos, límites de plataforma y ejemplos de composición.
+  - **Criterio de cierre de Fase 10:** el motor ofrece un conjunto coherente
+    de capacidades CRM/contenido configurables, la app de referencia las
+    consume sin forks por recurso y cada afirmación de escala/automatización
+    está respaldada por un límite y una prueba.
+
+---
+
+## Fase 11 — Cierre
+
+- [ ] **R11.1** — Destino de `confirm-dialog` — **D15** _(absorbe T1.4/T7.1)_
   - 0 usos hoy. **Usarlo** (p. ej. en las acciones con `confirm: true`) o
     **retirarlo**. No se decide solo.
-- [ ] **R10.2** — Destino de `POST /admin/events` — **D16** _(absorbe T2.2/T7.3)_
+- [ ] **R11.2** — Destino de `POST /admin/events` — **D16** _(absorbe T2.2/T7.3)_
   - 0 usos front. Retirar o justificar.
-- [ ] **R10.3** — Criterio de éxito §0 recorrido _(absorbe T7.4)_
+- [ ] **R11.3** — Criterio de éxito §0 recorrido _(absorbe T7.4)_
   - **Pasos:** recorrer la tabla de §0 y ejecutar cada «añadir X» en un ramal
     de prueba.
   - **Hecho cuando:** ninguno obliga a editar `engine/`, `FieldHost`,
     `WidgetHost` ni una vista.
-- [ ] **R10.4** — Anti-patrones auditados (refactormotor §7)
+- [ ] **R11.4** — Anti-patrones auditados (refactormotor §7)
   - `grep` de `if (type ===` fuera de descriptores · lógica de negocio en
     vistas/engine · lambdas en schemas · `isFoo`/`hasBar` sueltos · handlers
     a medida para lo que es view/aggregate/action.
   - **Hecho cuando:** 0 hallazgos.
-- [ ] **R10.5** — Tests dorados por descriptor
+- [ ] **R11.5** — Tests dorados por descriptor
   - Cada tipo/acción/operador con al menos un caso mínimo (documentación +
     regresión).
-- [ ] **R10.6** — CI bloqueante
+- [ ] **R11.6** — CI bloqueante
   - `contract-check` + `sheet-check` + test de registros + meta-schema.
   - **Si falla, no se despliega.**
-- [ ] **R10.7** — Reejecutar gates y comparar contra el baseline (R0.2)
-- [ ] **R10.8** — Actualizar `doc/motor-renderizado-actual.md` con el estado
+- [ ] **R11.7** — Reejecutar gates y comparar contra el baseline (R0.2)
+- [ ] **R11.8** — Actualizar `doc/motor-renderizado-actual.md` con el estado
       final
-- [ ] **R10.9** — Archivar este documento al cerrarse _(el plan anterior ya
+- [ ] **R11.9** — Archivar este documento al cerrarse _(el plan anterior ya
       se borró con D8 en el Plan 1)_
 
 ---
@@ -2890,10 +3857,10 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
 | Fase 1        | T1.1 acciones              | **R3.9–R3.12**                                 |
 |               | T1.2 unificar patrón       | **R3.1–R3.8**                                  |
 |               | T1.3 exhaustividad         | **R3.7**                                       |
-|               | T1.4 confirm-dialog        | **R10.1**                                      |
+|               | T1.4 confirm-dialog        | **R11.1**                                      |
 |               | T1.5 componentes genéricos | **R4.5**                                       |
 | Fase 2        | T2.1 inventario endpoints  | **R0.8**                                       |
-|               | T2.2 `events`              | **R10.2**                                      |
+|               | T2.2 `events`              | **R11.2**                                      |
 |               | T2.3 `exposeToFront`       | **R7.1/R7.2**                                  |
 |               | T2.4 contract-check        | **R1.6**                                       |
 |               | T2.5 sheet-check           | **R1.2**                                       |
@@ -2906,7 +3873,7 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
 | Fase 6        | T6.1 test e2e mensaje      | **R1.8**                                       |
 |               | T6.2 test back pin         | **R1.9**                                       |
 |               | T6.3 README gates          | **R0.7**                                       |
-| Fase 7        | T7.1–T7.5 limpieza         | **R10.1, R10.2, R10.7, R10.9**                 |
+| Fase 7        | T7.1–T7.5 limpieza         | **R11.1, R11.2, R11.7, R11.9**                 |
 
 ---
 
@@ -2921,14 +3888,14 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
 | **D12**  | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                                                                                                                                                                      | R8.2                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **D13**  | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                                                                                                                                                                          | R8.3                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **D14**  | R10: recrear pedidos o regenerar PIN                                                                                                                                                                                                                                  | R8.8                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **D15**  | `confirm-dialog`: usar o retirar                                                                                                                                                                                                                                      | R10.1                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **D16**  | `POST /admin/events`: retirar o justificar                                                                                                                                                                                                                            | R10.2                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **D15**  | `confirm-dialog`: usar o retirar                                                                                                                                                                                                                                      | R11.1                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **D16**  | `POST /admin/events`: retirar o justificar                                                                                                                                                                                                                            | R11.2                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **D17**  | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                                                                                                                                                                               | R1.7                    | ✅ **resuelta** → R1.7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **D18**  | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                                                                                                                                                                                     | R1.8                    | ✅ **resuelta** → R1.8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **D19**  | KDF de contraseña: costo, formato y tarea que lo implementa                                                                                                                                                                                                           | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **D20**  | Ruta de verificación de PIN: `/p/pin/:ref` o `/p/orders/:ref/pin`                                                                                                                                                                                                     | R2.5 (contrato público) | ✅ **resuelta** → A                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **D21**  | El token admin antiguo no tiene fila en `_users`: ¿qué identidad es?                                                                                                                                                                                                  | R2.6                    | ✅ **resuelta** → C                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **D22**  | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                                                                                                                                                                                 | R2.12 · Fase 10         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **D22**  | El admin token estuvo **en claro** en `environment.ts` (commits `d715be6`, `946669b`)                                                                                                                                                                                 | R2.12 · Fase 11         | ⚠️ **abierta** — R2.12 lo borró del árbol; queda en el **historial git** → rotar exige autorización                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **D23**  | `GAS_TOKEN` caducaba cada 6 h y nada lo renovaba: los scripts de humo pierden la sesión                                                                                                                                                                               | R1.11 · R2.18           | ✅ **resuelta** → auto-login en `scripts/smoke-auth.mjs`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **D24**  | El setup pedía clave **y** valor a mano; `bootstrapAdmin_` sólo aceptaba argumentos                                                                                                                                                                                   | R1.11 · R2.18           | ✅ **resuelta** → `setupAll()` único + props creadas por el setup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **D25**  | `ADMIN_PASSWORD` no alcanza la fila de `_users`: el admin se creó con la contraseña **generada** del primer run                                                                                                                                                       | R1.11 · R2.18           | ✅ **resuelta** → `bootstrapAdmin_` **reconcilia** la fila si hay contraseña explícita (auth.md §4.7 enmendado)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -2971,6 +3938,10 @@ test` tuvo 2 incidentes de 1-2 fallos **no reproducibles** en 7
 | **D61**  | R6.4 sólo fija la **salida** `{ items, nextCursor, total? }`: no dice cómo se pide la página, quién puede paginar ni qué pasa cuando no puede                                                                                                                         | R6.4                    | ✅ **resuelta en R6.4** → entrada `page { size ≥1, offset? }` **o** `cursor` (mutuamente excluyentes; claves fuera de `size`/`offset` se rechazan), todo error 422 con `errors[]` y `path` relativo al payload **antes** de leer la hoja. `nextCursor` **siempre presente** (`null` al final: una clave que puede faltar obliga a adivinar) y `total` **antes** del corte (sin paginar = `items.length`, el valor que ya consumía el front no cambia). Sólo se pagina con `shape.envelope: 'list'` y nunca una vista `aggregate` ⇒ ambos **422 accionable**, no corte en silencio. Cursor versionado sin firma (no es credencial) con encoder JS puro para que corra igual en GAS y Node |
 | **D62**  | El plan dice que `select` puede tener `options` o `source`, sin decir qué pasa si declara **ambas** ni si puede declarar **ninguna**                                                                                                                                  | R6.5                    | ✅ **resuelta en R6.5** → **XOR estricto**: las dos claves juntas y ninguna de las dos son **rojo al arranque** («debe declarar `options` o `source`»). Decidirlo en runtime obligaría a mirar el valor para saber qué hace el campo, y una declaración debe leerse sin abrir el dato                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **D63**  | El plan concentra las fuentes en `source`, pero `RecordListWidget` seguía con su propio `resource` de listado: el mismo dato declarado **dos veces**, en dos palabras distintas                                                                                       | R6.5                    | ✅ **resuelta en R6.5** → se **elimina** `RecordListWidget.resource`; el listado declara `source: { resource }` como todo lo demás. Dos claves para el mismo dato son dos formas de desincronizarse sin que nada lo diga                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **D64**  | Búsqueda (R9.5.5): el spec B14 propone `search: { fields, mode }` server-side, pero el listado se carga entero y filtrar en cliente es exacto, instantáneo y gratis — ¿por qué no migrarla al back ya?                                                                | R9.5.5                  | ✅ **decidida en R9.5.5** → **front-owned** (O1 intacto). Sin paginación, un `search` back sólo duplicaría la regla `includes case-insensitive` y agregaría round-trips a la cuota GAS. El disparador de migración es cuando `list-view` pida `page` (R6.4 ya lo soporta); entonces migra **dentro** de `listWithRules_` como un OR `contains` antes del corte de página                                                                                                                                                                                                                                                                                                                 |
+| **D65**  | Jobs programados (R9.5.6): GAS no permite handlers con nombre dinámico y los triggers sólo se crean desde el editor — ¿un handler por job, o cómo traducir `e.triggerUid` a la declaración?                                                                           | R9.5.6                  | ✅ **resuelta en R9.5.6** → TODOS los triggers apuntan a la única global `RUN_SCHEDULE_JOB_`; el `e.triggerUid` se traduce a `{ resource, id }` vía la Script Property `SCHEDULE_TRIGGERS` (mapa que escribe `setupTriggers_`). El cron acepta sólo `everyMinutes                                                                                                                                                                                                                                                                                                                                                                                                                        | everyHours | atHour[+onWeekDay]`; cualquier otro es **rojo de arranque**. `setupTriggers_`reconcilia idempotente y está en`EDITOR_ONLY_FNS`— el dispatch jamás toca`ScriptApp` (O3) |
+| **D66**  | Webhooks (R9.5.7): el spec B14 no dice contra qué secret se firma el cuerpo, ni cómo vive el webhook en un recurso que no declara `hooks`                                                                                                                             | R9.5.7                  | ✅ **resuelta en R9.5.7** → firma HMAC-SHA256 con `AUTH_SECRET` **reusado** (§0.5: sin segundo secreto), header `X-Webhook-Signature`. El motor se **auto-suscribe** a las fases post vía `onEvent_`, así que un recurso sólo con `webhooks` (sin `hooks`) entrega: `emitEvent_` sólo hace early-return si no hay hooks NI suscriptores. Fallo → log y nunca propaga (O4)                                                                                                                                                                                                                                                                                                                |
+| **D67**  | Notificaciones (R9.5.8): el spec escribe UN objeto `notify: { on, channel, template }` sin destinatario ni asunto — ¿un objeto o varios eventos, y a quién se le envía?                                                                                               | R9.5.8                  | ✅ **resuelta en R9.5.8** → se implementa como **arreglo** `notify: [{…}]` (igual que `webhooks`) para avisar en varios eventos. La entrada sumó `to` (email literal o placeholder `{campo}` resuelto contra el payload — si queda sin resolver NO se gasta cuota) y `subject` opcional. `channel: 'email'` vía `MailApp` (100/día); `whatsapp` queda como futuro (cuota desconocida). Sin mecanismo que lea campos secretos en la plantilla (§0.5)                                                                                                                                                                                                                                      |
 
 ### D17 · R1.7 «Test de contrato del front» — tres premisas
 
@@ -3218,7 +4189,7 @@ Y el contrato actual (cabecera de `core/11-auth.js`) dice que esa forma
 hay una decisión tomada a medias, que acá no estaba escrita.
 
 **Efecto en:** R2.6 (el ramificado), y después R2.16 (revocación —
-un token sin `sid` no se puede revocar) y la Fase 10.
+un token sin `sid` no se puede revocar) y la Fase 11 de cierre.
 
 **Tres salidas:**
 
@@ -3762,7 +4733,7 @@ seed: 'recursive',     //  1         · `group`: siembra un nodo por hijo
 `form-model.ts`, `form-view.ts`, `list-view.ts`, `depends-on.ts` y `login.ts`
 siguen con `if (field.type === …)` / `switch (field.type)` propios. **Ninguno
 corta el build** al añadir un tipo — son dispatch no exhaustivo —, así que no
-son un agujero de §0: son el **gagüe de R10.4** («anti-patrones», Fase 10),
+son un agujero de §0: son el **gagüe de R11.4** («anti-patrones», Fase 11),
 que es quien decide cuáles se registran y cuáles se quedan.
 
 ---
@@ -3879,19 +4850,20 @@ registerCapability('computed', {
 **Orden:** **0 → 1 → 2 → 3** antes de añadir funcionalidad nueva; cada fase
 deja el sistema funcionando y es **reversible por separado**.
 
-| Fase                        | Contenido                                                                   | Impacto         | Esfuerzo   | Riesgo |
-| --------------------------- | --------------------------------------------------------------------------- | --------------- | ---------- | ------ |
-| **0** Punto de partida      | baseline + 13 decisiones + nomenclatura                                     | —               | Bajo       | Bajo   |
-| **1** Red de seguridad      | B4 fail-loud · B12 meta-schema · contract-check · sheet-check · tests R1/R4 | **Muy alto**    | Bajo-medio | Bajo   |
-| **2** Autenticación         | tokens firmados, `AUTH_*`, guards, rate-limit, `token_version`              | Alto            | Medio      | Bajo   |
-| **3** Registros             | F1 render · F2 acciones · B1 capacidades                                    | **Muy alto**    | Medio      | Medio  |
-| **4** Unificación           | F3 detail `display` · column-format · F7/B11 validadores                    | Alto            | Medio      | Medio  |
-| **5** Backend declarativo   | B2 endpoints · B3 CRUD+actions · B9 hooks · B10 computed                    | Alto            | Medio-alto | Medio  |
-| **6** Datos declarativos    | B6 views+aggregates · F8 fuentes                                            | Alto            | Alto       | Medio  |
-| **7** Contrato y audiencias | O1 por consumidor · `audiences` · B8 políticas                              | Alto            | Medio      | Medio  |
-| **8** Los 3 recursos        | orders / pickpass / dashboard + contrato público                            | Medio           | Bajo-medio | Bajo   |
-| **9** Expansión             | F4/F5 vistas y layouts · B5 · B7 · B14                                      | Según necesidad | Variable   | Bajo   |
-| **10** Cierre               | criterio §0 · anti-patrones · CI bloqueante                                 | —               | Bajo       | Bajo   |
+| Fase                        | Contenido                                                                                | Impacto         | Esfuerzo   | Riesgo |
+| --------------------------- | ---------------------------------------------------------------------------------------- | --------------- | ---------- | ------ |
+| **0** Punto de partida      | baseline + 13 decisiones + nomenclatura                                                  | —               | Bajo       | Bajo   |
+| **1** Red de seguridad      | B4 fail-loud · B12 meta-schema · contract-check · sheet-check · tests R1/R4              | **Muy alto**    | Bajo-medio | Bajo   |
+| **2** Autenticación         | tokens firmados, `AUTH_*`, guards, rate-limit, `token_version`                           | Alto            | Medio      | Bajo   |
+| **3** Registros             | F1 render · F2 acciones · B1 capacidades                                                 | **Muy alto**    | Medio      | Medio  |
+| **4** Unificación           | F3 detail `display` · column-format · F7/B11 validadores                                 | Alto            | Medio      | Medio  |
+| **5** Backend declarativo   | B2 endpoints · B3 CRUD+actions · B9 hooks · B10 computed                                 | Alto            | Medio-alto | Medio  |
+| **6** Datos declarativos    | B6 views+aggregates · F8 fuentes                                                         | Alto            | Alto       | Medio  |
+| **7** Contrato y audiencias | O1 por consumidor · `audiences` · B8 políticas                                           | Alto            | Medio      | Medio  |
+| **8** Los 3 recursos        | orders / pickpass / dashboard + contrato público                                         | Medio           | Bajo-medio | Bajo   |
+| **9** Expansión             | F4/F5 vistas y layouts · B5 · B7 · B14 · F11 calendar/Kanban · F12 composición de vistas | Según necesidad | Variable   | Bajo   |
+| **10** CRM + contenido      | relaciones · actividad · tareas · ciclo editorial · medios · workspace · reporting       | Alto            | Alto       | Medio  |
+| **11** Cierre               | criterio §0 · anti-patrones · CI bloqueante                                              | —               | Bajo       | Bajo   |
 
 ### Decisiones de arranque — ✅ **13/13 cerradas**
 

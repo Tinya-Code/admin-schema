@@ -23,7 +23,7 @@ describe('R4.4 — formato por defecto según field.type', () => {
     // El `Record<FieldType, …>` ya lo exige en compilación; el test además
     // fija que ningún tipo se quede sin fila ni aparezca una fantasma.
     expect(Object.keys(FORMATO_POR_DEFECTO).sort()).toEqual([...SUPPORTED_FIELD_TYPE_LIST].sort());
-    expect(SUPPORTED_FIELD_TYPE_LIST.length).toBe(20);
+    expect(SUPPORTED_FIELD_TYPE_LIST.length).toBe(21);
   });
 
   it('repasa la paridad tipo a tipo con el display del detalle', () => {
@@ -48,6 +48,7 @@ describe('R4.4 — formato por defecto según field.type', () => {
       boolean: 'boolean',
       select: 'badge',
       image: 'thumbnail',
+      file: 'text',
     };
     expect(Object.keys(FORMATO_POR_DEFECTO).sort()).toEqual(Object.keys(esperado).sort());
     for (const [tipo, formato] of Object.entries(esperado)) {

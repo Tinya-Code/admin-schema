@@ -256,9 +256,16 @@ Nunca por endpoint. Funciones **solo ejecutables desde el editor de Apps Script*
 
 ```
 setupAuth_()      genera AUTH_SECRET (y guarda GOOGLE_CLIENT_ID si aplica) en Script Properties
+rotateAuthSecret_ rota AUTH_SECRET e invalida todas las sesiones existentes
 bootstrapAdmin_() crea la fila inicial en _users (email del dueño, role admin)
 setupAll()        encadena el setup completo y aplica las credenciales de arriba
 ```
+
+La acción autenticada `POST /auth/logout-all` incrementa el `token_version`
+del usuario y cierra sus sesiones en todos los dispositivos. Los snapshots de
+sesión tienen un TTL máximo de 60 segundos; la respuesta declara ese límite.
+La rotación de `AUTH_SECRET` es una operación de emergencia desde el editor
+(`rotateAuthSecret_`), no un endpoint, y también invalida todas las sesiones.
 
 **Contraseña explícita = fuente de verdad.** Si `ADMIN_PASSWORD` (o el segundo
 argumento) trae valor y el email **ya existe** en `_users`, la fila se
@@ -271,6 +278,15 @@ desactivada tampoco se reactiva desde acá — reactivar es una acción de admin
 nunca de setup.
 
 Rotar `AUTH_SECRET` invalida todas las sesiones (es un «cerrar sesión global» de emergencia).
+
+`rotateAuthSecret_()` es la única ruta soportada para hacerlo desde el editor:
+genera un valor nuevo, no lo muestra ni lo registra y devuelve sólo un resultado
+sin datos sensibles.
+
+El segundo proveedor y las cuentas `customer` no se habilitan: la decisión de
+`auth.md` §9 mantiene el login con contraseña y prohíbe cuentas públicas de
+cliente. Añadir cualquiera de ellos requiere reabrir esa decisión y definir su
+propio contrato antes de implementarlo.
 
 ### 4.8 Qué viaja a cada frontend (audiencias)
 
@@ -378,14 +394,14 @@ Oculta rutas, botones y acciones. Aunque el front se manipule, el back vuelve a 
 
 ## 7. Fases de implementación
 
-| Fase               | Entrega                                                                                                                                                       | Criterio de «hecho»                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **1 · Núcleo**     | `_users`, `setupAuth_`, `bootstrapAdmin_`, `issueToken_`/`verifyToken_`, `/auth/login` (una opción), `/auth/me`, niveles `public/session/role:*` en `11-auth` | Una ruta `admin` responde `AUTH_REQUIRED` sin token y funciona con token |
-| **2 · Front**      | `AuthService`, interceptor (cuerpo, `text/plain`), guards, login declarado, manejo de `AUTH_*`                                                                | Login/logout completo desde el admin, redirección al expirar             |
-| **3 · Robustez**   | Rate-limit, auditoría, snapshot cacheado, `token_version`, renovación deslizante, `/auth/logout` con revocación                                               | Baja de usuario efectiva en ≤ 60 s; intentos fallidos bloqueados         |
-| **4 · Audiencias** | `audiences` en recursos, proyección pública estricta, `contract-check` por frontend                                                                           | La web pública no puede obtener un campo interno                         |
-| **5 · Gestión**    | Recurso `users` en el admin, tipo `secret`, cambio de rol / baja                                                                                              | Alta y baja de usuarios sin tocar la hoja a mano                         |
-| **6 · Extras**     | Segundo proveedor, «cerrar todas las sesiones», rotación de secreto, cuentas de cliente                                                                       | Según necesidad                                                          |
+| Fase               | Entrega                                                                                                                                                       | Criterio de «hecho»                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **1 · Núcleo**     | `_users`, `setupAuth_`, `bootstrapAdmin_`, `issueToken_`/`verifyToken_`, `/auth/login` (una opción), `/auth/me`, niveles `public/session/role:*` en `11-auth` | Una ruta `admin` responde `AUTH_REQUIRED` sin token y funciona con token                               |
+| **2 · Front**      | `AuthService`, interceptor (cuerpo, `text/plain`), guards, login declarado, manejo de `AUTH_*`                                                                | Login/logout completo desde el admin, redirección al expirar                                           |
+| **3 · Robustez**   | Rate-limit, auditoría, snapshot cacheado, `token_version`, renovación deslizante, `/auth/logout` con revocación                                               | Baja de usuario efectiva en ≤ 60 s; intentos fallidos bloqueados                                       |
+| **4 · Audiencias** | `audiences` en recursos, proyección pública estricta, `contract-check` por frontend                                                                           | La web pública no puede obtener un campo interno                                                       |
+| **5 · Gestión**    | Recurso `users` en el admin, tipo `secret`, cambio de rol / baja                                                                                              | Alta y baja de usuarios sin tocar la hoja a mano                                                       |
+| **6 · Extras**     | «Cerrar todas las sesiones» y rotación de `AUTH_SECRET`                                                                                                       | El `token_version` invalida sesiones en ≤ 60 s; `rotateAuthSecret_()` invalida todas al rotar la firma |
 
 ---
 

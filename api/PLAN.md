@@ -87,7 +87,7 @@ Cloudinary.
 **Objetivo:** datos declarativos que gobiernan hojas, CRUD, validación, rutas,
 orden y exposición (§3–§5, §15).
 
-- [x] `schema/01-types`: los 20 tipos del catálogo (idénticos a la unión
+- [x] `schema/01-types`: los 21 tipos del catálogo (idénticos a la unión
       `FieldSchema` del front, `base.md` §5) + metadatos de almacenamiento.
 - [x] `schema/02-enums`: `availability`, `risk_class`, `days` +
       `PLACEHOLDER_PATTERNS` (R8, seed de `_placeholders`).

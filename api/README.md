@@ -100,7 +100,7 @@ api/
 │
 ├── capabilities/               ← capacidades por categoría (cero dominio)
 │   ├── 00-register             ← registerCapability: la ÚNICA puerta (B1)
-│   ├── fieldTypes              ← 20 tipos del catálogo + metadatos de storage
+│   ├── fieldTypes              ← 21 tipos del catálogo + metadatos de storage
 │   ├── operators               ← operadores de consulta (eq/in/gt/contains/…)
 │   ├── computed                ← generadores (slugify/token/pin/now)
 │   ├── checks                  ← checks declarados (pattern/mod11/not-in-sheet)

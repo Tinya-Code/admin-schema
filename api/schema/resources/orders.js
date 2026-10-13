@@ -3,6 +3,7 @@
 
 REGISTRY.resources.orders = {
   id: 'orders',
+  commandsRoute: '/p/orders',
   kind: 'collection',
   sheet: 'orders',
   keyField: 'ref',
@@ -52,7 +53,6 @@ REGISTRY.resources.orders = {
         'auth_state',
         'created_at',
         'updated_at',
-        'history',
       ],
       // Sólo lectura (el validador lo exige): estas operaciones controlan el
       // CRUD público. La verificación del PIN es un endpoint propio (`pinVerify`)
@@ -91,6 +91,118 @@ REGISTRY.resources.orders = {
   // NO audita ni invalida caché en esta ruta — lo hace el propio handler.
   actions: {
     'regenerate-pin': { handler: 'handlePinRegenerate' },
+  },
+  commands: {
+    'register-pickup-person': {
+      input: {
+        authorized_name: { type: 'text', required: true, maxLength: 80 },
+        photo: { type: 'upload', profile: 'pickupPhoto', required: false },
+      },
+      output: {
+        ok: { type: 'boolean', required: true },
+        ref: { type: 'text', required: true },
+        authorized_name: { type: 'text', required: true },
+        authorized_photo: { type: 'image' },
+        auth_state: { type: 'select', enum: ['NINGUNO', 'ACTIVA', 'REVOCADA'], required: true },
+      },
+      access: 'public',
+      grant: 'pickupGrant',
+      limits: '5/min',
+      preconditions: [{ field: 'status', op: 'eq', value: 'PENDIENTE' }],
+      changes: {
+        authorized_name: { from: 'input.authorized_name' },
+        authorized_photo: { from: 'input.photo' },
+        auth_state: { value: 'ACTIVA' },
+      },
+      events: [
+        {
+          appendTo: 'history',
+          operationIdField: 'operation_id',
+          when: { field: 'auth_state', op: 'eq', value: 'ACTIVA' },
+          values: {
+            action: { value: 'AUTORIZADO_CAMBIADO' },
+            detail: { value: 'Responsable de retiro actualizado' },
+          },
+        },
+        {
+          appendTo: 'history',
+          operationIdField: 'operation_id',
+          when: { field: 'auth_state', op: 'neq', value: 'ACTIVA' },
+          values: {
+            action: { value: 'AUTORIZADO' },
+            detail: { value: 'Responsable de retiro registrado' },
+          },
+        },
+      ],
+      errors: [
+        {
+          status: 401,
+          code: 'GRANT_REQUIRED',
+          message: 'Se requiere el grant emitido al verificar el PIN.',
+        },
+        {
+          status: 401,
+          code: 'GRANT_INVALID',
+          message: 'El grant no es válido.',
+        },
+        {
+          status: 403,
+          code: 'GRANT_SCOPE_MISMATCH',
+          message: 'El grant o la carga no corresponde a este pedido y comando.',
+        },
+        {
+          status: 409,
+          code: 'GRANT_CONSUMED',
+          message: 'El grant ya fue consumido por otra operación.',
+        },
+        {
+          status: 409,
+          code: 'GRANT_IN_PROGRESS',
+          message: 'La operación está en curso y puede reintentarse con la misma clave.',
+        },
+        {
+          status: 409,
+          code: 'COMMAND_PRECONDITION_FAILED',
+          message: 'El pedido ya no admite cambios en la autorización.',
+        },
+        {
+          status: 409,
+          code: 'IDEMPOTENCY_CONFLICT',
+          message: 'La clave idempotente ya se usó con otra solicitud.',
+        },
+        {
+          status: 409,
+          code: 'OPERATION_FAILED',
+          message: 'La operación falló y no puede reintentarse.',
+        },
+        {
+          status: 410,
+          code: 'GRANT_EXPIRED',
+          message: 'La autorización temporal expiró.',
+        },
+        {
+          status: 410,
+          code: 'UPLOAD_EXPIRED',
+          message: 'La carga temporal expiró.',
+        },
+        {
+          status: 422,
+          code: 'UPLOAD_TOO_LARGE',
+          message: 'La imagen excede el máximo de 10 MiB.',
+        },
+        {
+          status: 422,
+          code: 'UPLOAD_FORMAT_NOT_ALLOWED',
+          message: 'Formato permitido: JPEG, PNG o WebP.',
+        },
+        {
+          status: 503,
+          code: 'UPLOAD_PROVIDER_UNAVAILABLE',
+          message: 'El proveedor de carga no está disponible temporalmente.',
+        },
+      ],
+      idempotency: 'required',
+    },
   },
   checks: [
     { check: 'not-in-sheet', sheet: '_placeholders' },
@@ -184,6 +296,7 @@ REGISTRY.resources.orders = {
           enum: ['PEDIDO_CREADO', 'AUTORIZADO', 'AUTORIZADO_CAMBIADO', 'REVOCADO', 'ENTREGADO'],
         },
         { key: 'detail', type: 'text', maxLength: 120 },
+        { key: 'operation_id', type: 'readonly-text', system: true },
       ],
     },
   ],

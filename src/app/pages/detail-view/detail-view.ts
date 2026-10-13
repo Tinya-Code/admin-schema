@@ -1,6 +1,8 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+
+import { ViewNavigationService } from '../../core/view-navigation/view-navigation.service';
 import { catchError, combineLatest, map, of, switchMap } from 'rxjs';
 
 import {
@@ -47,7 +49,11 @@ type Row = Record<string, unknown>;
  * campos pesados en `—` que después mutaban solos (cargar ≠ vacío,
  * doc/ux-ui-mobile.md §estados de UI).
  */
-type FetchState = { phase: 'pending' } | { phase: 'done'; data: Row | null } | { phase: 'error' };
+type FetchState =
+  | { phase: 'pending' }
+  | { phase: 'done'; data: Row | null }
+  /** D4: el error ORIGINAL se retiene para diagnóstico (identity intacta). */
+  | { phase: 'error'; error: unknown };
 
 /**
  * Campo ya resuelto contra el registro, **sin formatear**.
@@ -134,13 +140,13 @@ interface DetailSection {
             <svg lucideArrowLeft size="16" />
             Volver
           </button>
-          @if (detail().allowEdit !== false) {
+          @if (detail().allowEdit !== false && status() !== 'error') {
             <button app-button variant="primary" type="button" (click)="edit.emit(record())">
               <svg lucidePencil size="16" />
               Editar
             </button>
           }
-          @if (detail().allowDelete !== false) {
+          @if (detail().allowDelete !== false && status() !== 'error') {
             <button app-button variant="danger" type="button" (click)="delete.emit(record())">
               <svg lucideTrash2 size="16" />
               Eliminar
@@ -209,6 +215,10 @@ interface DetailSection {
               <svg lucideRotateCw size="16" />
               Reintentar
             </button>
+            <button app-button variant="outline" type="button" (click)="volverDeError()">
+              <svg lucideArrowLeft size="16" />
+              Volver
+            </button>
           </app-empty-state>
         }
         @case ('ready') {
@@ -274,6 +284,7 @@ export class DetailView {
   // R8.8: el trigger (Regenerar PIN) confirma vía toast y dispara la
   // recarga del detalle — el mismo puerto que ya usa list-view.
   private readonly router = inject(Router);
+  private readonly nav = inject(ViewNavigationService);
   private readonly notifications = inject(NotificationService);
   private readonly configService = inject(ConfigService);
 
@@ -318,7 +329,7 @@ export class DetailView {
         }
         return this.api.get<Row>(schema.endpoint, key).pipe(
           map((data): FetchState => ({ phase: 'done', data })),
-          catchError(() => of<FetchState>({ phase: 'error' })),
+          catchError((error) => of<FetchState>({ phase: 'error', error })),
         );
       }),
     ),
@@ -341,6 +352,27 @@ export class DetailView {
   /** Reintenta el `get` del registro desde el estado de error. */
   protected retry(): void {
     this.refreshTick.update((tick) => tick + 1);
+  }
+
+  /**
+   * D4 — el error original con IDENTIDAD intacta (no un string mapeado):
+   * el mensaje mostrado es display-only, el objeto crudo queda aquí para
+   * diagnóstico. `undefined` cuando no hay fallo de carga.
+   */
+  errorDeCarga(): unknown {
+    const fetched = this.fetched();
+    return fetched.phase === 'error' ? fetched.error : undefined;
+  }
+
+  /**
+   * D4 — «way back» desde el estado de error: emite el `back` (el host
+   * embebido sigue gestionando su propia vuelta) Y navega por el servicio
+   * declarado — en la ruta directa (`/:id/:key`) nadie escucha el output,
+   * y un estado de error sin salida es una pantalla muerta.
+   */
+  protected volverDeError(): void {
+    this.back.emit();
+    void this.nav.back();
   }
 
   protected readonly effectiveRecord = computed<Row>(() => {

@@ -1,10 +1,11 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { distinctUntilChanged, map } from 'rxjs';
+import { distinctUntilChanged, map, of } from 'rxjs';
 
-import type { ResourceSchema } from '../../core/models/schema.model';
+import type { ResourceSchema, SelectionBinding } from '../../core/models/schema.model';
 import { AuthService } from '../../core/services/auth.service';
+import type { SelectionEmitter } from '../../views/composer/view-context';
 import { getSchema } from '../../schemas/registry';
 import { EmptyState } from '../../shared/components/empty-state/empty-state';
 import { Dashboard } from '../dashboard/dashboard';
@@ -83,8 +84,12 @@ export class ResourcePage {
   private readonly auth = inject(AuthService);
   // paramMap emite síncrono (ConvertToParamMap) → requireSync evita `| undefined`.
   private readonly params = toSignal(this.route.paramMap, { requireSync: true });
+  private readonly routeData = toSignal(this.route.data ?? of({}), { requireSync: true });
 
-  readonly schema = computed(() => getSchema(this.params().get('id') ?? ''));
+  readonly schema = computed(() => {
+    const resourceId = this.routeData()['resourceId'] ?? this.params().get('id');
+    return getSchema(typeof resourceId === 'string' ? resourceId : '');
+  });
 
   /** Vista activa: 'list' (por defecto) o 'detail' (al hacer clic en una fila con detail.enabled). */
   readonly currentView = signal<View>('list');
@@ -102,13 +107,17 @@ export class ResourcePage {
         takeUntilDestroyed(),
       )
       .subscribe((key) => this.openFromRoute(key));
+    this.route.data
+      ?.pipe(takeUntilDestroyed())
+      .subscribe(() => this.openFromRoute(this.params().get('key')));
   }
 
   private openFromRoute(key: string | null): void {
     const schema = this.schema();
     if (!schema || schema.kind !== 'collection') return;
 
-    if (key && schema.detail?.enabled) {
+    const requestedView = this.routeData()['viewType'];
+    if ((requestedView === 'detail' || key) && key && schema.detail?.enabled) {
       // Si el registro ya está cargado (clic en una fila) se conserva tal
       // cual; si llegamos por URL sólo hay clave, y DetailView trae el resto.
       const current = this.selectedRecord();
@@ -122,13 +131,44 @@ export class ResourcePage {
     }
   }
 
+  /**
+   * Clic de fila. R9.9.4 · decision table: si el schema declara `select`,
+   * el contrato declarado REEMPLAZA el comportamiento local (`route` ⇒
+   * emisión al dispatcher, `inline` ⇒ selección local sin URL, `none` ⇒
+   * no-op); sin declaración, la navegación local actual sigue intacta
+   * (backward compat — R9.9 «existing routes untouched»).
+   */
   switchToDetail(record: Record<string, unknown>): void {
     const schema = this.schema();
+    const data = this.routeData();
+    const binding = data['select'] as SelectionBinding | undefined;
+
+    if (binding !== undefined) {
+      const key =
+        schema && record[schema.keyField] !== undefined && record[schema.keyField] !== null
+          ? String(record[schema.keyField])
+          : '';
+      if (binding.mode === 'route') {
+        const emit = data['emit'] as SelectionEmitter | undefined;
+        emit?.({
+          resource: schema?.id ?? String(data['resourceId'] ?? ''),
+          key,
+          action: binding.on,
+        });
+        return;
+      }
+      if (binding.mode === 'none') return;
+      // inline ⇒ selección local (ficha embebida), sin tocar la URL
+      this.selectedRecord.set(record);
+      this.currentView.set('detail');
+      return;
+    }
+
     this.selectedRecord.set(record);
     this.currentView.set('detail');
-    const key = schema ? record[schema.keyField] : undefined;
-    if (schema && key !== undefined && key !== null && String(key) !== '') {
-      void this.router.navigate(['/', schema.id, String(key)]);
+    const k = schema ? record[schema.keyField] : undefined;
+    if (schema && k !== undefined && k !== null && String(k) !== '') {
+      void this.router.navigate(['/', schema.id, String(k)]);
     }
   }
 

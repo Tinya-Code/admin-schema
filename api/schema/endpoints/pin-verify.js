@@ -21,25 +21,61 @@ REGISTRY.endpoints.pinVerify = {
     params: { ref: { type: 'text', required: true } },
     pin: { type: 'secret', required: true },
   },
-  output: { ok: { type: 'boolean', required: true }, ref: { type: 'text', required: true } },
+  issuesGrant: 'pickupGrant',
+  output: {
+    ok: { type: 'boolean', required: true },
+    ref: { type: 'text', required: true },
+    grant: { type: 'text', required: true },
+    expires_at: { type: 'text', required: true },
+  },
   // Códigos de aplicación devueltos dentro del envelope JSON de Apps Script.
   errors: [
-    { status: 401, description: 'El PIN recibido no coincide con el hash guardado.' },
-    { status: 403, description: 'El pedido no está PENDIENTE y ya no admite retiro.' },
+    { status: 400, code: 'PIN_INPUT_REQUIRED', description: 'Falta la referencia o el PIN.' },
+    { status: 401, code: 'PIN_INVALID', description: 'El PIN recibido no coincide.' },
+    { status: 403, code: 'ORDER_NOT_ELIGIBLE', description: 'El pedido ya no admite retiro.' },
     {
       status: 404,
-      description: 'No hay PIN para el pedido, el PIN está deshabilitado o el pedido no existe.',
+      code: 'PIN_NOT_AVAILABLE',
+      description: 'No hay PIN disponible para el pedido.',
     },
-    { status: 409, description: 'El PIN ya fue utilizado.' },
+    { status: 409, code: 'PIN_ALREADY_USED', description: 'El PIN ya fue utilizado.' },
     {
       status: 410,
+      code: 'PIN_EXPIRED',
       description:
         'El PIN superó pin_ttl_hours (24 h por defecto) o su fecha de creación no se puede interpretar.',
     },
-    { status: 422, description: 'Falta el PIN requerido en el payload.' },
-    { status: 429, description: 'Se agotaron los intentos por pedido o el límite de 5/min.' },
-    { status: 500, description: 'Error de configuración o estructura interna de las hojas.' },
-    { status: 503, description: 'La hoja auxiliar _pin no está configurada.' },
+    {
+      status: 422,
+      code: 'VALIDATION_REQUIRED',
+      description: 'Falta el PIN requerido en el payload.',
+    },
+    {
+      status: 429,
+      code: 'RATE_LIMITED',
+      description: 'Se agotaron los intentos por pedido o el límite de 5/min.',
+    },
+    {
+      status: 500,
+      code: 'PIN_CONFIGURATION_ERROR',
+      description: 'Error interno de configuración.',
+    },
+    {
+      status: 503,
+      code: 'PIN_STORE_UNAVAILABLE',
+      description: 'La hoja auxiliar _pin no está configurada.',
+    },
   ],
   since: '1.0',
+};
+
+REGISTRY.grantProfiles.pickupGrant = {
+  purpose: 'register-pickup-person',
+  issuedBy: 'pinVerify',
+  resource: 'orders',
+  command: 'register-pickup-person',
+  keyParam: 'ref',
+  ttlSeconds: 900,
+  maxUses: 1,
+  consume: 'on-success',
 };

@@ -45,8 +45,13 @@ export class UploadService {
    * `Response` llevando la URL en el body. El campo sólo cambia cuando
    * llega la respuesta.
    */
-  uploadWithProgress(file: File, resource: string): Observable<HttpEvent<string>> {
-    return this.api.request<UploadSignature>('POST', '/admin/upload-signature', { resource }).pipe(
+  uploadWithProgress(file: File, resource: string, field?: string): Observable<HttpEvent<string>> {
+    // `field` es opcional (R9.5.3): si el campo declara `formats`, esos son
+    // los formatos que el backend firma. Sin campo firma la lista global.
+    const payload: { resource: string; field?: string } = field
+      ? { resource, field }
+      : { resource };
+    return this.api.request<UploadSignature>('POST', '/admin/upload-signature', payload).pipe(
       switchMap((signature) => {
         const form = new FormData();
         form.append('file', file, file.name);
