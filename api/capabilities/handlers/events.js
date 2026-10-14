@@ -1,6 +1,9 @@
 // capabilities/handlers/events.js — Escritura de eventos de uso en `_events` (Fase 6).
 //
-// Resuelto desde `REGISTRY.endpoints.events` (POST /admin/events).
+// Capability registrada en `REGISTRY.handlers.handleEvents`. En ESTE proyecto
+// no hay endpoint declarado que la invoque (R11.2/D16 retiró `POST
+// /admin/events`: 0 emisores en el front, 0 lectores de la hoja). Un proyecto
+// que la quiera activar declara su endpoint con `handler: 'handleEvents'`.
 //
 // Columnas de _events: [timestamp, event, ref, session_id, meta]
 //   - `event`      : nombre del evento (requerido, string corto)

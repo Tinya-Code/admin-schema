@@ -3818,30 +3818,133 @@ motor, el diseño no está completo.
 
 ## Fase 11 — Cierre
 
-- [ ] **R11.1** — Destino de `confirm-dialog` — **D15** _(absorbe T1.4/T7.1)_
-  - 0 usos hoy. **Usarlo** (p. ej. en las acciones con `confirm: true`) o
-    **retirarlo**. No se decide solo.
-- [ ] **R11.2** — Destino de `POST /admin/events` — **D16** _(absorbe T2.2/T7.3)_
-  - 0 usos front. Retirar o justificar.
-- [ ] **R11.3** — Criterio de éxito §0 recorrido _(absorbe T7.4)_
+- [x] **R11.1** — Destino de `confirm-dialog` — **D15** _(absorbe T1.4/T7.1)_
+  - ~~0 usos hoy~~ **Resuelta: se usa.** El diálogo vive en `app.html` y se
+    dispara vía `NotificationService.confirm()` con **7 call-sites**:
+    `sidebar.ts:98`, `key-value.ts:228`, `string-list.ts:188`, `list.ts:289`,
+    `list-view.ts:768`, `form-view.ts:1182` y `form-view.ts:1206`.
+  - **D15 = usar / conservar.** El recuento "0 usos" del plan estaba
+    desactualizado (medía importaciones directas del componente, no el flujo
+    vía servicio). Auditoría hecha 2026-10-13.
+- [x] **R11.2** — Destino de `POST /admin/events` — **D16** _(absorbe T2.2/T7.3)_
+  - **Resuelta: retirar el endpoint de ESTE proyecto, conservar la capability.**
+    Diagnóstico: telemetría de uso con **0 emisores** en el front y **0
+    lectores** de la hoja `_events` — cadena de escritura completa, uso ninguno.
+  - Retirado: `schema/endpoints/events.js`, el test de endpoint, y las secciones
+    de `doc/api-endpoints.md` (regenerada) y `doc/orders-endpoints.md`
+    (13 → 12 endpoints; `api:check` VERDE).
+  - **Conservado como parte del motor:** capability `handleEvents`
+    (`capabilities/handlers/events.js` + sus 9 tests) y hoja `_events` en
+    `05-aux-sheets.js`. Sin endpoint no hay ruta que lo invoque; un proyecto la
+    activa declarando `handler: 'handleEvents'`. Así vivirá en el paquete npm
+    (propuesta F3).
+- [x] **R11.3** — Criterio de éxito §0 recorrido _(absorbe T7.4)_ — ✅ ramal `prueba-r11-3`
   - **Pasos:** recorrer la tabla de §0 y ejecutar cada «añadir X» en un ramal
     de prueba.
   - **Hecho cuando:** ninguno obliga a editar `engine/`, `FieldHost`,
     `WidgetHost` ni una vista.
-- [ ] **R11.4** — Anti-patrones auditados (refactormotor §7)
+  - **Resultado (10/10 filas · 0 toques prohibidos · `git status` verificado):**
+
+    | Fila §0                 | Qué se añadió                                                                                                                       | Toques (ficheros)                                                                                                                      |
+    | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+    | tipo de campo           | `color`                                                                                                                             | 7 — **R3.8 subestimó**: faltaban 2 defaults `Record<FieldType,…>` (`columns/column-defaults.ts`, `fields/display/display-defaults.ts`) |
+    | widget                  | `demo-widget`                                                                                                                       | 4                                                                                                                                      |
+    | acción                  | `duplicate`                                                                                                                         | 4                                                                                                                                      |
+    | formato de columna      | `code`                                                                                                                              | 4                                                                                                                                      |
+    | recurso                 | `demo` (back `schema/resources/demo.js` + front `demo.schema.ts` + `registry.ts` + oro contract-check)                              | 4                                                                                                                                      |
+    | endpoint                | `demo-stats` (input+output)                                                                                                         | 5 — endpoint, handler, 2 oros de conteo, `npm run api:doc`                                                                             |
+    | operación de dominio    | `actions.duplicate: { set: { status } }` declarativa **sin handler** (validate-registry: `set` XOR `handler`)                       | 1                                                                                                                                      |
+    | validador/computed/hook | check `demo-no-blank` en `capabilities/checks.js` + `CHECK_ARGS_['demo-no-blank']`                                                  | 2 — **sin `argsSchema`, `assertRegistryValid_` rompe todo el harness** (55 specs + `api:doc`)                                          |
+    | vista                   | `demo.uiViews.board` (kanban declarado; el shell ya lo renderiza)                                                                   | 1                                                                                                                                      |
+    | dashboard               | widget `demo-widget` (`key: total`) + vista `total: { aggregate: 'count' }` — `handleDashboard` itera `REGISTRY.resources` dinámico | 2                                                                                                                                      |
+
+  - **Gates:** front 605/605 · api 942/942 · `api:check` 5/5 VERDE ·
+    `build` ✓ · prettier baseline 20 ✓.
+  - **Hallazgos:** `.clasp.json` `filePushOrder` (38) **no** lista
+    resources/endpoints/handlers existentes (patrón seguido: no se toca); el
+    menú lateral lee `labelPlural`; 2 flakies puntuales en
+    `view-composition.integration.spec` (aislado 6/6 y suite completa OK en
+    reintento).
+  - ~~**Pendiente de decisión:** destino del código de prueba del ramal
+    (borrar como `field-tmp` en R3.8, o conservar como fixture de §0).~~
+    **Resuelto (2026-10-14):** el usuario eligió **borrarlo** — ver el
+    «Retiro del código de prueba §0» bajo R11.8. Queda sólo la evidencia
+    de esta tabla.
+- [x] **R11.4** — Anti-patrones auditados (refactormotor §7) — ✅ 0 hallazgos
   - `grep` de `if (type ===` fuera de descriptores · lógica de negocio en
     vistas/engine · lambdas en schemas · `isFoo`/`hasBar` sueltos · handlers
     a medida para lo que es view/aggregate/action.
   - **Hecho cuando:** 0 hallazgos.
-- [ ] **R11.5** — Tests dorados por descriptor
+  - **Resultado:** (1) `type ===` fuera de registros: sólo interpretación
+    **estructural** (`group`/`list` en `form-model`, `seed`, `setup`,
+    `24-crud`) y dentro de un registro (`format-badge`) — los tipos nuevos
+    del ramal (`color`, `demo-widget`, `code`, `duplicate`) **no** generaron
+    ningún condicional en motor/vistas; (2) 0 lógica de negocio con estados
+    de dominio en componentes de vista (sólo fixture en spec) y 0 en
+    `engine/` (el único `'ENTREGADO'` vive en `capabilities/checks.js`, que
+    es el registro permitido); (3) 0 lambdas en schemas front/back; (4) 0
+    claves `is*`/`has*` sueltas (`hasMany` de `categories` es relación
+    declarativa con objeto de config, no booleano); (5) 0 handlers a medida
+    para view/aggregate/action (los `count`/`aggregate` sólo aparecen en
+    `dashboard.js`, que los lee de las vistas declaradas).
+- [x] **R11.5** — Tests dorados por descriptor — ✅ auditado
   - Cada tipo/acción/operador con al menos un caso mínimo (documentación +
     regresión).
-- [ ] **R11.6** — CI bloqueante
+  - **Resultado (auditoría de cobertura):** (a) **operadores: 14/14** con
+    caso mínimo nuevo en `views.spec.js` (`eq neq in nin gt gte lt lte
+contains starts regex empty exists in-active`) — antes sólo `eq/gt/lt`
+    tenían caso; (b) **formatos de columna 8/8** con casos de render
+    (`column-format.spec.ts`, incluye el `code` del ramal); (c) **campos**:
+    tripwire exhaustivo en `contract.spec.ts` (registro + siembra +
+    superficie de los 22) + specs de componente para los complejos + casos
+    de integración en `form-view`/`display`/`list-view`; el `color` del
+    ramal suma su oro de render con árbol real; (d) **widgets 7/7** con
+    spec (el `demo-widget` del ramal incluido); (e) **acciones 5 specs**
+    (contract/registry/service/descriptors + `duplicate` con sus 3 casos de
+    ruta); (f) **checks back**: `demo-no-blank` con 4 casos en
+    `checks.spec.js`.
+  - **Cifras:** front 614/614 (69 ficheros) · api 953/953 (56 ficheros).
+- [x] **R11.6** — CI bloqueante — ✅ `.github/workflows/ci.yml`
   - `contract-check` + `sheet-check` + test de registros + meta-schema.
   - **Si falla, no se despliega.**
-- [ ] **R11.7** — Reejecutar gates y comparar contra el baseline (R0.2)
-- [ ] **R11.8** — Actualizar `doc/motor-renderizado-actual.md` con el estado
-      final
+  - **Resultado:** workflow en push `main` + PRs con `npm ci` → `npm test`
+    (front, single-run por `CI=true`) → `npm run test:api` →
+    `npm run api:check` (contract-check + reglas 1/B1/5 + doc regenerada) →
+    `npm run api:drift` (sheet-check; sin credenciales sale 0 con aviso,
+    política O3) → `npm run build`. Prettier no bloquea por decisión: su
+    deuda preexistente (20) lo dejaría rojo permanente.
+- [x] **R11.7** — Reejecutar gates y comparar contra el baseline (R0.2) ✅
+  - **Resultado (2026-10-13/14, rama `prueba-r11-3`):**
+
+    | Gate                     | Baseline R0.2 (§7)               | Hoy (R11.7)                                                                                                              |
+    | ------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+    | `npm test`               | 147/147 (29 ficheros)            | ✅ **614/614** (69 ficheros)                                                                                             |
+    | `npm run test:api`       | 144/144 (15 ficheros)            | ✅ **953/953** (56 ficheros)                                                                                             |
+    | `npm run api:check`      | ✅ VERDE — 7 recursos, 84 campos | ✅ **VERDE** — 9 recursos, 94 campos                                                                                     |
+    | `npm run build`          | ✅ verde                         | ✅ verde                                                                                                                 |
+    | `npx prettier --check .` | ✅ 17 (deuda preexistente)       | ✅ **20** (deuda misma naturaleza: fixtures json, openspec, environment, tsconfig — ningún archivo del plan en la lista) |
+- [x] **R11.8** — Actualizar `doc/motor-renderizado-actual.md` con el estado
+      final ✅ (2026-10-14)
+  - **Resultado:** nota de actualización en la cabecera (R11.3/R11.8);
+    §1.2 reescrito: los cuatro vocabularios ya resuelven por
+    **registros + `RenderHost`** (22 campos · 8 formatos · 7 widgets · 4
+    acciones) y desapareció la quinta superficie `field.kind`; §1.3–§1.5
+    corregidos (`FieldHost`/`WidgetHost` adaptadores, `list-view` y
+    `detail-view` sobre `RenderHost`, acciones vía `ActionService`); §4
+    con la tabla post-Fase 9 (las 6 deudas de «específico» cerraron; deuda
+    abierta: i18n, a11y, prettier 20, `_events` sin endpoint D16); §5 con
+    conteos reales (9 schemas, 13 endpoints, `FIELD_TYPES` 23) y el CI
+    bloqueante referenciado.
+  - **Retiro del código de prueba §0 (2026-10-14, decisión del usuario):**
+    todo el código listado en R11.3 fue borrado tras validar el recorrido
+    (sólo se conserva la evidencia de este plan). Los conteos de este
+    Resultado reflejan el estado **con** el ramal; los vigentes tras el
+    retiro son **21 campos · 7 formatos · 6 widgets · 3 acciones**, 8
+    schemas front, 8 recursos / 91 campos back (`api:check` 5/5 VERDE),
+    `FIELD_TYPES` 22 y 12 endpoints (doc regenerada con `npm run api:doc`).
+    Se conservan del ramal: D15/D16, los oros de operadores R11.5
+    (`views.spec`), el CI (R11.6) y el fix de `filePushOrder` del bug de
+    carga `35-webhooks`/`30-events` (memoria bugfix/filepushorder).
 - [ ] **R11.9** — Archivar este documento al cerrarse _(el plan anterior ya
       se borró con D8 en el Plan 1)_
 
@@ -3888,8 +3991,8 @@ motor, el diseño no está completo.
 | **D12**  | ¿Implementar TTL/`pin_enabled` o retirar campos?                                                                                                                                                                                                                      | R8.2                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **D13**  | ¿Usar `bar-chart`/`chart-line` o retirarlos?                                                                                                                                                                                                                          | R8.3                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **D14**  | R10: recrear pedidos o regenerar PIN                                                                                                                                                                                                                                  | R8.8                    | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **D15**  | `confirm-dialog`: usar o retirar                                                                                                                                                                                                                                      | R11.1                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **D16**  | `POST /admin/events`: retirar o justificar                                                                                                                                                                                                                            | R11.2                   | abierta                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **D15**  | `confirm-dialog`: usar o retirar                                                                                                                                                                                                                                      | R11.1                   | **resuelta** → usar/conservar (7 call-sites vía `NotificationService.confirm()`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **D16**  | `POST /admin/events`: retirar o justificar                                                                                                                                                                                                                            | R11.2                   | ✅ **resuelta** → retirar endpoint (0 emisores/0 lectores); capability `handleEvents` + hoja `_events` conservadas como motor                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | **D17**  | R1.7: `configSchema` no existe; `tsc` ya cubre `type`/`format`/`action`                                                                                                                                                                                               | R1.7                    | ✅ **resuelta** → R1.7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **D18**  | `public_base_url` nunca llega al modal de alta: ¿cómo se lo pasa?                                                                                                                                                                                                     | R1.8                    | ✅ **resuelta** → R1.8                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **D19**  | KDF de contraseña: costo, formato y tarea que lo implementa                                                                                                                                                                                                           | R2.2, R2.5              | ✅ **resuelta** → R2.1b                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |

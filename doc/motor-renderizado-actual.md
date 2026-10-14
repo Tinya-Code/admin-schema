@@ -7,6 +7,12 @@
 > El plan de reforma asociado es `doc/plan-refactor-motor.md`
 > (histórico: `plan-motor-de-renderizado.md`, absorbido por D8).
 > Los hallazgos R1–R10 están en `doc/pedidos-rectificacion.md`.
+>
+> **Actualizado 2026-10-14 (R11.8 · Fase 11):** tras la Fase 9 el render
+> es un solo motor (`RenderHost` + registros por `kind`), las acciones
+> están registradas (`action-registry`) y los conteos del catálogo se
+> detallan en §5. Los caminos «añadir X» verificados en §0 (R11.3) son:
+> 1 archivo nuevo + entradas de manifiesto, sin tocar hosts ni vistas.
 
 ---
 
@@ -70,16 +76,23 @@ array en compilación (`shell.routes.ts:16` genera las rutas a partir de él).
 Este es el punto que más confunde al leer el sistema por primera vez. Hay
 **cuatro lenguajes distintos** y no son intercambiables:
 
-| Vocabulario         | Dónde se declara                      | Dónde se resuelve    | N.º |
-| ------------------- | ------------------------------------- | -------------------- | --- |
-| **`field.type`**    | `ResourceSchema.fields[].type`        | `FieldHost`          | 20  |
-| **`column.format`** | `ResourceSchema.listColumns[].format` | `list-view` (`:259`) | 7   |
-| **`widget.type`**   | `ResourceSchema.widgets[].type`       | `WidgetHost`         | 6   |
-| **`action.type`**   | `ResourceSchema.actions[].type`       | **sin registro**     | 3   |
+| Vocabulario         | Dónde se declara                      | Dónde se resuelven                         | N.º |
+| ------------------- | ------------------------------------- | ------------------------------------------ | --- |
+| **`field.type`**    | `ResourceSchema.fields[].type`        | registro `kind: 'field'` vía `RenderHost`  | 21  |
+| **`column.format`** | `ResourceSchema.listColumns[].format` | registro `kind: 'column-format'`           | 7   |
+| **`widget.type`**   | `ResourceSchema.widgets[].type`       | registro `kind: 'widget'` vía `RenderHost` | 6   |
+| **`action.type`**   | `ResourceSchema.actions[].type`       | `action-registry` (`ActionService.run`)    | 3   |
 
-Más una **quinta** superficie en el detalle: `field.kind`
-(`image` | `badge` | `text`), que `detail-view` deriva del campo y resuelve en
-su propia plantilla.
+Los cuatro resuelven por **el mismo mecanismo** desde la Fase 9: un
+manifiesto (`descriptors.ts`) que registra descriptors con contrato
+uniforme (`{ kind, type, since, load, … }`) y `<app-render-host>` que los
+monta con `load()` perezoso (chunking). `FieldHost` y `WidgetHost` ya no
+despachan: son adaptadores que traducen su API histórica al contexto del
+host único.
+
+No existe ya la **quinta superficie** `field.kind`
+(`image` | `badge` | `text`) que `detail-view` derivaba: ese detalle monta
+`app-render-host` (4 usos) con `field.type` y el matiz viaja por `mode`/`chip`.
 
 `column.format` y `field.type` **no coinciden a propósito**: un `select`
 puede renderizar como `badge`, un `image` como `thumbnail`, un `boolean` como
@@ -99,9 +112,10 @@ ResourceSchema
    │   SchemaFn<Record<string, unknown>>  ──► Signal Forms (Angular)
    │
    └─► <app-field-host [field] [tree] …>            form-view / drawer-form
-             │
+             │  adaptador: arma RenderContext (F3.5/R3.5)
              ▼
-        label + @switch(field().type) ──► 20 componentes Field*
+        <app-render-host kind="field" [type]>  ──►  registro de descriptors
+                                                    ──►  21 componentes Field*
 ```
 
 #### `buildFormSchema` — las reglas
@@ -175,19 +189,24 @@ Puntos no obvios:
 `src/app/pages/list-view/list-view.ts`
 
 ```
-schema.listColumns ──► @for (column) ──► @switch (column.format ?? 'text')
+schema.listColumns ──► @for (column) ──► <app-render-host kind="column-format"
+                                                            [type]=format ?? 'text'>
                                               │
-                    thumbnail │ boolean │ badge │ number │ currency │ date │ text
+              text │ badge │ number │ currency │ date │ boolean │ thumbnail
 ```
 
 - **7 formatos**, no 20 — la tabla resuelve **presentación**, no tipos.
+  Cada formato es un descriptor en `columns/descriptors.ts` y un
+  `format-<nombre>.ts`; `list-view` no conoce ninguno (R4.3).
 - `cellValue(row, column)` + `formatNumber/Currency/Date` para la salida.
 - Los booleanos usan `field.trueLabel` / `field.falseLabel` con fallback
-  «Sí»/«No» (`:799-800`).
-- **Búsqueda y filtros en el cliente** (`:77`) — la fila ya viene filtrada del
+  «Sí»/«No».
+- **Búsqueda y filtros en el cliente** — la fila ya viene filtrada del
   back por la vista, el resto se filtra en memoria.
-- **Acciones sin registro:** `@if (action.type === 'copy-share')` en `:333` y
-  `runAction()` con `if (action.type === 'copy-share')` en `:714`.
+- **Acciones vía registro:** `runAction()` delega en
+  `ActionService.run`, que resuelve el descriptor por `type`
+  (`action-registry`); no queda ningún `if (action.type === …)` en la
+  vista.
 
 > **Dependencia crítica:** `shareTextTemplate` se interpola sobre la **fila
 > proyectada** (`:713`), no sobre el registro completo. Si una clave no está
@@ -197,20 +216,27 @@ schema.listColumns ──► @for (column) ──► @switch (column.format ?? '
 
 `src/app/pages/detail-view/detail-view.ts`
 
-**No usa `FieldHost`.** Dibuja sus propias celdas.
+**No monta `FieldHost`** (la ruta del detalle exige `mode="display"`), pero
+**sí renderiza por el registro**: sus 3 plantillas montan
+`<app-render-host mode="display">` (chips de cabecera, celdas de sección y
+listas anidadas) — ya no dibuja celdas propias ni deriva
+`kind: image | badge | text`.
 
-1. `sections()` (`:375`) — si el schema declara `detail.sections`, las usa
-   tal cual; si no, arma secciones desde `schema.layout.sections` agrupando
+1. `sections()` — si el schema declara `detail.sections`, las usa tal
+   cual; si no, arma secciones desde `schema.layout.sections` agrupando
    por `field.section`, con las que no tengan sección en `_unsectioned`.
-2. `resolveFieldValue(key)` — `getValue(rec, key)` + `formatValue(field, raw)`
-   y **deriva `kind`**: `image` | `badge` | `text`.
-3. La plantilla hace `@if (field.kind === 'image') … @else if (kind ===
-'badge') … @else …` sobre `<dl>/<dt>/<dd>` (`:223-250`).
-4. `copyShareActions` (`:408`) filtra `schema.actions` por
-   `type === 'copy-share'`.
+2. `resolveFieldValue(key)` — `getValue(rec, key)` + permiso
+   `canReadField`; las claves sin campo declarado degradan a `type: 'text'`
+   crudo (el viejo `default` de `formatValue`).
+3. Las celdas son `<app-render-host [type]="field.type" mode="display">`
+   — el pintado lo decide el descriptor del registro, no un `@if` por
+   tipo en la plantilla.
+4. `copyShareActions` / `triggerActions` filtran `schema.actions` por su
+   `type` (filtro de catálogo, no render) y los botones delegan en
+   `ActionService`.
 
-Secciones con listas anidadas (timeline de eventos, items) se renderizan aparte
-(`:261`).
+Secciones con listas anidadas (timeline de eventos, items) se renderizan
+aparte, también vía `app-render-host`.
 
 ### 1.6 Rama de dashboard
 
@@ -549,42 +575,54 @@ entró R1 → T2.5.
 
 ## 4. Dónde vive lo específico hoy
 
-Mapa honesto de las superficies que rompen el principio «nada específico de un
-schema»:
+Mapa honesto de las superficies que rompen el principio «nada específico de
+un schema», **tras la Fase 9**:
 
-| Superficie                | Situación                               | Gravedad                      |
-| ------------------------- | --------------------------------------- | ----------------------------- |
-| `FieldHost`               | `Set` + 21 imports a mano + `@switch`   | acoplamiento, pero genérico   |
-| `WidgetHost`              | **misma forma duplicada**               | duplicación de patrón         |
-| Acciones                  | **sin registro**, 3 implementaciones    | dispersión                    |
-| `list-view`               | `@switch` de formatos + acciones `if`   | dispersión                    |
-| `detail-view`             | render propio, no reutiliza `FieldHost` | divergencia de comportamiento |
-| `confirm-dialog`          | 0 usos                                  | deuda                         |
-| `bar-chart`, `chart-line` | implementados, sin declarar             | deuda                         |
+| Superficie                   | Estado hoy                                                  | Nota                                       |
+| ---------------------------- | ----------------------------------------------------------- | ------------------------------------------ |
+| `RenderHost` + 5 manifiestos | motor único de render (`{kind, type, since, load, …}`)      | era `@switch`×4; resuelto en Fase 9        |
+| `FieldHost` / `WidgetHost`   | adaptadores al host único; ya no despachan                  | era `Set` + imports + `@switch`            |
+| Acciones                     | `action-registry` + `ActionService.run` (4 tipos)           | era «sin registro, 3 implementaciones»     |
+| `list-view` / `detail-view`  | montan `RenderHost`; sin `@switch` ni `@if` por tipo        | era dispersión de ramas                    |
+| `confirm-dialog`             | **en uso** — 7 call-sites vía `NotificationService.confirm` | el «0 usos» medía imports directos (D15)   |
+| `bar-chart`, `chart-line`    | declarados en el manifiesto de widgets                      | la deuda de «sin declarar» cerró en Fase 9 |
 
-**Los componentes** de `shared/components/` son genéricos y no referencian
-schemas; el problema no está en ellos sino en **cómo se llega hasta ellos**:
-cuatro formas distintas de resolver `type → componente` en vez de una.
+**Deuda abierta conocida:**
+
+- **i18n (R9.7)** y **accesibilidad (R9.8.6)** — pospuestas por decisión.
+- **prettier**: 20 archivos de deuda preexistente (fixtures json, openspec,
+  environment, tsconfig) — fuera del CI bloqueante por esa razón.
+- **`handleEvents` + hoja `_events`**: capability conservada pero **sin
+  endpoint** en este proyecto (D16) — 0 emisores/lectores; el par vive en el
+  lado-motor de la propuesta npm.
+- Cobertura de oro de campos distribuida en specs de integración
+  (`form-view`, `display`, `list-view`) en vez de 1 spec por componente
+  (R11.5 auditado: hay al menos un caso mínimo por tipo).
 
 ---
 
 ## 5. Resumen en una página
 
-**Front** — `registry.ts` (7 schemas, estático) → cuatro vocabularios de
-resolución:
+**Front** — `registry.ts` (8 schemas, estático) → un solo motor de resolución:
 
-- **form**: `buildFormSchema` → Signal Forms → `FieldHost` (`@switch` de 20)
-- **lista**: `list-view` (`@switch` de 7 formatos)
-- **detalle**: `detail-view` (secciones + `kind` de 3)
-- **dashboard**: `WidgetHost` (`@switch` de 6)
+- **los cuatro vocabularios** (`field` 21 · `column-format` 7 · `widget` 6 ·
+  `action` 3) resuelven por **registros de descriptors** + `<app-render-host>`;
+  `FieldHost`/`WidgetHost` sólo adaptan.
+- **form**: `buildFormSchema` → Signal Forms → `FieldHost` → `RenderHost`.
+- **lista**: `list-view` monta `RenderHost kind="column-format"`.
+- **detalle**: `detail-view` monta `RenderHost mode="display"`.
+- **dashboard**: `WidgetHost` → `RenderHost kind="widget"` (6 descriptores).
 
-**Back** — `FIELD_TYPES` (20, mismo vocabulario) → `REGISTRY.resources` →
-`10-router` (tabla derivada) → `24-crud` → `storage-map` → `21-repo` →
-`23-validate` → `shapeResponse_` releyendo la hoja.
+**Back** — `FIELD_TYPES` (22, mismo vocabulario que el front + `secret`) →
+`REGISTRY.resources` (8 ids auto-registrados) → `10-router` (tabla derivada)
+→ `24-crud` → `storage-map` → `21-repo` → `23-validate` (+ `resource.checks`
+vía `REGISTRY.checks`) → `shapeResponse_` releyendo la hoja. 12 endpoints
+auto-registrados con `input`/`output`; la doc sale del registro.
 
-**Puente** — `contract-check.mjs` offline; `/admin/schema` es contrato
-legible, no runtime.
+**Puente** — `contract-check.mjs` offline dentro de `npm run api:check`
+(8 recursos, 91 campos); `/admin/schema` es contrato legible, no runtime.
+CI bloqueante en `.github/workflows/ci.yml` (R11.6): tests front/back +
+`api:check` + `api:drift` + build — si falla, no se despliega.
 
-**Deuda** — `Set`/`@switch` duplicados entre `FieldHost` y `WidgetHost`,
-acciones sin registro, `detail-view` fuera del patrón, y dos verificaciones
-que no existen (`enum`/`default`/proyecciones y drift schema↔hoja).
+**Deuda** — i18n (R9.7) y a11y (R9.8.6) pospuestas; deuda prettier (20);
+`_events` sin endpoint por decisión D16.

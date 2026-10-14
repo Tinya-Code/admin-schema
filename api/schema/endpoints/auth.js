@@ -13,8 +13,8 @@
 //     así que ese campo no lo acepta nadie. Declararlo sería una mentira.
 //   • `handler: 'handleAuthLogin'` y no `authLogin` como dice §4.3: en este
 //     repo el handler de un endpoint es `handle` + el id del endpoint
-//     (handleDashboard, handleEvents, handlePinVerify, handlePublicOrder,
-//     handleSchema, handleSheetDrift, handleUploadSignature — 7 de 7).
+//     (handleDashboard, handlePinVerify, handlePublicOrder, handleSchema,
+//     handleSheetDrift, handleUploadSignature — 6 de 6).
 //     El nombre es arbitrario; romperlo con tres ficheros es ruido puro.
 //
 // `input` lo declara B2 y LO VALIDA el router antes de llamar al handler

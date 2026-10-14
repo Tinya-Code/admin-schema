@@ -98,10 +98,10 @@ El token viaja en el campo `token` del envelope (no en headers):
 
 ### Niveles de Acceso
 
-| Nivel    | Requiere Token | Endpoints                                                                                 |
-| -------- | -------------- | ----------------------------------------------------------------------------------------- |
-| `admin`  | Sí             | CRUD genérico (`/admin/orders`), Dashboard (`/admin/dashboard`), Events (`/admin/events`) |
-| `public` | No             | Vista pública (`/p/orders/:ref`), Verificar PIN (`/p/pin/:ref`)                           |
+| Nivel    | Requiere Token | Endpoints                                                       |
+| -------- | -------------- | --------------------------------------------------------------- |
+| `admin`  | Sí             | CRUD genérico (`/admin/orders`), Dashboard (`/admin/dashboard`) |
+| `public` | No             | Vista pública (`/p/orders/:ref`), Verificar PIN (`/p/pin/:ref`) |
 
 ---
 

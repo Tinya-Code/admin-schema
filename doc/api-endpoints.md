@@ -1,7 +1,7 @@
 # API — contrato de endpoints (OpenAPI-lite)
 
 > **Documento generado** por `scripts/api-doc.mjs` a partir de
-> `api/schema/endpoints/*.js`. No editar a mano: `npm run api:doc` lo
+> `api/schema/endpoints/*.js`. No editar a mano: `admin-schema doc` lo
 > regenera y `npm run api:check` lo marca ROJO si no coincide con el
 > registro.
 
@@ -397,17 +397,16 @@ titleField: `name` · kind: `collection` · sheet: `_users` · keyField: `id` ·
 | --- | ------ | ------------------------------- | ------- | -------------------------------------------------------- | -------- | ------- | -------- | ------- |
 | 1   | POST   | `/admin/audit-prune`            | admin   | `1/min`                                                  | —        | sí      | sí       | `1.0`   |
 | 2   | GET    | `/admin/dashboard`              | admin   | `30/min`                                                 | `orders` | no      | no       | `1.0`   |
-| 3   | POST   | `/admin/events`                 | admin   | `60/min`                                                 | —        | no      | sí       | `1.0`   |
-| 4   | GET    | `/admin/schema`                 | admin   | —                                                        | —        | no      | no       | `1.0`   |
-| 5   | GET    | `/admin/sheet-drift`            | admin   | —                                                        | —        | no      | no       | `1.0`   |
-| 6   | POST   | `/admin/upload-signature`       | admin   | `10/min`                                                 | —        | no      | no       | `1.0`   |
-| 7   | POST   | `/auth/login`                   | public  | `{"read":"10/min","write":"10/min","account":"5/15min"}` | —        | sí      | sí       | `1.0`   |
-| 8   | POST   | `/auth/logout`                  | session | —                                                        | —        | no      | sí       | `1.0`   |
-| 9   | POST   | `/auth/logout-all`              | session | —                                                        | —        | no      | sí       | `1.0`   |
-| 10  | POST   | `/auth/me`                      | session | —                                                        | —        | no      | sí       | `1.0`   |
-| 11  | GET    | `/p/orders/:ref`                | public  | `60/min`                                                 | `orders` | no      | no       | `1.0`   |
-| 12  | POST   | `/p/pin/:ref`                   | public  | `5/min`                                                  | `orders` | sí      | sí       | `1.0`   |
-| 13  | POST   | `/p/uploads/signature/:profile` | public  | `10/min`                                                 | —        | sí      | sí       | `1.0`   |
+| 3   | GET    | `/admin/schema`                 | admin   | —                                                        | —        | no      | no       | `1.0`   |
+| 4   | GET    | `/admin/sheet-drift`            | admin   | —                                                        | —        | no      | no       | `1.0`   |
+| 5   | POST   | `/admin/upload-signature`       | admin   | `10/min`                                                 | —        | no      | no       | `1.0`   |
+| 6   | POST   | `/auth/login`                   | public  | `{"read":"10/min","write":"10/min","account":"5/15min"}` | —        | sí      | sí       | `1.0`   |
+| 7   | POST   | `/auth/logout`                  | session | —                                                        | —        | no      | sí       | `1.0`   |
+| 8   | POST   | `/auth/logout-all`              | session | —                                                        | —        | no      | sí       | `1.0`   |
+| 9   | POST   | `/auth/me`                      | session | —                                                        | —        | no      | sí       | `1.0`   |
+| 10  | GET    | `/p/orders/:ref`                | public  | `60/min`                                                 | `orders` | no      | no       | `1.0`   |
+| 11  | POST   | `/p/pin/:ref`                   | public  | `5/min`                                                  | `orders` | sí      | sí       | `1.0`   |
+| 12  | POST   | `/p/uploads/signature/:profile` | public  | `10/min`                                                 | —        | sí      | sí       | `1.0`   |
 
 ## Endpoints
 
@@ -479,36 +478,6 @@ Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos 
   "token": "<token de sesión/admin>",
   "method": "GET",
   "path": "/admin/dashboard",
-  "payload": {}
-}
-```
-
-**Errores comunes del router** — 400 (JSON, envelope o método mal formados) · 401/403 (sesión o acceso) · 404 (ruta o registro inexistente) · 429 (límite) · 500 (error interno). Los detalles específicos del handler se listan aparte cuando están declarados.
-
----
-
-### `POST /admin/events`
-
-| Handler        | Acceso | Límites | Recurso | `cache` | `since` |
-| -------------- | ------ | ------- | ------- | ------- | ------- |
-| `handleEvents` | admin  | 60/min  | —       | —       | `1.0`   |
-
-**input** — sin contrato declarado.
-
-**output — se valida sólo en dev (500 si falla)**
-
-| Campo | Tipo      | Obligatorio | Reglas |
-| ----- | --------- | ----------- | ------ |
-| `ok`  | `boolean` | sí          | —      |
-
-**Cómo llamar** — envía siempre un `POST` HTTP a `API_URL`; el método de la operación va en `method` dentro del envelope.
-Sustituye los parámetros `{...}` de `path` por valores URL-encoded. Los campos y filtros van en `payload`; los `params` declarados se extraen de la ruta y no se repiten en el body. El ejemplo usa valores ilustrativos, no necesariamente válidos para todas las reglas.
-
-```json
-{
-  "token": "<token de sesión/admin>",
-  "method": "POST",
-  "path": "/admin/events",
   "payload": {}
 }
 ```
