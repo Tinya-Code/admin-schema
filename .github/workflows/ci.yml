@@ -1,0 +1,44 @@
+name: CI
+
+# CI bloqueante del consumidor (F0-B): tests front + validate/doc del
+# registro vía el paquete del motor + sheet-check + build. Si falla, no
+# se despliega (refactormotor §7.4). Los tests del motor (949) viven en
+# su repo y su CI propia.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    name: Gates bloqueantes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Test de registros (front). CI=true ⇒ ng test single-run headless.
+      - name: Tests front (ng test)
+        run: npm test
+
+      # Contract-check (schemas back ↔ front) + reglas inquebrantables
+      # (1/B1/5) + doc del registro — verbos del paquete del motor
+      # (@tinya-code/admin-schema), que ya no corre sus tests acá.
+      - name: Contract check y reglas inquebrantables
+        run: npm run api:check
+
+      # sheet-check contra la hoja de producción; sin credenciales en CI
+      # sale 0 con aviso (la comparación completa corre con secrets/O3).
+      - name: Sheet drift check
+        run: npm run api:drift
+
+      - name: Build de producción
+        run: npm run build

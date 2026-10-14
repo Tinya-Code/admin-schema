@@ -1,6 +1,0 @@
-{
-  "error": {
-    "message": "Ruta no encontrada: /admin/no-existe",
-    "status": 404
-  }
-}
