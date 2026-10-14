@@ -1,6 +1,6 @@
 # Inventario de frontera: motor (npm) ↔ consumidor (este repo)
 
-> Contexto: split en dos repos. El **repo del motor** publica `@tinya-code/admin-schema`
+> Contexto: split en dos repos. El **repo del motor** publica `@tinya-code/gas-admin`
 > en npm (runtime GAS materializable + CLI + validador). Este repo (`admin-schema`)
 > pasa a ser el **consumidor**: conserva el front Angular, declara su dominio en
 > `schema/` y recibe el runtime por `generate`. Los tests se quedan en el repo del
@@ -66,8 +66,8 @@
 
 | Script actual                                   | Verbo futuro               | Notas                                                                     |
 | ----------------------------------------------- | -------------------------- | ------------------------------------------------------------------------- |
-| `scripts/contract-check.mjs` (+ `api-check.sh`) | `admin-schema validate`    | Validador offline ya existente; corre en el consumidor contra su schema.  |
-| `scripts/api-doc.mjs`                           | `admin-schema doc` (G-6)   | Genera la doc de endpoints desde el registro del consumidor.              |
+| `scripts/contract-check.mjs` (+ `api-check.sh`) | `gas-admin validate`    | Validador offline ya existente; corre en el consumidor contra su schema.  |
+| `scripts/api-doc.mjs`                           | `gas-admin doc` (G-6)   | Genera la doc de endpoints desde el registro del consumidor.              |
 | `scripts/sheet-drift-check.mjs`                 | `admin-schema drift`       | Compara la hoja viva vs el schema; usa credenciales del consumidor.       |
 | `scripts/smoke-auth.mjs`                        | `admin-schema smoke` (G-5) | Smoke contra el GAS desplegado; necesita scriptId + creds del consumidor. |
 | `scripts/audit-prune.mjs`                       | `admin-schema audit` (G-5) | Runner local de la auditoría con credenciales.                            |
@@ -85,7 +85,7 @@
 | G-3 | **`PROP_MANIFEST` extensible**: hoy las 13 props son todas infra. Si el consumidor necesita props propias (p. ej. una API key suya), ¿cómo se agregan? | A) El consumidor concatena su manifest tras la del motor. B) El motor expone `addProperties([...])`.                                                                  | **A** (simple, sin API nueva).                                                                                                                                                                                                                                  |
 | G-4 | **`appsscript.json`**: template vs instancia.                                                                                                          | A) El motor publica template; `init` crea la instancia del consumidor (timeZone, etc. editables). B) Se queda sólo en el consumidor sin template.                     | **A**.                                                                                                                                                                                                                                                          |
 | G-5 | **`smoke`/`audit` como bin**: corren con secretos reales.                                                                                              | A) Verbos del paquete que leen `.gas-smoke.env` local del consumidor. B) Scripts que se quedan en el repo del consumidor.                                             | **A**: son genéricos; el consumidor no debe reimplementarlos.                                                                                                                                                                                                   |
-| G-6 | **`api-doc` como verb**: la doc generada es del schema del consumidor.                                                                                 | A) Verbo del paquete (`admin-schema doc`). B) Tool del repo del motor.                                                                                                | **A**.                                                                                                                                                                                                                                                          |
+| G-6 | **`api-doc` como verb**: la doc generada es del schema del consumidor.                                                                                 | A) Verbo del paquete (`gas-admin doc`). B) Tool del repo del motor.                                                                                                | **A**.                                                                                                                                                                                                                                                          |
 | G-7 | **Loop de desarrollo motor→consumidor**: cada cambio de motor requiere publicación.                                                                    | A) `npm pack` + tarball local (iteración rápida sin publicar). B) `file:../motor-gas`. C) Publish semver por cada cambio.                                             | **A** + publishes para releases; `file:` rompe la validación del contrato público real.                                                                                                                                                                         |
 
 ## Resumen de conteos
@@ -120,7 +120,7 @@ runtime del paquete; el cargador del backend (`_load-backend.mjs`, antes
    (generate sobre copia de `api/` = idéntico byte a byte) → corte →
    `api/` = 18 ficheros de dominio + runtime regenerado (git limpio para el
    runtime), scripts → verbos del CLI, CI reducida (sin tests back), suite
-   front 604/604, `api:check` vía `admin-schema validate --with-front` verde,
+   front 604/604, `api:check` vía `gas-admin validate --with-front` verde,
    prettier baseline **9** (la deuda de `api/fixtures` y `api/PLAN*` se fue
    con el motor).
 4. Pendiente: primer prerelease (`npm publish`) — requiere login npm + scope

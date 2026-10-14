@@ -20,11 +20,11 @@ Run these before committing. All must be green.
 > output in some shells.
 
 Since F0-B the backend runtime comes from the npm package
-(`npm run api:generate` → `admin-schema generate`); its 949 backend tests live
+(`npm run api:generate` → `gas-admin generate`); its 949 backend tests live
 in the motor repo, not here.
 
 **Baseline (2026-10-14):** front 604/604 · `api:check` green (CLI
-`admin-schema validate --with-front`, 8 resources, 91 fields) · build green ·
+`gas-admin validate --with-front`, 8 resources, 91 fields) · build green ·
 prettier **9**.
 
 > ⚠️ Those 9 are **pre-existing debt** (`.postcssrc.json`, `doc/ui-ux.md`,

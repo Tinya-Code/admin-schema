@@ -1,7 +1,7 @@
 # API — contrato de endpoints (OpenAPI-lite)
 
 > **Documento generado** por `scripts/api-doc.mjs` a partir de
-> `api/schema/endpoints/*.js`. No editar a mano: `admin-schema doc` lo
+> `api/schema/endpoints/*.js`. No editar a mano: `gas-admin doc` lo
 > regenera y `npm run api:check` lo marca ROJO si no coincide con el
 > registro.
 
