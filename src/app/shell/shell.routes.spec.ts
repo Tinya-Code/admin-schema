@@ -1,7 +1,7 @@
 import type { Route } from '@angular/router';
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { ResourceSchema } from '@tinya-code/gas-admin-ui';
 import { SchemaCompositionError } from '@tinya-code/gas-admin-ui';
@@ -9,7 +9,17 @@ import { schemas } from '../schemas/registry';
 import { resourceRoutes, shellRoutes } from '@tinya-code/gas-admin-ui';
 import '../schemas/seed-catalog';
 
-const generated = shellRoutes[0].children ?? [];
+/**
+ * `shellRoutes` construye sus hijos AL NAVIGARSE (loadChildren), no en la
+ * evaluación del módulo: en producción el barrel se importa antes de que
+ * `provideGasAdmin` siembre el catálogo y un build eager congelaría `[]`.
+ */
+let generated: Route[] = [];
+
+beforeAll(async () => {
+  const hijos = (await shellRoutes[0].loadChildren!()) as Route[];
+  generated = hijos.find((route) => route.path === '')?.children ?? [];
+});
 
 function routeFor(path: string): Route | undefined {
   return generated.find((route) => route.path === path);
