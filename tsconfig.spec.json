@@ -3,9 +3,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "paths": {
-      "@tinya-code/gas-admin-ui": ["../front-gas/projects/gas-admin-ui/src/public-api.ts"]
-    },
     "outDir": "./out-tsc/spec",
     "types": ["vitest/globals"]
   },
