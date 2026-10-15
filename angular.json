@@ -45,6 +45,11 @@
             "development": {
               "optimization": false,
               "extractLicenses": false,
+              "sourceMap": true
+            },
+            "local": {
+              "optimization": false,
+              "extractLicenses": false,
               "sourceMap": true,
               "fileReplacements": [
                 {
@@ -64,12 +69,18 @@
             },
             "development": {
               "buildTarget": "admin-schema:build:development"
+            },
+            "local": {
+              "buildTarget": "admin-schema:build:local"
             }
           },
-          "defaultConfiguration": "development"
+          "defaultConfiguration": "local"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "buildTarget": "admin-schema:build:development"
+          }
         }
       }
     }
