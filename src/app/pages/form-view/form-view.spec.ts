@@ -1,0 +1,844 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import { of, throwError } from 'rxjs';
+import { beforeAll, vi } from 'vitest';
+
+import type { ResourceSchema } from '@tinya-code/gas-admin-ui';
+import { ApiService } from '@tinya-code/gas-admin-ui';
+import { API_URL } from '@tinya-code/gas-admin-ui';
+import { ErrorMapperService } from '@tinya-code/gas-admin-ui';
+import { NotificationService } from '@tinya-code/gas-admin-ui';
+import { UploadService } from '@tinya-code/gas-admin-ui';
+import { FieldHost } from '@tinya-code/gas-admin-ui';
+import { schemas } from '../../schemas/registry';
+import { FormView } from '@tinya-code/gas-admin-ui';
+import '../../schemas/seed-catalog';
+
+/**
+ * Regresión: la rama `@else` del layout (secciones colapsables en `<details>`,
+ * p. ej. `site`) renderizaba `<app-field-host>` SIN `[resource]` — el campo
+ * imagen subía con `resource: ''` y el backend respondía 400
+ * «Falta resource (p. ej. products)» (upload-signature.js).
+ */
+describe('FormView — resource hacia field-host', () => {
+  async function createSiteForm() {
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'site' })) },
+        },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of({})),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('pasa el id del recurso a todos los field-host (rama details incluida)', async () => {
+    const fixture = await createSiteForm();
+
+    // La rama problemática es la de secciones colapsables: si no renderiza,
+    // el test no estaría cubriendo el fix.
+    expect(fixture.nativeElement.querySelector('details')).not.toBeNull();
+
+    const hosts = fixture.debugElement.queryAll(By.directive(FieldHost));
+    expect(hosts.length).toBeGreaterThan(0);
+
+    for (const host of hosts) {
+      expect(host.componentInstance.resource()).toBe('site');
+    }
+  });
+});
+
+/**
+ * Fase 4 — resumen de errores al enviar (§4.11).
+ *
+ * El backend sólo envía UN `path` por respuesta (`api.md §7`), así que los
+ * errores múltiples que justifican un resumen los produce la validación del
+ * cliente: `submit()` marca todo el árbol como tocado y muchos campos
+ * quedan inválidos a la vez. Por eso un caso cubre errores de cliente (2+) y
+ * el otro un único error de servidor.
+ */
+describe('FormView — resumen de errores', () => {
+  // jsdom no implementa scrollIntoView; sin esto `scrollToFirstError` revienta.
+  beforeAll(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  async function createProductsForm(
+    options: {
+      /** Registro leído en edición; vacío = todos los `required` inválidos. */
+      record?: Record<string, unknown>;
+      serverFieldPath?: string;
+    } = {},
+  ) {
+    const record = options.record ?? {};
+
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'products', key: 'sku-1' })) },
+        },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of(record)),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() =>
+              options.serverFieldPath ? throwError(() => new Error('rechazado')) : of({}),
+            ),
+            remove: vi.fn(() => of({})),
+            list: vi.fn(() => of([])),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: {
+            map: vi.fn(() =>
+              options.serverFieldPath
+                ? { fields: { [options.serverFieldPath]: 'Ese valor ya existe' } }
+                : { fields: {} },
+            ),
+            messageOf: vi.fn(() => ''),
+          },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  /** Pulsa el botón Guardar y espera a que se pinte y corra el setTimeout. */
+  async function submit(fixture: ComponentFixture<FormView>): Promise<void> {
+    const form = (fixture.nativeElement as Element).querySelector('form');
+    expect(form, 'sin formulario').not.toBeNull();
+    form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    fixture.detectChanges();
+  }
+
+  it('pinta el resumen con enlaces cuando hay 2 o más errores de cliente', async () => {
+    const fixture = await createProductsForm();
+    await submit(fixture);
+
+    const summary = (fixture.nativeElement as Element).querySelector('[data-error-summary]');
+    expect(summary, 'sin resumen con varios errores').not.toBeNull();
+
+    const links = summary?.querySelectorAll('a') ?? [];
+    expect(links.length).toBeGreaterThanOrEqual(2);
+
+    // Cada enlace apunta a un campo real y no a un ancla inventada.
+    for (const link of links) {
+      const target = link.textContent?.trim() ?? '';
+      expect(target).not.toBe('');
+    }
+    expect(summary?.getAttribute('role')).toBe('alert');
+
+    // Con 2+ el foco va al resumen, no al primer campo.
+    expect(document.activeElement).toBe(summary);
+
+    // 4.2: activar un enlace de OTRA pestaña cambia de pestaña, pinta y
+    // lleva el foco al campo. El detectChanges() inmediato es la versión de
+    // test de la pasada de change detection que Angular hace en runtime
+    // mientras `goToError` espera la estabilidad (sección + chunk perezoso).
+    const otherTab = Array.from(links).find((link) =>
+      link.textContent?.trim().startsWith('Descripción —'),
+    );
+    expect(otherTab, 'sin enlace a Descripción').toBeDefined();
+    (otherTab as HTMLAnchorElement).click();
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    fixture.detectChanges();
+
+    const active = document.activeElement;
+    expect(['INPUT', 'TEXTAREA', 'SELECT']).toContain(active?.tagName ?? '');
+    expect(active).not.toBe(summary);
+    // Ya no seguimos en la pestaña inicial.
+    expect(
+      fixture.nativeElement.querySelector('[aria-selected="true"]')?.textContent?.trim(),
+    ).toContain('Contenido');
+  });
+
+  it('decisión A: sin ⚠ antes del primer envío, con ⚠ después', async () => {
+    const fixture = await createProductsForm();
+    const root = fixture.nativeElement as Element;
+
+    // Todavía no se envió: las secciones están incompletas pero no se quejan,
+    // ni aparece el resumen. Esto es lo que evita el ruido inicial.
+    expect(root.textContent ?? '', '⚠ prematuro').not.toContain('⚠');
+    expect(root.querySelector('[data-error-summary]')).toBeNull();
+
+    await submit(fixture);
+
+    expect(fixture.nativeElement.textContent ?? '', 'falta el ⚠ tras enviar').toContain('⚠');
+  });
+
+  it('steps sólo avanza con la etapa actual válida y reserva Guardar para la última', async () => {
+    const products = schemas.find((schema) => schema.id === 'products');
+    expect(products).toBeDefined();
+    const originalLayout = products!.layout;
+    products!.layout = { ...originalLayout!, mode: 'steps' };
+    let fixture: ComponentFixture<FormView> | undefined;
+    try {
+      fixture = await createProductsForm({
+        record: {
+          name: 'Producto',
+          slug: 'producto',
+          category_slug: 'cat-1',
+          sku: 'SKU-1',
+          price: 10,
+          availability: 'InStock',
+          featured: false,
+          active: true,
+        },
+      });
+      const form = fixture.componentInstance;
+      expect(form.layoutMode()).toBe('steps');
+      expect(form.canSave()).toBe(false);
+
+      form.nextStep();
+      fixture.detectChanges();
+      expect(form.activeSection()).toBe('contenido');
+
+      form.nextStep();
+      fixture.detectChanges();
+      expect(form.activeSection()).toBe('contenido');
+      expect((fixture.nativeElement as Element).textContent).toContain('Descripción');
+
+      form.activeSection.set('faq');
+      expect(form.canSave()).toBe(true);
+    } finally {
+      fixture?.destroy();
+      products!.layout = originalLayout;
+    }
+  });
+
+  it('con un solo error no pinta resumen y lleva el foco al campo', async () => {
+    const fixture = await createProductsForm({
+      record: {
+        name: 'Producto',
+        slug: 'producto',
+        sku: 'SKU-1',
+        description: 'x'.repeat(120),
+        category_slug: 'cat-1',
+        price: 10,
+        availability: 'InStock',
+        images: [{ image_url: 'a.png', image_alt: 'Alt', position: 1 }],
+        seo_description: 'x',
+        registro_sanitario: 'x',
+        faq: [{ question: '¿P?', answer: 'A', position: 1 }],
+      },
+      serverFieldPath: 'name',
+    });
+    await submit(fixture);
+
+    const root = fixture.nativeElement as Element;
+    expect(root.querySelector('[data-error-summary]'), 'resumen sobra con un error').toBeNull();
+
+    // El foco cae en el control con el mensaje, no en un resumen.
+    const active = document.activeElement as HTMLElement | null;
+    expect(active?.id).toContain('name');
+  });
+});
+
+/**
+ * Fase 5 — borrador autoguardado (§4.6 / plan 5.4 y 5.5).
+ *
+ * Regla que el test protege: el borrador SE OFRECE, nunca se restaura solo.
+ */
+describe('FormView — borrador', () => {
+  const KEY = 'draft:products:nuevo';
+
+  beforeEach(() => localStorage.clear());
+  afterAll(() => localStorage.clear());
+
+  async function createForm(): Promise<ComponentFixture<FormView>> {
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'products' })) },
+        },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of({})),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+            list: vi.fn(() => of([])),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('ofrece el borrador sin restaurarlo, y sólo lo aplica al clicar', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ savedAt: Date.now() - 60_000, value: { name: 'Nombre borrador' } }),
+    );
+
+    const fixture = await createForm();
+    const root = fixture.nativeElement as Element;
+
+    // 1. Se ofrece, no se aplica: el campo sigue vacío.
+    const banner = root.querySelector('[role="status"]');
+    expect(banner, 'sin aviso de borrador').not.toBeNull();
+    expect(banner?.textContent ?? '').toContain('borrador guardado');
+    expect(banner?.textContent ?? '').toContain('hace 1 min');
+
+    const named = Array.from(root.querySelectorAll('input')).find(
+      (input) => (input as HTMLInputElement).value === 'Nombre borrador',
+    );
+    expect(named, 'se restauró en silencio').toBeUndefined();
+
+    // 2. Clic en Restaurar → ahora sí.
+    const restore = Array.from(root.querySelectorAll('button')).find((button) =>
+      button.textContent?.trim().startsWith('Restaurar'),
+    );
+    expect(restore, 'sin botón Restaurar').toBeDefined();
+    (restore as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('[role="status"]'), 'el aviso no se cerró').toBeNull();
+    const restored = Array.from(root.querySelectorAll('input')).find(
+      (input) => (input as HTMLInputElement).value === 'Nombre borrador',
+    );
+    expect(restored, 'no se restauró el valor').toBeDefined();
+  });
+
+  it('escribe el borrador en localStorage tras editar (debounce)', async () => {
+    const fixture = await createForm();
+    const input = (fixture.nativeElement as Element).querySelector<HTMLInputElement>('input');
+    expect(input, 'sin campo de texto').not.toBeNull();
+
+    input!.value = 'Producto tocado';
+    input!.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+
+    // El volcado va con debounce de 800 ms.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const raw = localStorage.getItem(KEY);
+    expect(raw, 'el autoguardado no escribió nada').not.toBeNull();
+    const draft = JSON.parse(raw ?? '{}') as { value?: { name?: string } };
+    expect(draft.value?.name).toBe('Producto tocado');
+  });
+
+  it('sin borrador no muestra ningún aviso', async () => {
+    const fixture = await createForm();
+    expect((fixture.nativeElement as Element).querySelector('[role="status"]')).toBeNull();
+  });
+});
+
+/**
+ * Fase 5 — 5.8: doble envío bloqueado por `saving` y limpieza del borrador
+ * tras un guardado exitoso (§5.5).
+ */
+describe('FormView — guardado', () => {
+  const RECORD = {
+    name: 'Producto',
+    slug: 'producto',
+    sku: 'SKU-1',
+    description: 'x'.repeat(120),
+    category_slug: 'cat-1',
+    price: 10,
+    availability: 'InStock',
+    images: [{ image_url: 'a.png', image_alt: 'Alt', position: 1 }],
+    seo_description: 'x',
+    registro_sanitario: 'x',
+    faq: [{ question: '¿P?', answer: 'A', position: 1 }],
+  };
+  const KEY = 'draft:products:sku-1';
+
+  beforeEach(() => localStorage.clear());
+  afterAll(() => localStorage.clear());
+
+  async function openEdit(
+    overrides: {
+      /** Implementación de `update` (por defecto: éxito silencioso). */
+      update?: () => unknown;
+      /** `ErrorMapperService.map` (por defecto: sin errores de campo). */
+      map?: () => { fields: Record<string, string>; general?: string };
+    } = {},
+  ): Promise<{
+    fixture: ComponentFixture<FormView>;
+    update: ReturnType<typeof vi.fn>;
+  }> {
+    const update = vi.fn(overrides.update ?? ((): unknown => of({})));
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'products', key: 'sku-1' })) },
+        },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of(RECORD)),
+            create: vi.fn(() => of({})),
+            update,
+            remove: vi.fn(() => of({})),
+            list: vi.fn(() => of([])),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: {
+            map: vi.fn(
+              overrides.map ?? ((): { fields: Record<string, string> } => ({ fields: {} })),
+            ),
+            messageOf: vi.fn(() => ''),
+          },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return { fixture, update };
+  }
+
+  function fireSubmit(fixture: ComponentFixture<FormView>): void {
+    const form = (fixture.nativeElement as Element).querySelector('form');
+    expect(form, 'sin formulario').not.toBeNull();
+    form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
+
+  it('`saving` bloquea el doble envío', async () => {
+    const { fixture, update } = await openEdit();
+
+    // Dos submit síncronos seguidos: el segundo debe caer en el guard de
+    // `saving()` y no llegar a la API.
+    fireSubmit(fixture);
+    fireSubmit(fixture);
+    await fixture.whenStable();
+
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it('limpia el borrador tras guardar con éxito', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ savedAt: Date.now(), value: RECORD }));
+
+    const { fixture, update } = await openEdit();
+    expect(localStorage.getItem(KEY), 'no había borrador que limpiar').not.toBeNull();
+
+    fireSubmit(fixture);
+    await fixture.whenStable();
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(KEY), 'el borrador sobrevivió al guardado').toBeNull();
+  });
+
+  it('un error del servidor conserva lo escrito y lo pinta en el campo (§6)', async () => {
+    const update = vi.fn(() => throwError(() => new Error('falló')));
+    const { fixture } = await openEdit({
+      update,
+      map: () => ({ fields: { name: 'Ya existe un registro con este valor' } }),
+    });
+
+    const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      'input[id$=".name"]',
+    );
+    expect(input, 'campo «Nombre»').not.toBeNull();
+    input!.value = 'Nombre nuevo';
+    input!.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+
+    fireSubmit(fixture);
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(update).toHaveBeenCalledTimes(1);
+    // §6: «Error del servidor: mensaje claro, conservar todo lo escrito».
+    expect(input!.value, 'el árbol se limpió tras el error').toBe('Nombre nuevo');
+    expect(fixture.nativeElement.textContent).toContain('Ya existe un registro con este valor');
+  });
+});
+
+/**
+ * Plan 6.6 — selección dependiente (guía §1, «país → ciudad»).
+ *
+ * `condition-evaluator.ts` sólo resuelve condiciones booleanas; el reset es
+ * un `effect` de form-view. Estos tests cubren las dos mitades: `disabled()`
+ * en `form-schema.ts` (hijo ineditable) y el reinicio al cambiar el padre.
+ */
+describe('FormView — selección dependiente', () => {
+  const TEST_SCHEMA: ResourceSchema = {
+    id: 'dep-test',
+    label: 'Dependencia',
+    labelPlural: 'Dependencias',
+    kind: 'singleton',
+    endpoint: { get: '/admin/dep-test', update: '/admin/dep-test' },
+    keyField: 'key',
+    titleField: 'name',
+    listColumns: [],
+    fields: [
+      {
+        key: 'pais',
+        label: 'País',
+        type: 'select',
+        options: [
+          { value: 'ar', label: 'Argentina' },
+          { value: 'br', label: 'Brasil' },
+        ],
+      },
+      {
+        key: 'ciudad',
+        label: 'Ciudad',
+        type: 'select',
+        dependsOn: 'pais',
+        options: [
+          { value: 'ba', label: 'Buenos Aires' },
+          { value: 'sp', label: 'São Paulo' },
+        ],
+      },
+    ],
+  };
+
+  // El catálogo es un array plano: se inyecta el schema de prueba y se saca
+  // en el afterEach para no filtrarlo a los demás tests.
+  const catalog = schemas as unknown as ResourceSchema[];
+
+  afterEach(() => {
+    const index = catalog.findIndex((schema) => schema.id === TEST_SCHEMA.id);
+    if (index >= 0) {
+      catalog.splice(index, 1);
+    }
+  });
+
+  async function createDepForm() {
+    catalog.push(TEST_SCHEMA);
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'dep-test' })) },
+        },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            create: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  /**
+   * Los ids llevan el prefijo del formulario (`a.form9.pais-ar`), que `form()`
+   * genera en runtime: se buscan por sufijo. `pais`/`ciudad` tienen 2
+   * opciones estáticas, así que hoy son grupo de radios, no `<select>`.
+   */
+  const radioOf = (
+    fixture: ComponentFixture<FormView>,
+    id: string,
+    value: string,
+  ): HTMLInputElement | null => fixture.nativeElement.querySelector(`input[id$=".${id}-${value}"]`);
+
+  function pick(fixture: ComponentFixture<FormView>, id: string, value: string): void {
+    const radio = radioOf(fixture, id, value);
+    expect(radio, `radio ${id}=${value} no encontrado`).not.toBeNull();
+    radio!.checked = true;
+    radio!.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  it('el hijo queda disabled mientras el padre esté vacío', async () => {
+    const fixture = await createDepForm();
+
+    expect(radioOf(fixture, 'pais', 'ar')).not.toBeNull();
+    expect(radioOf(fixture, 'ciudad', 'ba')?.disabled).toBe(true);
+  });
+
+  it('al elegir el padre, el hijo se habilita', async () => {
+    const fixture = await createDepForm();
+
+    pick(fixture, 'pais', 'ar');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(radioOf(fixture, 'ciudad', 'ba')?.disabled).toBe(false);
+  });
+
+  it('al cambiar el padre, el hijo vuelve a su valor por defecto', async () => {
+    const fixture = await createDepForm();
+
+    pick(fixture, 'pais', 'ar');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    pick(fixture, 'ciudad', 'ba');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(radioOf(fixture, 'ciudad', 'ba')?.checked).toBe(true);
+
+    pick(fixture, 'pais', 'br');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(radioOf(fixture, 'ciudad', 'ba')?.checked).toBe(false);
+  });
+});
+
+// ── readonlyOn ──────────────────────────────────────────────────────────────
+
+describe('FormView — readonlyOn', () => {
+  const TEST_SCHEMA_ID = 'readonly-test';
+  const READONLY_SCHEMA: ResourceSchema = {
+    id: TEST_SCHEMA_ID,
+    label: 'Test Readonly',
+    labelPlural: 'Test Readonlys',
+    kind: 'collection',
+    endpoint: {
+      list: '/admin/readonly-test',
+      get: '/admin/readonly-test/{key}',
+      update: '/admin/readonly-test/{key}',
+    },
+    keyField: 'id',
+    titleField: 'name',
+    listColumns: [],
+    fields: [
+      { key: 'id', label: 'ID', type: 'text', readonlyOn: 'update' },
+      { key: 'name', label: 'Nombre', type: 'text' },
+      { key: 'fixed', label: 'Fijo', type: 'text', readonlyOn: 'always' },
+    ],
+  };
+
+  const catalog = schemas as unknown as ResourceSchema[];
+
+  afterEach(() => {
+    const index = catalog.findIndex((s) => s.id === TEST_SCHEMA_ID);
+    if (index >= 0) catalog.splice(index, 1);
+  });
+
+  function inputOf(fixture: ComponentFixture<FormView>, key: string): HTMLInputElement | null {
+    return fixture.nativeElement.querySelector(`input[id$=".${key}"]`) as HTMLInputElement | null;
+  }
+
+  async function createForm(mode: 'create' | 'edit') {
+    catalog.push(READONLY_SCHEMA);
+    const paramMap =
+      mode === 'edit'
+        ? convertToParamMap({ id: TEST_SCHEMA_ID, key: 'rec-1' })
+        : convertToParamMap({ id: TEST_SCHEMA_ID });
+
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        { provide: ActivatedRoute, useValue: { paramMap: of(paramMap) } },
+        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        // `AuthService` pide `API_URL` (convención de specs, R7.5)
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => of({ id: 'rec-1', name: 'Test', fixed: 'val' })),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('campo readonlyOn:update queda readonly en modo edición', async () => {
+    const fixture = await createForm('edit');
+    const input = inputOf(fixture, 'id');
+    expect(input, 'debe existir el campo id').not.toBeNull();
+    expect(input!.readOnly).toBe(true);
+  });
+
+  it('campo readonlyOn:update es editable en modo creación', async () => {
+    const fixture = await createForm('create');
+    const input = inputOf(fixture, 'id');
+    expect(input, 'debe existir el campo id').not.toBeNull();
+    expect(input!.readOnly).toBe(false);
+  });
+
+  it('campo readonlyOn:always queda readonly en cualquier modo', async () => {
+    const fixture = await createForm('edit');
+    const input = inputOf(fixture, 'fixed');
+    expect(input, 'debe existir el campo fixed').not.toBeNull();
+    expect(input!.readOnly).toBe(true);
+  });
+});
+
+// ── R9.9 · D4 — target load error recovery ──
+
+describe('FormView — D4: error recovery', () => {
+  async function createConError(rechazo: unknown) {
+    await TestBed.configureTestingModule({
+      imports: [FormView],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: of(convertToParamMap({ id: 'orders', key: 'ORD-1' })) },
+        },
+        // Router con el trozo mínimo que `ViewNavigationService.back()`
+        // recorre: `navigate` (el aserto) + `routerState` (recurso raíz).
+        {
+          provide: Router,
+          useValue: {
+            navigate: vi.fn().mockResolvedValue(true),
+            routerState: {
+              snapshot: { root: { data: { resourceId: 'orders' }, firstChild: null } },
+            },
+          },
+        },
+        { provide: API_URL, useValue: '/api' },
+        {
+          provide: ApiService,
+          useValue: {
+            get: vi.fn(() => throwError(() => rechazo)),
+            create: vi.fn(() => of({})),
+            update: vi.fn(() => of({})),
+            remove: vi.fn(() => of({})),
+          },
+        },
+        {
+          provide: NotificationService,
+          useValue: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+        },
+        {
+          provide: ErrorMapperService,
+          useValue: { map: vi.fn(() => ({ fields: {} })), messageOf: vi.fn(() => '') },
+        },
+        { provide: UploadService, useValue: { uploadWithProgress: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(FormView);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('estado de error ofrece «Volver» junto a «Reintentar» y navega de vuelta', async () => {
+    const fixture = await createConError(new Error('boom'));
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('No se pudo cargar el registro');
+
+    const volver = Array.from(
+      root.querySelectorAll<HTMLButtonElement>('app-empty-state button[app-button]'),
+    ).find((b) => b.textContent?.trim().includes('Volver'));
+    expect(volver, 'debe existir el botón Volver en el estado de error').toBeDefined();
+
+    volver!.click();
+    await fixture.whenStable();
+    // Raíz del recurso declarado en la ruta (D4: way back, no pantalla muerta).
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/', 'orders']);
+  });
+
+  it('el error original de load() queda retenido con identidad intacta', async () => {
+    const fallo = new Error('boom de red');
+    const fixture = await createConError(fallo);
+    expect(fixture.componentInstance.errorDeCarga()).toBe(fallo);
+  });
+});
