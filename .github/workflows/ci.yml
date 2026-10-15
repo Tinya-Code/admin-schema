@@ -25,13 +25,23 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      # El alias de tsconfig.spec.json apunta a ../front-gas (source de la
+      # librería del motor): vitest debe compilarla en el MISMO grafo que la
+      # app o Angular se instancia dos veces (NG0203/NG01908). Sin este
+      # clone el runner no tiene la carpeta hermana y los tests no resuelven.
+      - name: Clonar gas-admin-ui (hermano para el alias de tests)
+        run: >-
+          git clone --depth 1
+          "https://x-access-token:${{ github.token }}@github.com/Tinya-Code/front-gas.git"
+          ../front-gas
+
       # Test de registros (front). CI=true ⇒ ng test single-run headless.
       - name: Tests front (ng test)
         run: npm test
 
       # Contract-check (schemas back ↔ front) + reglas inquebrantables
       # (1/B1/5) + doc del registro — verbos del paquete del motor
-      # (@tinya-code/admin-schema), que ya no corre sus tests acá.
+      # (@tinya-code/gas-admin), que ya no corre sus tests acá.
       - name: Contract check y reglas inquebrantables
         run: npm run api:check
 
