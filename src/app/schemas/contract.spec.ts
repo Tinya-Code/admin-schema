@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { actionTypes } from '../actions/action-registry';
-import type { ResourceAction, ResourceSchema } from '../core/models/schema.model';
+import type { ResourceAction, ResourceSchema } from '@tinya-code/gas-admin-ui';
 import { schemas } from './registry';
 
 /**

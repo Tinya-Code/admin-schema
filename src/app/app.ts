@@ -1,9 +1,9 @@
 import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
-import { NotificationService } from './core/services/notification.service';
-import { ConfirmDialog } from './shared/components/confirm-dialog/confirm-dialog';
-import { Toast } from './shared/components/toast/toast';
+import { NotificationService } from '@tinya-code/gas-admin-ui';
+import { ConfirmDialog } from '@tinya-code/gas-admin-ui';
+import { Toast } from '@tinya-code/gas-admin-ui';
 
 @Component({
   selector: 'app-root',

@@ -1,4 +1,4 @@
-import type { AuthSchema } from '../core/models/schema.model';
+import type { AuthSchema } from '@tinya-code/gas-admin-ui';
 
 /**
  * Pantalla de login (auth.md §5.1) — **declaración, no componente**.

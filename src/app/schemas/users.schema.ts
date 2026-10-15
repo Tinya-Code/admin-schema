@@ -1,4 +1,4 @@
-import type { ResourceSchema } from '../core/models/schema.model';
+import type { ResourceSchema } from '@tinya-code/gas-admin-ui';
 
 /**
  * Usuarios y roles (auth.md §4.2 · R7.6). Colección sobre la hoja interna

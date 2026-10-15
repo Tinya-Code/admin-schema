@@ -1,4 +1,4 @@
-import type { ResourceSchema } from '../core/models/schema.model';
+import type { ResourceSchema } from '@tinya-code/gas-admin-ui';
 
 export const dashboardSchema: ResourceSchema = {
   id: 'dashboard',

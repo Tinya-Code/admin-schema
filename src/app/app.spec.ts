@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
 import { App } from './app';
-import { NotificationService } from './core/services/notification.service';
+import { NotificationService } from '@tinya-code/gas-admin-ui';
 
 describe('App', () => {
   beforeEach(async () => {

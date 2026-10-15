@@ -1,4 +1,4 @@
-import type { ResourceSchema } from '../core/models/schema.model';
+import type { ResourceSchema } from '@tinya-code/gas-admin-ui';
 
 import { categoriesSchema } from './categories.schema';
 import { dashboardSchema } from './dashboard.schema';

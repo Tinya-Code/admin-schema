@@ -1,4 +1,4 @@
-import type { ResourceSchema } from '../core/models/schema.model';
+import type { ResourceSchema } from '@tinya-code/gas-admin-ui';
 
 /**
  * Colección reordenable — base.md §11, api.md §3.1.

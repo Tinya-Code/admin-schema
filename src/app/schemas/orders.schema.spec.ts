@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { interpolateTemplate } from '../core/utils/template-interpolator';
+import { interpolateTemplate } from '@tinya-code/gas-admin-ui';
 import { ordersSchema } from './orders.schema';
 import { pickpassSchema } from './pickpass.schema';
 

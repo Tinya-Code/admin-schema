@@ -1,3 +1,8 @@
+/* G-F3 (pendiente opción A: la librería entrega su CSS compilado). Mientras
+   tanto, Tailwind v4 debe escanear los templates del paquete para generar
+   las utilities que el motor usa. */
+@source '../node_modules/@tinya-code/gas-admin-ui/fesm2022';
+
 /* Entrada de estilos (registrada en angular.json → styles[]) */
 @import 'tailwindcss';
 @import './styles/theme.css';
